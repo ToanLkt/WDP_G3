@@ -1,0 +1,30 @@
+{
+  "name": "career-roadmap-be",
+  "version": "1.0.0",
+  "description": "Backend scaffold for Personalized Career Orientation & Learning Roadmap Platform for Software Engineering Students",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start": "node server.js",
+    "docker:up": "docker compose up -d && node scripts/print-docker-help.js",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f api",
+    "docker:restart": "docker compose down && docker compose up -d && node scripts/print-docker-help.js",
+    "docker:help": "node scripts/print-docker-help.js"
+  },
+  "dependencies": {
+    "axios": "^1.11.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.13.2",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}

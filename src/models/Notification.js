@@ -1,0 +1,56 @@
+const mongoose = require('mongoose');
+
+const notificationSchema = new mongoose.Schema(
+  {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      index: true,
+    },
+    title: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    message: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    type: {
+      type: String,
+      enum: ['GITHUB_ANALYSIS_REMINDER', 'ROADMAP_TASK_REMINDER', 'REPOSITORY_IMPROVEMENT', 'SYSTEM'],
+      default: 'SYSTEM',
+    },
+    isRead: {
+      type: Boolean,
+      default: false,
+    },
+    scheduledAt: {
+      type: Date,
+      default: null,
+    },
+    readAt: {
+      type: Date,
+      default: null,
+    },
+    metadata: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+notificationSchema.index({ user: 1, createdAt: -1 });
+notificationSchema.index({ user: 1, isRead: 1 });
+notificationSchema.index({ user: 1, type: 1 });
+
+module.exports = mongoose.model('Notification', notificationSchema);
