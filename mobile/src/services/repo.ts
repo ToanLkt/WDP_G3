@@ -24,6 +24,11 @@ export interface RepoFilters {
   sortBy?: 'name' | 'updated';
 }
 
+export type AnalyzeRepositoryOptions = {
+  /** Re-fetch packages/commits from GitHub before analyzing */
+  forceRefresh?: boolean;
+};
+
 const toMobileRepository = (
   repo: ReturnType<typeof normalizeRepositories>[number],
   analyzedRepoIds: Set<string>,
@@ -47,18 +52,15 @@ const toMobileRepository = (
   };
 };
 
-export const fetchRepositories = async (sync = false): Promise<Repository[]> => {
-  const repoPayload = sync
-    ? await githubApi.syncRepositories({ sync: true })
-    : await githubApi.getCachedRepositories();
-  const rawRepos = normalizeRepositories(repoPayload);
-
-  let analyzedRepoIds = new Set<string>();
+const loadAnalysisMetadata = async () => {
+  const analyzedRepoIds = new Set<string>();
   const repoReadmes = new Map<string, boolean>();
 
   try {
     const analysisPayload = await analysisApi.getMine();
-    const analyses = normalizeAnalyses(analysisPayload);
+    const list = extractApiResource<unknown>(analysisPayload, ['analyses', 'results', 'items', 'snapshots']);
+    const analyses = normalizeAnalyses(Array.isArray(list) ? list : analysisPayload);
+
     analyses.forEach((analysis) => {
       if (analysis.repositoryId) {
         analyzedRepoIds.add(String(analysis.repositoryId));
@@ -69,7 +71,83 @@ export const fetchRepositories = async (sync = false): Promise<Repository[]> => 
     // Continue without analysis metadata
   }
 
+  return { analyzedRepoIds, repoReadmes };
+};
+
+const buildRepositoryList = async (repoPayload: unknown): Promise<Repository[]> => {
+  const rawRepos = normalizeRepositories(repoPayload);
+  const { analyzedRepoIds, repoReadmes } = await loadAnalysisMetadata();
   return rawRepos.map((repo) => toMobileRepository(repo, analyzedRepoIds, repoReadmes));
+};
+
+/** GET /github/repositories/cached — fast list from database */
+export const fetchCachedRepositoriesList = async (): Promise<Repository[]> => {
+  const repoPayload = await githubApi.getCachedRepositories();
+  return buildRepositoryList(repoPayload);
+};
+
+/** GET /github/repositories?sync=true — pull from GitHub and sync DB */
+export const syncRepositoriesFromGitHub = async (): Promise<Repository[]> => {
+  const repoPayload = await githubApi.syncRepositories({ sync: true });
+  return buildRepositoryList(repoPayload);
+};
+
+/** @deprecated Use fetchCachedRepositoriesList or syncRepositoriesFromGitHub */
+export const fetchRepositories = async (sync = false): Promise<Repository[]> => {
+  return sync ? syncRepositoriesFromGitHub() : fetchCachedRepositoriesList();
+};
+
+const isEmptyGithubResource = (payload: unknown, keys: string[]) => {
+  const data = extractApiResource<unknown>(payload, keys);
+  if (!data) return true;
+
+  if (Array.isArray(data)) {
+    return data.length === 0;
+  }
+
+  if (typeof data === 'object') {
+    const record = data as Record<string, unknown>;
+    if (Array.isArray(record.packages)) return record.packages.length === 0;
+    if (Array.isArray(record.commits)) return record.commits.length === 0;
+    if (Array.isArray(record.files)) return record.files.length === 0;
+    return Object.keys(record).length === 0;
+  }
+
+  return false;
+};
+
+const hasCachedRepoArtifacts = async (repoId: string) => {
+  try {
+    const [packagesPayload, commitsPayload] = await Promise.all([
+      githubApi.getCachedPackages(repoId),
+      githubApi.getCachedCommits(repoId),
+    ]);
+
+    const hasPackages = !isEmptyGithubResource(packagesPayload, ['packages', 'files', 'packageFiles']);
+    const hasCommits = !isEmptyGithubResource(commitsPayload, ['commits']);
+    return hasPackages || hasCommits;
+  } catch {
+    return false;
+  }
+};
+
+const syncRepoArtifactsFromGitHub = async (repoId: string) => {
+  await Promise.all([
+    githubApi.syncPackages(repoId).catch(() => undefined),
+    githubApi.syncCommits(repoId, { perPage: 30, includeStats: true }).catch(() => undefined),
+  ]);
+};
+
+const ensureRepoDataForAnalysis = async (repoId: string, forceRefresh: boolean) => {
+  if (forceRefresh) {
+    await syncRepoArtifactsFromGitHub(repoId);
+    return;
+  }
+
+  const hasCached = await hasCachedRepoArtifacts(repoId);
+  if (!hasCached) {
+    await syncRepoArtifactsFromGitHub(repoId);
+  }
 };
 
 export const filterRepositories = (repos: Repository[], filters: RepoFilters): Repository[] => {
@@ -111,18 +189,19 @@ export const filterRepositories = (repos: Repository[], filters: RepoFilters): R
   return result;
 };
 
-export const analyzeRepository = async (repoId: string): Promise<string> => {
+/**
+ * POST /analysis/repositories/{repoId}
+ * Uses cached packages/commits when available; syncs from GitHub only when needed.
+ */
+export const analyzeRepository = async (
+  repoId: string,
+  options: AnalyzeRepositoryOptions = {}
+): Promise<string> => {
   if (!repoId?.trim()) {
     throw new Error('Repository ID không hợp lệ. Hãy refresh danh sách repo rồi thử lại.');
   }
 
-  try {
-    await githubApi.syncPackages(repoId);
-    await githubApi.syncCommits(repoId);
-  } catch {
-    // Continue even if sync fails
-  }
-
+  await ensureRepoDataForAnalysis(repoId, Boolean(options.forceRefresh));
   await analysisApi.analyzeRepository(repoId);
   return repoId;
 };
@@ -133,6 +212,6 @@ export const fetchRepositoryDetail = async (repoId: string) => {
 };
 
 export const fetchFilteredRepositories = async (filters: RepoFilters) => {
-  const list = await fetchRepositories(false);
+  const list = await fetchCachedRepositoriesList();
   return filterRepositories(list, filters);
 };

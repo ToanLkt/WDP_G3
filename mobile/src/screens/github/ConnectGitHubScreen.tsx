@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Text, ScrollView, Image, Platform } from 'react-native';
+import { View, StyleSheet, Text, ScrollView, Image } from 'react-native';
 import { GitFork, CircleCheck, ShieldCheck, RefreshCw } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -17,7 +17,7 @@ type NavigationProp = NativeStackNavigationProp<RepositoriesStackParamList, 'Con
 const STEPS = [
   'Tap Connect with GitHub below.',
   'Sign in and authorize the app on GitHub.',
-  'Return to the app and tap Refresh status.',
+  'The app will detect the connection and return automatically.',
 ];
 
 export const ConnectGitHubScreen: React.FC = () => {
@@ -153,9 +153,6 @@ export const ConnectGitHubScreen: React.FC = () => {
       </Card>
 
       <Text style={styles.hintText}>{getGitHubOAuthSetupHint()}</Text>
-      {Platform.OS === 'android' ? (
-        <Text style={styles.hintText}>On Android emulator, run: adb reverse tcp:5000 tcp:5000</Text>
-      ) : null}
     </ScrollView>
   );
 };

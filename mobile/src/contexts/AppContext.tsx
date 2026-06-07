@@ -8,8 +8,14 @@ import {
   fetchProfile,
   AuthResponse,
 } from '../services/auth';
-import { GitHubUser, connectGitHubOAuth, fetchGitHubMe, disconnectGitHub, getGitHubOAuthSetupHint } from '../services/github';
-import { Repository, fetchRepositories, analyzeRepository as apiAnalyzeRepo } from '../services/repo';
+import { GitHubUser, connectGitHubOAuth, fetchGitHubMe, disconnectGitHub } from '../services/github';
+import {
+  Repository,
+  fetchCachedRepositoriesList,
+  syncRepositoriesFromGitHub,
+  analyzeRepository as apiAnalyzeRepo,
+  AnalyzeRepositoryOptions,
+} from '../services/repo';
 import { ChatMessage, createChatSession, fetchChatSessions, fetchChatSessionDetail, sendChatMessage } from '../services/chat';
 import { Roadmap, generateRoadmap as apiGenerateRoadmap, fetchMyRoadmapsList } from '../services/roadmap';
 import {
@@ -38,8 +44,9 @@ interface AppContextType {
   logoutUser: () => Promise<void>;
   connectToGitHub: () => Promise<void>;
   refreshGitHubStatus: () => Promise<boolean>;
+  syncRepositoriesFromGitHub: () => Promise<void>;
   disconnectFromGitHub: () => Promise<void>;
-  analyzeRepository: (repoId: string) => Promise<void>;
+  analyzeRepository: (repoId: string, options?: AnalyzeRepositoryOptions) => Promise<void>;
   sendMessageToAI: (messageText: string, repoId: string) => Promise<void>;
   generateRoadmapAction: (repoId: string) => Promise<Roadmap>;
   toggleRoadmapStepStatus: (repoId: string, stepId: string) => void;
@@ -144,7 +151,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setGithubUser(githubProfile);
       setGithubConnected(true);
 
-      const repos = await fetchRepositories(false);
+      const repos = await fetchCachedRepositoriesList();
       setRepositories(repos);
       await syncBackendData(repos);
     } else {
@@ -245,7 +252,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (githubProfile) {
         setGithubUser(githubProfile);
         setGithubConnected(true);
-        const repos = await fetchRepositories(true);
+        const repos = await fetchCachedRepositoriesList();
         setRepositories(repos);
         await syncBackendData(repos);
         return true;
@@ -260,13 +267,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const syncRepositoriesAction = async () => {
+    setIsLoading(true);
+    try {
+      const githubProfile = await fetchGitHubMe();
+      if (!githubProfile) {
+        setGithubUser(null);
+        setGithubConnected(false);
+        setRepositories([]);
+        return;
+      }
+
+      setGithubUser(githubProfile);
+      setGithubConnected(true);
+      const repos = await syncRepositoriesFromGitHub();
+      setRepositories(repos);
+      await syncBackendData(repos);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const connectToGitHub = async () => {
     setIsLoading(true);
     try {
       const result = await connectGitHubOAuth();
 
       if (result === 'success') {
-        await refreshGitHubStatus();
+        const githubProfile = await fetchGitHubMe();
+        if (githubProfile) {
+          setGithubUser(githubProfile);
+          setGithubConnected(true);
+        }
+        await syncRepositoriesAction();
         return;
       }
 
@@ -274,7 +307,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         throw new Error('Đã hủy liên kết GitHub.');
       }
 
-      throw new Error(`${getGitHubOAuthSetupHint()}. Then tap Refresh status below.`);
+      throw new Error('Could not complete GitHub connection. Authorize on GitHub and try again.');
     } finally {
       setIsLoading(false);
     }
@@ -292,9 +325,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const analyzeRepository = async (repoId: string) => {
+  const analyzeRepository = async (repoId: string, options?: AnalyzeRepositoryOptions) => {
     try {
-      await apiAnalyzeRepo(repoId);
+      await apiAnalyzeRepo(repoId, options);
 
       setRepositories((prevRepos) =>
         prevRepos.map((repo) =>
@@ -452,6 +485,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         logoutUser,
         connectToGitHub,
         refreshGitHubStatus,
+        syncRepositoriesFromGitHub: syncRepositoriesAction,
         disconnectFromGitHub,
         analyzeRepository,
         sendMessageToAI,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Text, ScrollView, TouchableOpacity } from 'react-native';
-import { AlertCircle, BookOpen, Layers, GitCommit, FileText, ChevronRight, MessageSquareCode } from 'lucide-react-native';
+import { AlertCircle, BookOpen, Layers, GitCommit, FileText, ChevronRight, MessageSquareCode, ChevronDown } from 'lucide-react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 
 import { theme } from '../../theme';
@@ -13,6 +13,8 @@ import { ErrorDisplay } from '../../components/ui/ErrorDisplay';
 import { fetchAnalysisResult, AnalysisResult } from '../../services/analysis';
 import { useTabBarAwareScroll } from '../../hooks/useTabBarAwareScroll';
 
+const PACKAGE_PREVIEW_COUNT = 5;
+
 export const AnalysisResultScreen: React.FC = () => {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
@@ -23,8 +25,8 @@ export const AnalysisResultScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
-  // Custom UI tabs
   const [activeTab, setActiveTab] = useState<'readme' | 'deps' | 'commits'>('readme');
+  const [showAllPackages, setShowAllPackages] = useState(false);
 
   const fetchAnalysis = async () => {
     setLoading(true);
@@ -41,6 +43,7 @@ export const AnalysisResultScreen: React.FC = () => {
 
   useEffect(() => {
     fetchAnalysis();
+    setShowAllPackages(false);
   }, [repoId]);
 
   if (loading) {
@@ -122,18 +125,50 @@ export const AnalysisResultScreen: React.FC = () => {
             {data.package_info.length === 0 ? (
               <Text style={styles.tabBodyText}>No external packaging files (e.g. package.json, Cargo.toml) identified.</Text>
             ) : (
-              data.package_info.map((pkg, i) => (
-                <View key={i} style={[styles.pkgRow, i === data.package_info.length - 1 && { borderBottomWidth: 0 }]}>
-                  <View>
-                    <Text style={styles.pkgName}>{pkg.name}</Text>
-                    <Text style={styles.pkgVersion}>Version {pkg.version}</Text>
+              <>
+                {(showAllPackages
+                  ? data.package_info
+                  : data.package_info.slice(0, PACKAGE_PREVIEW_COUNT)
+                ).map((pkg, i, arr) => (
+                  <View
+                    key={`${pkg.name}-${i}`}
+                    style={[styles.pkgRow, i === arr.length - 1 && !showAllPackages && data.package_info.length <= PACKAGE_PREVIEW_COUNT && { borderBottomWidth: 0 }]}
+                  >
+                    <View style={styles.pkgInfo}>
+                      <Text style={styles.pkgName} numberOfLines={2} ellipsizeMode="tail">
+                        {pkg.name}
+                      </Text>
+                      <Text style={styles.pkgVersion} numberOfLines={1} ellipsizeMode="tail">
+                        Version {pkg.version}
+                      </Text>
+                    </View>
+                    <Badge
+                      label={pkg.status}
+                      variant={pkg.status === 'outdated' ? 'warning' : 'muted'}
+                      style={styles.pkgBadge}
+                    />
                   </View>
-                  <Badge 
-                    label={pkg.status} 
-                    variant={pkg.status === 'outdated' ? 'warning' : 'muted'} 
-                  />
-                </View>
-              ))
+                ))}
+
+                {data.package_info.length > PACKAGE_PREVIEW_COUNT ? (
+                  <TouchableOpacity
+                    style={styles.showMoreBtn}
+                    onPress={() => setShowAllPackages((current) => !current)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.showMoreText}>
+                      {showAllPackages
+                        ? 'Show less'
+                        : `Show more (${data.package_info.length - PACKAGE_PREVIEW_COUNT} more)`}
+                    </Text>
+                    <ChevronDown
+                      size={16}
+                      color={theme.colors.secondaryLight}
+                      style={showAllPackages ? styles.showMoreIconOpen : undefined}
+                    />
+                  </TouchableOpacity>
+                ) : null}
+              </>
             )}
           </View>
         )}
@@ -288,21 +323,50 @@ const styles = StyleSheet.create({
   },
   pkgRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     borderBottomWidth: 1,
     borderColor: theme.colors.border,
     paddingVertical: theme.spacing.sm,
+    gap: theme.spacing.sm,
+  },
+  pkgInfo: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: theme.spacing.xs,
   },
   pkgName: {
     fontSize: theme.typography.sizes.sm,
     fontWeight: theme.typography.weights.bold,
     color: theme.colors.textPrimary,
+    flexShrink: 1,
   },
   pkgVersion: {
     fontSize: theme.typography.sizes.xs,
     color: theme.colors.textMuted,
     marginTop: 2,
+    flexShrink: 1,
+  },
+  pkgBadge: {
+    flexShrink: 0,
+    marginTop: 2,
+  },
+  showMoreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.xs,
+    paddingVertical: theme.spacing.md,
+    marginTop: theme.spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  showMoreText: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.medium,
+    color: theme.colors.secondaryLight,
+  },
+  showMoreIconOpen: {
+    transform: [{ rotate: '180deg' }],
   },
   missingSection: {
     marginBottom: theme.spacing.lg,

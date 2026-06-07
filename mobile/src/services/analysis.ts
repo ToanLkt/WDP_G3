@@ -102,9 +102,10 @@ const toMobileAnalysis = (analysis: ReturnType<typeof normalizeAnalysis>, repoId
   };
 };
 
+/** GET /analysis/results/{repoId} — read latest snapshot (no GitHub sync) */
 export const fetchAnalysisResult = async (repoId: string): Promise<AnalysisResult> => {
   const payload = await analysisApi.getResult(repoId);
-  const analysisPayload = extractApiResource(payload, ['analysis', 'result']);
+  const analysisPayload = extractApiResource(payload, ['analysis', 'result', 'snapshot']);
   const analysis = normalizeAnalysis(analysisPayload);
 
   if (!analysis.id && !analysis.repositoryId) {

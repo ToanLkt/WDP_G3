@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
+import { DEFAULT_API_BASE_URL, MOBILE_OAUTH_RETURN_URL } from '../constants';
+
 const TOKEN_KEY = 'gitanalyzer.jwt';
 const USER_KEY = 'gitanalyzer.user';
 
@@ -58,6 +60,8 @@ export const setCustomBaseUrl = (url: string | null) => {
   customBaseUrl = url;
 };
 
+export const normalizeApiBaseUrl = (url: string) => url.trim().replace(/\/+$/, '');
+
 export const resolveHostForPlatform = (url: string) => {
   if (Platform.OS === 'android' && /\/\/(localhost|127\.0\.0\.1)/.test(url)) {
     return url.replace(/\/\/(localhost|127\.0\.0\.1)/, '//10.0.2.2');
@@ -67,22 +71,24 @@ export const resolveHostForPlatform = (url: string) => {
 };
 
 export const getApiBaseUrl = () => {
-  if (customBaseUrl) return resolveHostForPlatform(customBaseUrl);
-
-  const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
-  if (envUrl) return resolveHostForPlatform(envUrl);
-
-  if (Platform.OS === 'android') {
-    return 'http://10.0.2.2:5000/api';
+  if (customBaseUrl) {
+    return normalizeApiBaseUrl(resolveHostForPlatform(customBaseUrl));
   }
 
-  return 'http://localhost:5000/api';
+  const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
+  if (envUrl) {
+    return normalizeApiBaseUrl(resolveHostForPlatform(envUrl));
+  }
+
+  return DEFAULT_API_BASE_URL;
 };
 
 export const getOAuthCallbackUrl = () => {
   const apiBase = getApiBaseUrl().replace(/\/api\/?$/, '');
   return `${apiBase}/api/github/oauth/callback`;
 };
+
+export const getMobileOAuthReturnUrl = () => MOBILE_OAUTH_RETURN_URL;
 
 export const unwrapResponse = <T>(payload: unknown): T => {
   const value = payload as Record<string, unknown>;

@@ -21,7 +21,7 @@
 
 - **Node.js** v18+
 - **npm** hoặc **yarn**
-- Backend API (`WDP_G3-BE`) chạy tại port `5000`
+- Backend API đã deploy: `https://career-roadmap-api-zs7y.onrender.com/api`
 - Một trong các môi trường chạy app:
   - Android Emulator (Android Studio)
   - iOS Simulator (macOS + Xcode)
@@ -40,7 +40,7 @@ npm install
 
 ## Cấu hình môi trường
 
-Sao chép file mẫu và chỉnh theo môi trường của bạn:
+Sao chép file mẫu (đã trỏ sẵn API production):
 
 ```bash
 cp .env.example .env
@@ -48,11 +48,9 @@ cp .env.example .env
 
 | Biến | Mô tả |
 |---|---|
-| `EXPO_PUBLIC_API_BASE_URL` | URL backend API, mặc định `http://localhost:5000/api` |
+| `EXPO_PUBLIC_API_BASE_URL` | URL backend API, mặc định `https://career-roadmap-api-zs7y.onrender.com/api` |
 
-**Android Emulator:** app tự map `localhost` → `10.0.2.2`.
-
-**Thiết bị thật:** dùng IP LAN của máy host, ví dụ `http://192.168.1.100:5000/api`.
+Nếu không có `.env`, app vẫn dùng URL deploy mặc định trong `src/constants/index.ts`.
 
 ---
 
@@ -74,23 +72,18 @@ npm run ios
 npx expo start --clear
 ```
 
+> Sau khi đổi `.env`, chạy lại `npx expo start --clear` để Metro nạp biến môi trường mới.
+
 ---
 
-## GitHub OAuth (Android Emulator)
+## GitHub OAuth
 
-1. Backend cần cấu hình:
+1. Backend deploy cần cấu hình:
    ```
-   GITHUB_CALLBACK_URL=http://localhost:5000/api/github/oauth/callback
-   FRONTEND_URL=http://localhost:5000
+   GITHUB_CALLBACK_URL=https://career-roadmap-api-zs7y.onrender.com/api/github/oauth/callback
    ```
 2. Thêm cùng callback URL vào **GitHub OAuth App**.
-3. Chạy port forwarding trước khi test trên emulator:
-
-   ```powershell
-   & "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" reverse tcp:5000 tcp:5000
-   ```
-
-4. Trong app: **Connect with GitHub** → authorize trên GitHub → **Refresh status**.
+3. Trong app: **Connect with GitHub** → authorize trên GitHub → **Refresh status**.
 
 ---
 
@@ -101,6 +94,7 @@ mobile/
 ├── src/
 │   ├── api/           # HTTP client & API modules
 │   ├── components/    # UI components (ui/, repo/, roadmap/)
+│   ├── constants/     # App constants (API URL, …)
 │   ├── contexts/      # AppContext, TabBarScrollContext
 │   ├── features/      # Domain logic (roadmaps, …)
 │   ├── hooks/         # Custom hooks
@@ -128,5 +122,6 @@ mobile/
 
 ## Liên kết
 
-- Backend API: nhánh `BE` trên cùng repository
+- Backend API: https://career-roadmap-api-zs7y.onrender.com/api
+- Backend repo: nhánh `BE` trên cùng repository
 - Web app: nhánh `Web` trên cùng repository

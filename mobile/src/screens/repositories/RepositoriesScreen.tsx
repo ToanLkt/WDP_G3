@@ -30,7 +30,7 @@ export const RepositoriesScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const { tabBarPaddingBottom } = useTabBarAwareScroll();
-  const { githubConnected, repositories, analyzeRepository, refreshGitHubStatus, isLoading } = useApp();
+  const { githubConnected, repositories, analyzeRepository, syncRepositoriesFromGitHub, isLoading } = useApp();
 
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -50,21 +50,21 @@ export const RepositoriesScreen: React.FC = () => {
   const handleSync = async () => {
     setRefreshing(true);
     try {
-      await refreshGitHubStatus();
+      await syncRepositoriesFromGitHub();
     } finally {
       setRefreshing(false);
     }
   };
 
-  const handleAnalyze = async (repoId: string, repoName: string) => {
-    setAnalyzingRepoIds((prev) => ({ ...prev, [repoId]: true }));
+  const handleAnalyze = async (repo: Repository) => {
+    setAnalyzingRepoIds((prev) => ({ ...prev, [repo.id]: true }));
     try {
-      await analyzeRepository(repoId);
-      navigation.navigate('RepoAnalysis', { repoId, repoName });
+      await analyzeRepository(repo.id, { forceRefresh: repo.is_analyzed });
+      navigation.navigate('RepoAnalysis', { repoId: repo.id, repoName: repo.name });
     } catch (err) {
       alert(getApiErrorMessage(err) || 'Analysis failed. Please try again.');
     } finally {
-      setAnalyzingRepoIds((prev) => ({ ...prev, [repoId]: false }));
+      setAnalyzingRepoIds((prev) => ({ ...prev, [repo.id]: false }));
     }
   };
 
@@ -134,7 +134,7 @@ export const RepositoriesScreen: React.FC = () => {
             <View style={styles.cardWrap}>
               <RepoCard
                 repo={item}
-                onAnalyze={(repoId) => handleAnalyze(repoId, item.name)}
+                onAnalyze={() => handleAnalyze(item)}
                 onViewAnalysis={handleViewAnalysis}
                 isAnalyzing={!!analyzingRepoIds[item.id]}
               />

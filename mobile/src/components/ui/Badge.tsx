@@ -67,7 +67,10 @@ export const Badge: React.FC<BadgeProps> = ({
       { backgroundColor: colors.bg, borderColor: colors.border },
       style
     ]}>
-      <Text style={[styles.badgeText, { color: colors.text }, textStyle]}>
+      <Text
+        style={[styles.badgeText, { color: colors.text }, textStyle]}
+        numberOfLines={1}
+      >
         {label}
       </Text>
     </View>
@@ -81,6 +84,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.roundness.full,
     borderWidth: 1,
     alignSelf: 'flex-start',
+    flexShrink: 0,
     justifyContent: 'center',
     alignItems: 'center',
   },

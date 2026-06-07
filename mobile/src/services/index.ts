@@ -8,6 +8,7 @@ export type { GitHubUser } from './github';
 export {
   fetchOAuthUrl,
   fetchGitHubMe,
+  checkGitHubConnected,
   disconnectGitHub,
   connectGitHubOAuth,
   getGitHubOAuthSetupHint,
@@ -17,9 +18,11 @@ export {
   syncRepositoryCommits,
 } from './github';
 
-export type { Repository, RepoFilters } from './repo';
+export type { Repository, RepoFilters, AnalyzeRepositoryOptions } from './repo';
 export {
   fetchRepositories,
+  fetchCachedRepositoriesList,
+  syncRepositoriesFromGitHub,
   filterRepositories,
   analyzeRepository,
   fetchRepositoryDetail,
