@@ -195,7 +195,7 @@ const MainTabsNavigator = () => {
         name="HomeTab"
         component={HomeScreen}
         options={{
-          title: 'Dashboard',
+          headerShown: false,
           tabBarLabel: 'Home',
           tabBarIcon: ({ color, size }) => <Home color={color} size={size - 2} />,
         }}

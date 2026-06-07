@@ -42,7 +42,7 @@ export const Button: React.FC<ButtonProps> = ({
   };
 
   const renderContent = () => (
-    <View style={styles.contentRow}>
+    <View style={[styles.contentRow, icon ? styles.contentRowWithIcon : undefined]}>
       {loading ? (
         <ActivityIndicator
           size="small"
@@ -114,6 +114,7 @@ export const Button: React.FC<ButtonProps> = ({
         getOutlineStyle(),
         variant === 'text' && styles.textButton,
         isButtonDisabled && styles.disabledButton,
+        (variant === 'outline' || variant === 'text') && styles.outlineButton,
         style,
       ]}
       onPress={onPress}
@@ -158,6 +159,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+  },
+  contentRowWithIcon: {
+    width: '100%',
+    justifyContent: 'flex-start',
+  },
+  outlineButton: {
+    paddingHorizontal: theme.spacing.lg,
+    alignItems: 'stretch',
   },
   textButton: {
     backgroundColor: 'transparent',

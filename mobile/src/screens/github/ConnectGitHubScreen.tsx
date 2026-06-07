@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, Text, ScrollView, Image, Platform } from 'react-native';
-import { GitFork, CheckCircle, ShieldCheck, RefreshCw } from 'lucide-react-native';
+import { GitFork, CircleCheck, ShieldCheck, RefreshCw } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -67,7 +67,7 @@ export const ConnectGitHubScreen: React.FC = () => {
         <View style={styles.connectedContainer}>
           <Card style={styles.profileCard} glow="cyan">
             <View style={styles.successBadge}>
-              <CheckCircle size={20} color={theme.colors.success} />
+              <CircleCheck size={20} color={theme.colors.success} />
               <Text style={styles.successBadgeText}>Successfully Connected</Text>
             </View>
 

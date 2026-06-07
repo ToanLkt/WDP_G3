@@ -1,44 +1,64 @@
 import { dashboardApi } from '../api/dashboard';
 import { extractApiResource } from '../api/client';
 
-export interface DashboardData {
-  github_connected: boolean;
-  total_repos: number;
-  analyzed_repos: number;
-  current_skill_direction: string;
+export interface DashboardOverview {
+  user: {
+    _id: string;
+    name: string;
+    email: string;
+  };
+  github: {
+    connected: boolean;
+    username: string | null;
+  };
+  repositories: {
+    total: number;
+    analyzed: number;
+    unanalyzed: number;
+  };
+  skills: {
+    strong: string[];
+    missing: string[];
+  };
+  suggestedCareerPath: string | null;
+  roadmapProgress: number;
+  latestAnalysisAt: string | null;
 }
 
-export const fetchDashboardData = async (): Promise<DashboardData> => {
+export const fetchDashboardOverview = async (): Promise<DashboardOverview> => {
   const payload = await dashboardApi.me();
   const data = extractApiResource<Record<string, unknown>>(payload, []);
 
   if (!data) {
-    throw new Error('Failed to retrieve dashboard summaries.');
+    throw new Error('Không thể tải dữ liệu dashboard.');
   }
 
   const repositories = (data.repositories as Record<string, unknown>) || {};
   const github = (data.github as Record<string, unknown>) || {};
+  const skills = (data.skills as Record<string, unknown>) || {};
+  const user = (data.user as Record<string, unknown>) || {};
 
   return {
-    github_connected: Boolean(github.connected ?? data.githubConnected),
-    total_repos: Number(repositories.total ?? data.totalRepositories ?? 0),
-    analyzed_repos: Number(repositories.analyzed ?? data.analyzedRepositories ?? 0),
-    current_skill_direction: String(data.suggestedCareerPath ?? data.currentSkillDirection ?? 'Generalist Software Engineer'),
+    user: {
+      _id: String(user._id ?? ''),
+      name: String(user.name ?? ''),
+      email: String(user.email ?? ''),
+    },
+    github: {
+      connected: Boolean(github.connected),
+      username: github.username ? String(github.username) : null,
+    },
+    repositories: {
+      total: Number(repositories.total ?? 0),
+      analyzed: Number(repositories.analyzed ?? 0),
+      unanalyzed: Number(repositories.unanalyzed ?? 0),
+    },
+    skills: {
+      strong: Array.isArray(skills.strong) ? skills.strong.map(String) : [],
+      missing: Array.isArray(skills.missing) ? skills.missing.map(String) : [],
+    },
+    suggestedCareerPath: data.suggestedCareerPath ? String(data.suggestedCareerPath) : null,
+    roadmapProgress: Number(data.roadmapProgress ?? 0),
+    latestAnalysisAt: data.latestAnalysisAt ? String(data.latestAnalysisAt) : null,
   };
-};
-
-export const fetchDashboardDataWithFallback = async (
-  githubConnected: boolean,
-  repos: Array<{ is_analyzed?: boolean }>
-): Promise<DashboardData> => {
-  try {
-    return await fetchDashboardData();
-  } catch {
-    return {
-      github_connected: githubConnected,
-      total_repos: repos.length,
-      analyzed_repos: repos.filter((repo) => repo.is_analyzed).length,
-      current_skill_direction: 'Generalist Software Engineer',
-    };
-  }
 };

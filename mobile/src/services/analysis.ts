@@ -116,5 +116,6 @@ export const fetchAnalysisResult = async (repoId: string): Promise<AnalysisResul
 
 export const fetchMyAnalyses = async () => {
   const payload = await analysisApi.getMine();
-  return normalizeAnalyses(payload);
+  const list = extractApiResource<unknown>(payload, ['analyses', 'results', 'items', 'snapshots']);
+  return normalizeAnalyses(Array.isArray(list) ? list : payload);
 };
