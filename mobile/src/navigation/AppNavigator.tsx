@@ -5,47 +5,42 @@ import { NavigationContainer } from '@react-navigation/native';
 import { Home, FolderCode, MessageSquareCode, Settings, Milestone } from 'lucide-react-native';
 import { StyleSheet, View, TouchableOpacity, Platform } from 'react-native';
 
-import { theme } from '../theme/theme';
-import { useApp } from '../context/AppContext';
+import { theme } from '../theme';
+import { useApp } from '../contexts/AppContext';
+import { TAB_BAR_HEIGHT } from '../contexts/TabBarScrollContext';
+import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 
 // Screens
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { RegisterScreen } from '../screens/auth/RegisterScreen';
-import { HomeScreen } from '../screens/main/HomeScreen';
-import { RepositoriesScreen } from '../screens/main/RepositoriesScreen';
-import { AnalysisResultScreen } from '../screens/main/AnalysisResultScreen';
-import { ChatScreen } from '../screens/main/ChatScreen';
-import { SettingsScreen } from '../screens/main/SettingsScreen';
+import { HomeScreen } from '../screens/home/HomeScreen';
+import { RepositoriesScreen } from '../screens/repositories/RepositoriesScreen';
+import { AnalysisResultScreen } from '../screens/analysis/AnalysisResultScreen';
+import { ChatScreen } from '../screens/chat/ChatScreen';
+import { SettingsScreen } from '../screens/settings/SettingsScreen';
 import { ConnectGitHubScreen } from '../screens/github/ConnectGitHubScreen';
-import { RoadmapScreen } from '../screens/main/RoadmapScreen';
+import { RoadmapListScreen } from '../screens/roadmap/RoadmapListScreen';
+import { RoadmapDetailScreen } from '../screens/roadmap/RoadmapDetailScreen';
 
-// 1. Navigation Parameter List Types
-export type AuthStackParamList = {
-  Login: undefined;
-  Register: undefined;
-};
+import type {
+  AuthStackParamList,
+  MainTabParamList,
+  RepositoriesStackParamList,
+  RoadmapStackParamList,
+  RootStackParamList,
+} from '@/navigation/types';
 
-export type RepositoriesStackParamList = {
-  RepoList: undefined;
-  RepoAnalysis: { repoId: string; repoName: string };
-  ConnectGitHub: undefined;
-};
-
-export type MainTabParamList = {
-  HomeTab: undefined;
-  RepositoriesTab: undefined;
-  RoadmapTab: undefined;
-  ChatTab: { repoId?: string; repoName?: string } | undefined;
-  SettingsTab: undefined;
-};
-
-export type RootStackParamList = {
-  Auth: undefined;
-  App: undefined;
-};
+export type {
+  AuthStackParamList,
+  MainTabParamList,
+  RepositoriesStackParamList,
+  RoadmapStackParamList,
+  RootStackParamList,
+} from '@/navigation/types';
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const RepoStack = createNativeStackNavigator<RepositoriesStackParamList>();
+const RoadmapStack = createNativeStackNavigator<RoadmapStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 // 2. Auth Stack Navigator
@@ -105,7 +100,7 @@ const RepositoriesStackNavigator = () => {
       <RepoStack.Screen 
         name="RepoList" 
         component={RepositoriesScreen} 
-        options={{ title: 'Repositories' }} 
+        options={{ headerShown: false }} 
       />
       <RepoStack.Screen 
         name="RepoAnalysis" 
@@ -118,6 +113,39 @@ const RepositoriesStackNavigator = () => {
         options={{ title: 'Connect GitHub' }} 
       />
     </RepoStack.Navigator>
+  );
+};
+
+const RoadmapStackNavigator = () => {
+  return (
+    <RoadmapStack.Navigator
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: theme.colors.surface,
+        },
+        headerTintColor: theme.colors.textPrimary,
+        headerTitleStyle: {
+          fontWeight: theme.typography.weights.bold,
+          fontSize: theme.typography.sizes.md + 1,
+        },
+        headerShadowVisible: false,
+        contentStyle: { backgroundColor: theme.colors.background },
+      }}
+    >
+      <RoadmapStack.Screen
+        name="RoadmapList"
+        component={RoadmapListScreen}
+        options={{ title: 'Learning Roadmap' }}
+      />
+      <RoadmapStack.Screen
+        name="RoadmapDetail"
+        component={RoadmapDetailScreen}
+        options={({ route }) => ({
+          title: route.params.title,
+          headerBackTitle: 'Quay lại',
+        })}
+      />
+    </RoadmapStack.Navigator>
   );
 };
 
@@ -141,7 +169,7 @@ const MainTabsNavigator = () => {
           borderTopWidth: 0,
           borderTopLeftRadius: 28,
           borderTopRightRadius: 28,
-          height: Platform.OS === 'ios' ? 88 : 72,
+          height: TAB_BAR_HEIGHT,
           paddingBottom: Platform.OS === 'ios' ? 24 : 10,
           paddingTop: 10,
           position: 'absolute',
@@ -184,9 +212,10 @@ const MainTabsNavigator = () => {
       />
       <Tab.Screen
         name="RoadmapTab"
-        component={RoadmapScreen}
+        component={RoadmapStackNavigator}
         options={{
           title: 'Learning Roadmap',
+          headerShown: false,
           tabBarLabel: 'Roadmap',
           tabBarButton: (props) => <CustomTabBarButton {...props} />,
         }}
@@ -195,8 +224,8 @@ const MainTabsNavigator = () => {
         name="ChatTab"
         component={ChatScreen}
         options={{
-          title: 'AI Mentor',
-          tabBarLabel: 'AI Chat',
+          headerShown: false,
+          tabBarLabel: 'AI Mentor',
           tabBarIcon: ({ color, size }) => <MessageSquareCode color={color} size={size - 2} />,
         }}
       />
@@ -204,7 +233,7 @@ const MainTabsNavigator = () => {
         name="SettingsTab"
         component={SettingsScreen}
         options={{
-          title: 'Settings & Profile',
+          headerShown: false,
           tabBarLabel: 'Profile',
           tabBarIcon: ({ color, size }) => <Settings color={color} size={size - 2} />,
         }}
@@ -213,9 +242,16 @@ const MainTabsNavigator = () => {
   );
 };
 
-// 5. Main Root Navigator
 export const AppNavigator: React.FC = () => {
-  const { token } = useApp();
+  const { token, isBootstrapping } = useApp();
+
+  if (isBootstrapping) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+        <LoadingSpinner message="Đang khôi phục phiên đăng nhập..." />
+      </View>
+    );
+  }
 
   return (
     <NavigationContainer>

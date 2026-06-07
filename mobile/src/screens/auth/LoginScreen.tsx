@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, Text, ScrollView, KeyboardAvoidingView, Platform, TouchableOpacity } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Terminal, GitFork } from 'lucide-react-native';
+import { Terminal } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 
-import { theme } from '../../theme/theme';
-import { useApp } from '../../context/AppContext';
-import { Input } from '../../components/common/Input';
-import { Button } from '../../components/common/Button';
-import { Card } from '../../components/common/Card';
+import { theme } from '../../theme';
+import { useApp } from '../../contexts/AppContext';
+import { Input } from '../../components/ui/Input';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 import { AuthStackParamList } from '../../navigation/AppNavigator';
 
 type NavigationProp = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
@@ -67,11 +67,6 @@ export const LoginScreen: React.FC = () => {
     }
   };
 
-  const fillMockCredentials = () => {
-    setEmail('admin@wdp.com');
-    setPassword('123456');
-  };
-
   return (
     <KeyboardAvoidingView 
       style={styles.keyboardContainer}
@@ -128,30 +123,6 @@ export const LoginScreen: React.FC = () => {
             loading={isSubmitting}
             style={styles.loginButton}
           />
-
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>Or continue with GitHub or Google</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          <View style={styles.socialRow}>
-            <TouchableOpacity style={styles.socialBtn} activeOpacity={0.8} onPress={fillMockCredentials}>
-              <GitFork size={15} color="#FFFFFF" style={{ marginRight: 8 }} />
-              <Text style={styles.socialText}>GitHub</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.socialBtn} activeOpacity={0.8} onPress={fillMockCredentials}>
-              <Text style={styles.socialText}>Google</Text>
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity 
-            onPress={fillMockCredentials}
-            style={styles.demoButton}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.demoText}>Auto-fill Developer Credentials</Text>
-          </TouchableOpacity>
 
           <View style={styles.footerRow}>
             <Text style={styles.footerText}>New to GitAnalyzer? </Text>
@@ -231,55 +202,7 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     marginTop: theme.spacing.sm,
-    marginBottom: theme.spacing.sm,
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: theme.spacing.sm,
-    marginBottom: theme.spacing.md,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: theme.colors.border,
-  },
-  dividerText: {
-    fontSize: theme.typography.sizes.xs,
-    color: theme.colors.textMuted,
-    paddingHorizontal: theme.spacing.md,
-  },
-  socialRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: theme.spacing.md,
-  },
-  socialBtn: {
-    width: '48%',
-    height: 44,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.roundness.sm,
-    backgroundColor: theme.colors.background,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  socialText: {
-    fontSize: theme.typography.sizes.sm,
-    color: theme.colors.textPrimary,
-    fontWeight: theme.typography.weights.bold,
-  },
-  demoButton: {
-    alignSelf: 'center',
-    paddingVertical: theme.spacing.xs,
     marginBottom: theme.spacing.lg,
-  },
-  demoText: {
-    fontSize: theme.typography.sizes.xs + 1,
-    color: theme.colors.secondary,
-    fontWeight: theme.typography.weights.medium,
-    textDecorationLine: 'underline',
   },
   footerRow: {
     flexDirection: 'row',
