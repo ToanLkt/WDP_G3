@@ -21,7 +21,6 @@
 
 - **Node.js** v18+
 - **npm** hoặc **yarn**
-- Backend API (`WDP_G3-BE`) chạy tại port `5000`
 - Một trong các môi trường chạy app:
   - Android Emulator (Android Studio)
   - iOS Simulator (macOS + Xcode)
@@ -35,26 +34,6 @@
 cd mobile
 npm install
 ```
-
----
-
-## Cấu hình môi trường
-
-Sao chép file mẫu và chỉnh theo môi trường của bạn:
-
-```bash
-cp .env.example .env
-```
-
-| Biến | Mô tả |
-|---|---|
-| `EXPO_PUBLIC_API_BASE_URL` | URL backend API, mặc định `http://localhost:5000/api` |
-
-**Android Emulator:** app tự map `localhost` → `10.0.2.2`.
-
-**Thiết bị thật:** dùng IP LAN của máy host, ví dụ `http://192.168.1.100:5000/api`.
-
----
 
 ## Chạy ứng dụng
 
@@ -76,24 +55,6 @@ npx expo start --clear
 
 ---
 
-## GitHub OAuth (Android Emulator)
-
-1. Backend cần cấu hình:
-   ```
-   GITHUB_CALLBACK_URL=http://localhost:5000/api/github/oauth/callback
-   FRONTEND_URL=http://localhost:5000
-   ```
-2. Thêm cùng callback URL vào **GitHub OAuth App**.
-3. Chạy port forwarding trước khi test trên emulator:
-
-   ```powershell
-   & "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" reverse tcp:5000 tcp:5000
-   ```
-
-4. Trong app: **Connect with GitHub** → authorize trên GitHub → **Refresh status**.
-
----
-
 ## Cấu trúc thư mục
 
 ```
@@ -101,6 +62,7 @@ mobile/
 ├── src/
 │   ├── api/           # HTTP client & API modules
 │   ├── components/    # UI components (ui/, repo/, roadmap/)
+│   ├── constants/     # App constants (API URL, …)
 │   ├── contexts/      # AppContext, TabBarScrollContext
 │   ├── features/      # Domain logic (roadmaps, …)
 │   ├── hooks/         # Custom hooks
@@ -125,8 +87,3 @@ mobile/
 - AsyncStorage (JWT persistence)
 
 ---
-
-## Liên kết
-
-- Backend API: nhánh `BE` trên cùng repository
-- Web app: nhánh `Web` trên cùng repository
