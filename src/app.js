@@ -17,18 +17,55 @@ const roadmapRoutes = require("./routes/roadmap.routes");
 const progressRoutes = require("./routes/progress.routes");
 
 const errorMiddleware = require("./middlewares/error.middleware");
-const { successResponse, errorResponse } = require("./utils/response");
+const { errorResponse } = require("./utils/response");
 
 const app = express();
 
-app.use(cors());
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  process.env.CLIENT_URL,
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "http://localhost:8081",
+].filter(Boolean);
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 
-app.get("/api/health", (req, res) => {
-  return successResponse(res, "Backend is running", {
-    service: "career-roadmap-be",
+app.get("/", (req, res) => {
+  res.json({
+    success: true,
+    message: "Career Roadmap API is running",
+    data: {
+      swagger: "/api/swagger",
+      health: "/health",
+    },
   });
 });
+
+const healthHandler = (req, res) =>
+  res.json({
+    success: true,
+    message: "Server is running",
+    data: {
+      status: "ok",
+      environment: process.env.NODE_ENV || "development",
+    },
+  });
+
+app.get("/health", healthHandler);
+app.get("/api/health", healthHandler);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/profiles", profileRoutes);

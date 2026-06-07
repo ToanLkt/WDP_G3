@@ -385,3 +385,90 @@ If you want one realistic end-to-end test sequence, use this order:
 - For analysis quality, always fetch package/config cache and commit cache before running analysis.
 - For chat quality, always analyze repository first.
 - Some endpoints are already functional, while some are still scaffold-only as noted above.
+
+## Deployment
+
+### MongoDB Atlas
+
+1. Create a free MongoDB Atlas cluster.
+2. Create a database user and password.
+3. Create or choose a database name, for example `career-roadmap-db`.
+4. In Network Access, allow the deploy platform IP range. For Render/Railway demos, `0.0.0.0/0` is commonly used, but restrict it when possible.
+5. Use a connection string with the database name:
+
+```txt
+mongodb+srv://<username>:<password>@<cluster-url>/<database-name>?retryWrites=true&w=majority&appName=<app-name>
+```
+
+### Render or Railway
+
+Build command:
+
+```bash
+npm install
+```
+
+Start command:
+
+```bash
+npm start
+```
+
+The production start script uses `node server.js`. Do not use `nodemon` for production.
+
+### Environment Variables
+
+Set these variables on Render/Railway:
+
+- `NODE_ENV`
+- `PORT`
+- `MONGO_URI`
+- `JWT_SECRET`
+- `JWT_EXPIRES_IN`
+- `GITHUB_API_BASE_URL`
+- `GITHUB_TOKEN`
+- `GITHUB_CLIENT_ID`
+- `GITHUB_CLIENT_SECRET`
+- `GITHUB_CALLBACK_URL`
+- `FRONTEND_URL`
+- `CLIENT_URL`
+- `LLM_PROVIDER`
+- `LLM_API_KEY`
+- `LLM_MODEL`
+- `LLM_BASE_URL`
+- `API_BASE_URL`
+
+`MONGODB_URI` is also supported for backward compatibility, but `MONGO_URI` is preferred.
+
+For the current Render/Vercel deployment, set:
+
+```txt
+API_BASE_URL=https://career-roadmap-api-zs7y.onrender.com
+FRONTEND_URL=https://web-project-seven-rust.vercel.app
+CLIENT_URL=https://web-project-seven-rust.vercel.app
+GITHUB_CALLBACK_URL=https://career-roadmap-api-zs7y.onrender.com/api/github/oauth/callback
+```
+
+### Test After Deploy
+
+- `GET /health`
+- `GET /api/health`
+- `GET /api/swagger`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+
+### Frontend Handoff
+
+Send the frontend team:
+
+- Base URL: `https://career-roadmap-api-zs7y.onrender.com/api`
+- Swagger URL: `https://career-roadmap-api-zs7y.onrender.com/api/swagger`
+- Authorization header format:
+
+```txt
+Authorization: Bearer <token>
+```
+
+### Security Note
+
+Do not commit `.env`, `.env.local`, or `.env.production`. If any secret is exposed or was committed, rotate the MongoDB password, JWT secret, GitHub credentials, and LLM API keys before deployment.

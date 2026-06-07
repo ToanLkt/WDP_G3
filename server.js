@@ -11,8 +11,8 @@ const startServer = async () => {
   try {
     await connectDB();
     app.listen(PORT, () => {
-      console.log(`Server is running on http://localhost:${PORT}`);
-      console.log(`Swagger UI: http://localhost:${PORT}/api/swagger`);
+      console.log(`Server running on port ${PORT}`);
+      console.log(`Swagger UI: ${process.env.API_BASE_URL || `http://localhost:${PORT}`}/api/swagger`);
     });
   } catch (error) {
     console.error('Failed to connect database or start server:', error.message);
