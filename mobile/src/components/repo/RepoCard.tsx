@@ -1,11 +1,21 @@
 import React from 'react';
-import { View, StyleSheet, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { GitPullRequest, Eye, FileText, CheckCircle2, AlertCircle, Play } from 'lucide-react-native';
+import { View, StyleSheet, Text, TouchableOpacity, ActivityIndicator, Linking } from 'react-native';
+import {
+  Star,
+  GitFork,
+  CheckCircle2,
+  XCircle,
+  Play,
+  RefreshCw,
+  ExternalLink,
+} from 'lucide-react-native';
 
-import { theme } from '../../theme/theme';
+import { theme } from '../../theme';
 import { Repository } from '../../services/repo';
-import { Card } from '../common/Card';
-import { Badge } from '../common/Badge';
+import { Card } from '../ui/Card';
+import { Badge } from '../ui/Badge';
+import { Button } from '../ui/Button';
+import { formatRelativeTimeEn } from '../../utils/formatRelativeTime';
 
 interface RepoCardProps {
   repo: Repository;
@@ -20,93 +30,98 @@ export const RepoCard: React.FC<RepoCardProps> = ({
   onViewAnalysis,
   isAnalyzing,
 }) => {
-  const formattedDate = new Date(repo.updated_at).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
+  const openGithub = () => {
+    if (repo.url && repo.url !== '#') {
+      Linking.openURL(repo.url).catch(() => undefined);
+    }
+  };
 
   return (
-    <Card style={styles.container} glow={repo.is_analyzed ? 'none' : 'none'}>
-      {/* 1. Header Details */}
-      <View style={styles.headerRow}>
-        <View style={styles.titleWrapper}>
-          <GitPullRequest size={18} color={theme.colors.secondaryLight} style={styles.gitIcon} />
-          <Text style={styles.nameText} numberOfLines={1}>
-            {repo.name}
-          </Text>
+    <Card style={styles.container} padded={false}>
+      <View style={styles.topSection}>
+        <View style={styles.nameBlock}>
+          <Text style={styles.nameText} numberOfLines={1}>{repo.name}</Text>
+          {repo.description ? (
+            <Text style={styles.descText} numberOfLines={2}>{repo.description}</Text>
+          ) : null}
         </View>
-        <Badge
-          label={repo.language}
-          variant="secondary"
-          style={styles.langBadge}
-        />
+        <TouchableOpacity style={styles.linkBtn} onPress={openGithub} activeOpacity={0.8}>
+          <ExternalLink size={16} color={theme.colors.textMuted} />
+        </TouchableOpacity>
       </View>
 
-      {/* 2. Body Description */}
-      <Text style={styles.descText} numberOfLines={2}>
-        {repo.description || 'No description provided.'}
-      </Text>
-
-      {/* 3. Badges Row */}
-      <View style={styles.badgesRow}>
-        <View style={styles.metaCol}>
-          <Text style={styles.updatedText}>Updated {formattedDate}</Text>
+      <View style={styles.metaGrid}>
+        <View style={styles.metaItem}>
+          <Text style={styles.metaLabel}>Language</Text>
+          <Badge label={repo.language} variant="muted" />
         </View>
-        <View style={styles.tagsCol}>
-          <View style={styles.tagWrap}>
-            <FileText size={12} color={repo.has_readme ? theme.colors.success : theme.colors.textMuted} />
-            <Text style={[styles.tagText, { color: repo.has_readme ? theme.colors.success : theme.colors.textMuted }]}>
-              README
-            </Text>
+        <View style={styles.metaItem}>
+          <Text style={styles.metaLabel}>Stats</Text>
+          <View style={styles.statsRow}>
+            <View style={styles.statChip}>
+              <Star size={12} color={theme.colors.textMuted} />
+              <Text style={styles.statText}>{repo.stars}</Text>
+            </View>
+            <View style={styles.statChip}>
+              <GitFork size={12} color={theme.colors.textMuted} />
+              <Text style={styles.statText}>{repo.forks}</Text>
+            </View>
           </View>
         </View>
+        <View style={styles.metaItem}>
+          <Text style={styles.metaLabel}>README</Text>
+          {repo.has_readme ? (
+            <CheckCircle2 size={18} color={theme.colors.success} />
+          ) : (
+            <XCircle size={18} color={theme.colors.textMuted} />
+          )}
+        </View>
+        <View style={styles.metaItem}>
+          <Text style={styles.metaLabel}>Analysis</Text>
+          <Badge
+            label={repo.is_analyzed ? 'Analyzed' : 'Not analyzed'}
+            variant={repo.is_analyzed ? 'success' : 'muted'}
+          />
+        </View>
+        <View style={styles.metaItemWide}>
+          <Text style={styles.metaLabel}>Updated</Text>
+          <Text style={styles.updatedText}>{formatRelativeTimeEn(repo.updated_at)}</Text>
+        </View>
       </View>
 
-      {/* 4. Action Row */}
       <View style={styles.actionRow}>
-        {/* Status indicator */}
-        <View style={styles.statusIndicator}>
-          {repo.is_analyzed ? (
-            <View style={styles.statusMsgRow}>
-              <CheckCircle2 size={14} color={theme.colors.success} style={styles.statusIcon} />
-              <Text style={[styles.statusLabelText, { color: theme.colors.success }]}>Audited</Text>
+        {isAnalyzing ? (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator size="small" color={theme.colors.primaryLight} />
+            <Text style={styles.loadingText}>Analyzing...</Text>
+          </View>
+        ) : repo.is_analyzed ? (
+          <View style={styles.dualActionRow}>
+            <View style={styles.actionBtnSlot}>
+              <Button
+                title="View analysis"
+                variant="outline"
+                onPress={() => onViewAnalysis(repo.id, repo.name)}
+                style={styles.actionBtnFill}
+              />
             </View>
-          ) : (
-            <View style={styles.statusMsgRow}>
-              <AlertCircle size={14} color={theme.colors.textMuted} style={styles.statusIcon} />
-              <Text style={styles.statusLabelText}>Not Audited</Text>
+            <View style={styles.actionBtnSlot}>
+              <Button
+                title="Re-analyze"
+                onPress={() => onAnalyze(repo.id)}
+                style={styles.actionBtnFill}
+                icon={<RefreshCw size={14} color={theme.colors.textPrimary} />}
+              />
             </View>
-          )}
-        </View>
-
-        {/* Buttons */}
-        <View style={styles.buttonsWrapper}>
-          {isAnalyzing ? (
-            <View style={styles.loaderContainer}>
-              <ActivityIndicator size="small" color={theme.colors.secondary} />
-              <Text style={styles.analyzingText}>Auditing...</Text>
-            </View>
-          ) : repo.is_analyzed ? (
-            <TouchableOpacity
-              style={styles.viewBtn}
-              onPress={() => onViewAnalysis(repo.id, repo.name)}
-              activeOpacity={0.7}
-            >
-              <Eye size={14} color={theme.colors.textPrimary} style={styles.btnIcon} />
-              <Text style={styles.viewBtnText}>View Results</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={styles.analyzeBtn}
-              onPress={() => onAnalyze(repo.id)}
-              activeOpacity={0.7}
-            >
-              <Play size={12} color={theme.colors.textPrimary} style={styles.btnIcon} />
-              <Text style={styles.analyzeBtnText}>Audit Code</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+          </View>
+        ) : (
+          <Button
+            title="Analyze"
+            onPress={() => onAnalyze(repo.id)}
+            style={styles.actionBtnFill}
+            icon={<Play size={14} color={theme.colors.textPrimary} />}
+          />
+        )}
       </View>
     </Card>
   );
@@ -115,141 +130,107 @@ export const RepoCard: React.FC<RepoCardProps> = ({
 const styles = StyleSheet.create({
   container: {
     marginBottom: theme.spacing.md,
-    padding: theme.spacing.md + 2,
+    overflow: 'hidden',
   },
-  headerRow: {
+  topSection: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.md,
+    gap: theme.spacing.sm,
   },
-  titleWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  nameBlock: {
     flex: 1,
-    marginRight: theme.spacing.sm,
-  },
-  gitIcon: {
-    marginRight: theme.spacing.sm - 2,
   },
   nameText: {
     fontSize: theme.typography.sizes.md,
     fontWeight: theme.typography.weights.bold,
-    color: theme.colors.textPrimary,
-    flex: 1,
-  },
-  langBadge: {
-    paddingVertical: 2,
+    color: theme.colors.primaryLight,
   },
   descText: {
-    fontSize: theme.typography.sizes.sm - 1,
+    fontSize: theme.typography.sizes.sm,
     color: theme.colors.textSecondary,
-    lineHeight: theme.typography.lineHeights.xs + 3,
-    marginBottom: theme.spacing.md,
+    marginTop: 4,
+    lineHeight: theme.typography.lineHeights.sm,
   },
-  badgesRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderColor: theme.colors.border,
-    paddingBottom: theme.spacing.sm + 2,
-    marginBottom: theme.spacing.sm + 2,
-  },
-  metaCol: {
-    flex: 1,
-  },
-  updatedText: {
-    fontSize: theme.typography.sizes.xs,
-    color: theme.colors.textMuted,
-  },
-  tagsCol: {
-    flexDirection: 'row',
-  },
-  tagWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.03)',
+  linkBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: theme.roundness.sm,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    borderRadius: theme.roundness.sm - 2,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: 2,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceLight,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  tagText: {
+  metaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.md,
+    gap: theme.spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    marginTop: theme.spacing.md,
+  },
+  metaItem: {
+    width: '46%',
+    gap: 4,
+  },
+  metaItemWide: {
+    width: '100%',
+    gap: 4,
+  },
+  metaLabel: {
     fontSize: 10,
     fontWeight: theme.typography.weights.bold,
-    marginLeft: 4,
-    letterSpacing: 0.5,
+    color: theme.colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  statChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  statText: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+  },
+  updatedText: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
   },
   actionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    padding: theme.spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    marginTop: theme.spacing.sm,
   },
-  statusIndicator: {
+  dualActionRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    width: '100%',
+  },
+  actionBtnSlot: {
     flex: 1,
   },
-  statusMsgRow: {
+  actionBtnFill: {
+    width: '100%',
+  },
+  loadingRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
   },
-  statusIcon: {
-    marginRight: 4,
-  },
-  statusLabelText: {
-    fontSize: theme.typography.sizes.xs + 1,
-    color: theme.colors.textMuted,
-    fontWeight: theme.typography.weights.medium,
-  },
-  buttonsWrapper: {
-    justifyContent: 'flex-end',
-  },
-  loaderContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(6, 182, 212, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(6, 182, 212, 0.2)',
-    borderRadius: theme.roundness.sm - 2,
-    paddingVertical: 6,
-    paddingHorizontal: theme.spacing.md,
-  },
-  analyzingText: {
-    fontSize: theme.typography.sizes.xs + 1,
-    color: theme.colors.secondaryLight,
-    fontWeight: theme.typography.weights.bold,
-    marginLeft: theme.spacing.sm - 2,
-  },
-  viewBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.surfaceLight,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.roundness.sm - 2,
-    paddingVertical: 6,
-    paddingHorizontal: theme.spacing.md,
-  },
-  viewBtnText: {
-    fontSize: theme.typography.sizes.xs + 1,
-    color: theme.colors.textPrimary,
-    fontWeight: theme.typography.weights.bold,
-  },
-  analyzeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.primary,
-    borderRadius: theme.roundness.sm - 2,
-    paddingVertical: 6,
-    paddingHorizontal: theme.spacing.md,
-  },
-  analyzeBtnText: {
-    fontSize: theme.typography.sizes.xs + 1,
-    color: theme.colors.textPrimary,
-    fontWeight: theme.typography.weights.bold,
-  },
-  btnIcon: {
-    marginRight: 4,
+  loadingText: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
   },
 });

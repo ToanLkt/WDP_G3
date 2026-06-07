@@ -1,75 +1,73 @@
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-}
+import { authApi } from '../api/auth';
+import { profileApi } from '../api/profile';
+import { extractApiResource, getToken, setStoredUser } from '../api/client';
+import { normalizeUser } from '../api/normalizers';
+import type { User } from '../types';
+
+export type { User };
 
 export interface AuthResponse {
   token: string;
   user: User;
 }
 
-export const mockLogin = (email: string, password: string): Promise<AuthResponse> => {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      if (!email || !email.includes('@')) {
-        reject(new Error('Invalid email format.'));
-        return;
-      }
-      if (!password || password.length < 6) {
-        reject(new Error('Password must be at least 6 characters.'));
-        return;
-      }
+export const loginUser = async (email: string, password: string): Promise<AuthResponse> => {
+  const payload = await authApi.login({ email, password });
+  const token = getToken();
 
-      // Simulate a standard valid mock login
-      if (email === 'admin@wdp.com' && password === '123456') {
-        resolve({
-          token: 'mock_jwt_token_admin',
-          user: {
-            id: '1',
-            email: 'admin@wdp.com',
-            name: 'Alex Developer',
-          },
-        });
-      } else {
-        // Allow dynamic logins for easier testing with other emails
-        resolve({
-          token: `mock_jwt_token_${Date.now()}`,
-          user: {
-            id: String(Math.floor(Math.random() * 1000) + 10),
-            email: email,
-            name: email.split('@')[0].toUpperCase(),
-          },
-        });
-      }
-    }, 1200);
-  });
+  if (!token) {
+    throw new Error('Authentication token not found in server response.');
+  }
+
+  const userPayload = extractApiResource<Record<string, unknown>>(payload, ['user', 'account', 'profile']);
+  const user = normalizeUser({ ...(userPayload || {}), email });
+  await setStoredUser(user);
+
+  return { token, user };
 };
 
-export const mockRegister = (email: string, password: string, name: string): Promise<AuthResponse> => {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      if (!name || name.trim().length === 0) {
-        reject(new Error('Name cannot be empty.'));
-        return;
-      }
-      if (!email || !email.includes('@')) {
-        reject(new Error('Invalid email format.'));
-        return;
-      }
-      if (!password || password.length < 6) {
-        reject(new Error('Password must be at least 6 characters.'));
-        return;
-      }
+export const registerUser = async (email: string, password: string, name: string): Promise<AuthResponse> => {
+  const payload = await authApi.register({ email, password, fullName: name });
+  const token = getToken();
 
-      resolve({
-        token: `mock_jwt_token_${Date.now()}`,
-        user: {
-          id: String(Math.floor(Math.random() * 1000) + 100),
-          email: email,
-          name: name,
-        },
-      });
-    }, 1500);
-  });
+  if (!token) {
+    throw new Error('Authentication token not found in server response.');
+  }
+
+  const userPayload = extractApiResource<Record<string, unknown>>(payload, ['user', 'account', 'profile']);
+  const user = normalizeUser({ ...(userPayload || {}), email, fullName: name });
+  await setStoredUser(user);
+
+  return { token, user };
+};
+
+export const fetchCurrentUser = async (): Promise<User> => {
+  const payload = await authApi.me();
+  const user = normalizeUser(payload);
+  await setStoredUser(user);
+  return user;
+};
+
+export const logoutUser = async (): Promise<void> => {
+  await authApi.logout();
+};
+
+export const changePassword = async (
+  currentPassword: string,
+  newPassword: string,
+  confirmPassword: string
+) => {
+  return authApi.changePassword({ currentPassword, newPassword, confirmPassword });
+};
+
+export const fetchProfile = async () => {
+  return profileApi.me();
+};
+
+export const updateProfile = async (payload: Parameters<typeof profileApi.update>[0]) => {
+  return profileApi.update(payload);
+};
+
+export const createProfile = async (payload: Parameters<typeof profileApi.create>[0]) => {
+  return profileApi.create(payload);
 };

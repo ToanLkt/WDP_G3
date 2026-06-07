@@ -1,52 +1,69 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Text, ScrollView, TouchableOpacity, Image } from 'react-native';
-import { GitFork, Key, CheckCircle, Info, ExternalLink, ArrowLeft } from 'lucide-react-native';
+import { View, StyleSheet, Text, ScrollView, Image, Platform } from 'react-native';
+import { GitFork, CheckCircle, ShieldCheck, RefreshCw } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { theme } from '../../theme/theme';
-import { useApp } from '../../context/AppContext';
-import { Input } from '../../components/common/Input';
-import { Button } from '../../components/common/Button';
-import { Card } from '../../components/common/Card';
-import { SectionHeader } from '../../components/common/SectionHeader';
+import { theme } from '../../theme';
+import { useApp } from '../../contexts/AppContext';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 import { RepositoriesStackParamList } from '../../navigation/AppNavigator';
+import { useTabBarAwareScroll } from '../../hooks/useTabBarAwareScroll';
+import { getGitHubOAuthSetupHint } from '../../services/github';
 
 type NavigationProp = NativeStackNavigationProp<RepositoriesStackParamList, 'ConnectGitHub'>;
 
+const STEPS = [
+  'Tap Connect with GitHub below.',
+  'Sign in and authorize the app on GitHub.',
+  'Return to the app and tap Refresh status.',
+];
+
 export const ConnectGitHubScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
-  const { connectToGitHub, githubConnected, githubUser, disconnectFromGitHub } = useApp();
-  
-  const [pat, setPat] = useState('');
+  const { connectToGitHub, githubConnected, githubUser, disconnectFromGitHub, refreshGitHubStatus } = useApp();
+  const { tabBarPaddingBottom } = useTabBarAwareScroll();
+
   const [error, setError] = useState('');
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleConnect = async () => {
     setError('');
-    if (!pat.trim()) {
-      setError('Please enter a Personal Access Token.');
-      return;
-    }
-    
     setIsConnecting(true);
     try {
-      await connectToGitHub(pat.trim());
-    } catch (err: any) {
-      setError(err.message || 'Failed to connect. Please check your token.');
+      await connectToGitHub();
+      navigation.navigate('RepoList');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Could not connect GitHub. Please try again.';
+      setError(message);
     } finally {
       setIsConnecting(false);
     }
   };
 
-  const fillMockToken = () => {
-    setPat('ghp_mocktokenfordevs');
+  const handleRefresh = async () => {
+    setError('');
+    setIsRefreshing(true);
+    try {
+      const connected = await refreshGitHubStatus();
+      if (connected) {
+        navigation.navigate('RepoList');
+        return;
+      }
+      setError('Not connected yet. Finish authorization on GitHub, then try again.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Could not refresh GitHub status.';
+      setError(message);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
-  return (
-    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-      {githubConnected && githubUser ? (
-        // Connected State UI
+  if (githubConnected && githubUser) {
+    return (
+      <ScrollView contentContainerStyle={[styles.container, { paddingBottom: tabBarPaddingBottom }]}>
         <View style={styles.connectedContainer}>
           <Card style={styles.profileCard} glow="cyan">
             <View style={styles.successBadge}>
@@ -72,7 +89,7 @@ export const ConnectGitHubScreen: React.FC = () => {
             <Button
               title="Continue to Repositories"
               onPress={() => navigation.navigate('RepoList')}
-              style={styles.continueBtn}
+              style={styles.actionBtn}
             />
 
             <Button
@@ -83,79 +100,62 @@ export const ConnectGitHubScreen: React.FC = () => {
             />
           </Card>
         </View>
-      ) : (
-        // Not Connected State UI
-        <View style={styles.formContainer}>
-          <Card style={styles.introCard}>
-            <View style={styles.introHeader}>
-              <GitFork size={28} color={theme.colors.textPrimary} style={styles.githubIcon} />
-              <Text style={styles.introTitle}>Link your GitHub Account</Text>
-            </View>
-            <Text style={styles.introText}>
-              Antigravity uses a secure GitHub Personal Access Token (PAT) to analyze your public code repos, readmes, and recent commits.
-            </Text>
-          </Card>
+      </ScrollView>
+    );
+  }
 
-          <SectionHeader title="How to generate a PAT" accentColor={theme.colors.secondary} />
-          
-          <Card style={styles.stepsCard}>
-            <View style={styles.stepRow}>
-              <Text style={styles.stepNum}>1</Text>
-              <Text style={styles.stepDesc}>Go to your GitHub Account **Settings** &gt; **Developer Settings**.</Text>
-            </View>
-            <View style={styles.stepRow}>
-              <Text style={styles.stepNum}>2</Text>
-              <Text style={styles.stepDesc}>Select **Personal Access Tokens** &gt; **Tokens (classic)**.</Text>
-            </View>
-            <View style={styles.stepRow}>
-              <Text style={styles.stepNum}>3</Text>
-              <Text style={styles.stepDesc}>Click **Generate new token (classic)**.</Text>
-            </View>
-            <View style={styles.stepRow}>
-              <Text style={styles.stepNum}>4</Text>
-              <Text style={styles.stepDesc}>Select the **repo** scope checkmark checkbox, generate, and copy the token.</Text>
-            </View>
-          </Card>
-
-          <Card style={styles.formCard}>
-            <Text style={styles.formTitle}>Enter Personal Access Token</Text>
-            {error ? (
-              <View style={styles.errorBox}>
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
-            ) : null}
-
-            <Input
-              placeholder="e.g. ghp_1a2b3c4d5e6f..."
-              value={pat}
-              onChangeText={(text) => {
-                setPat(text);
-                if (error) setError('');
-              }}
-              icon={Key}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-
-            <Button
-              title="Connect Account"
-              onPress={handleConnect}
-              loading={isConnecting}
-              variant="secondary"
-              style={styles.connectBtn}
-            />
-
-            <TouchableOpacity 
-              onPress={fillMockToken}
-              style={styles.demoTokenBtn}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.demoTokenText}>Generate mock PAT for testing (ghp_...)</Text>
-            </TouchableOpacity>
-          </Card>
+  return (
+    <ScrollView
+      contentContainerStyle={[styles.container, { paddingBottom: tabBarPaddingBottom }]}
+      keyboardShouldPersistTaps="handled"
+    >
+      <Card style={styles.introCard}>
+        <View style={styles.introHeader}>
+          <GitFork size={28} color={theme.colors.textPrimary} style={styles.githubIcon} />
+          <Text style={styles.introTitle}>Link your GitHub Account</Text>
         </View>
-      )}
+        <Text style={styles.introText}>
+          Connect securely via GitHub OAuth. You will be redirected to GitHub to approve access — no personal access token required.
+        </Text>
+      </Card>
+
+      <Card style={styles.stepsCard}>
+        {STEPS.map((step, index) => (
+          <View key={step} style={[styles.stepRow, index === STEPS.length - 1 && styles.stepRowLast]}>
+            <ShieldCheck size={18} color={theme.colors.secondaryLight} />
+            <Text style={styles.stepDesc}>{step}</Text>
+          </View>
+        ))}
+      </Card>
+
+      {error ? (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : null}
+
+      <Card style={styles.actionsCard}>
+        <Button
+          title="Connect with GitHub"
+          onPress={handleConnect}
+          loading={isConnecting}
+          variant="secondary"
+          style={styles.actionBtn}
+        />
+
+        <Button
+          title="Refresh status"
+          onPress={handleRefresh}
+          loading={isRefreshing}
+          variant="outline"
+          icon={<RefreshCw size={16} color={theme.colors.textPrimary} />}
+        />
+      </Card>
+
+      <Text style={styles.hintText}>{getGitHubOAuthSetupHint()}</Text>
+      {Platform.OS === 'android' ? (
+        <Text style={styles.hintText}>On Android emulator, run: adb reverse tcp:5000 tcp:5000</Text>
+      ) : null}
     </ScrollView>
   );
 };
@@ -240,12 +240,6 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     marginTop: 2,
   },
-  continueBtn: {
-    marginBottom: theme.spacing.md,
-  },
-  formContainer: {
-    width: '100%',
-  },
   introCard: {
     marginBottom: theme.spacing.md,
     padding: theme.spacing.lg,
@@ -271,42 +265,23 @@ const styles = StyleSheet.create({
   stepsCard: {
     marginBottom: theme.spacing.lg,
     padding: theme.spacing.lg,
-    backgroundColor: '#0F1117',
+    backgroundColor: 'rgba(16, 185, 129, 0.06)',
+    borderColor: 'rgba(16, 185, 129, 0.18)',
   },
   stepRow: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: theme.spacing.sm,
     marginBottom: theme.spacing.md,
   },
-  stepNum: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: theme.colors.surfaceLight,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    color: theme.colors.secondary,
-    fontWeight: theme.typography.weights.bold,
-    fontSize: theme.typography.sizes.xs + 1,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginRight: theme.spacing.md,
-    overflow: 'hidden',
+  stepRowLast: {
+    marginBottom: 0,
   },
   stepDesc: {
     flex: 1,
     color: theme.colors.textSecondary,
     fontSize: theme.typography.sizes.sm,
     lineHeight: theme.typography.lineHeights.sm,
-  },
-  formCard: {
-    padding: theme.spacing.xl,
-    marginBottom: theme.spacing.xl,
-  },
-  formTitle: {
-    fontSize: theme.typography.sizes.md + 1,
-    fontWeight: theme.typography.weights.bold,
-    color: theme.colors.textPrimary,
-    marginBottom: theme.spacing.lg,
   },
   errorBox: {
     backgroundColor: 'rgba(239, 68, 68, 0.1)',
@@ -319,20 +294,19 @@ const styles = StyleSheet.create({
   errorText: {
     color: theme.colors.error,
     fontSize: theme.typography.sizes.sm,
-    textAlign: 'center',
+    lineHeight: theme.typography.lineHeights.sm,
   },
-  connectBtn: {
-    marginTop: theme.spacing.sm,
+  actionsCard: {
+    padding: theme.spacing.lg,
     marginBottom: theme.spacing.md,
   },
-  demoTokenBtn: {
-    alignSelf: 'center',
-    paddingVertical: theme.spacing.xs,
+  actionBtn: {
+    marginBottom: theme.spacing.sm,
   },
-  demoTokenText: {
-    fontSize: theme.typography.sizes.xs + 1,
-    color: theme.colors.secondary,
-    fontWeight: theme.typography.weights.medium,
-    textDecorationLine: 'underline',
+  hintText: {
+    fontSize: theme.typography.sizes.xs,
+    color: theme.colors.textMuted,
+    lineHeight: theme.typography.lineHeights.sm,
+    marginBottom: theme.spacing.xs,
   },
 });
