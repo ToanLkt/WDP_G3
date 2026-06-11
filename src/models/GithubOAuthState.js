@@ -17,6 +17,10 @@ const githubOAuthStateSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    redirectUrl: {
+      type: String,
+      required: true,
+    },
     expiresAt: {
       type: Date,
       required: true,

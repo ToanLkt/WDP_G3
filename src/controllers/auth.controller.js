@@ -1,4 +1,5 @@
 const authService = require('../services/auth.service');
+const { getFrontendRedirectUrl } = require('../config/frontend');
 const { successResponse } = require('../utils/response');
 
 const register = async (req, res, next) => {
@@ -25,7 +26,10 @@ const loginWithGoogle = async (req, res, next) => {
     return res.status(result.statusCode).json({
       success: true,
       message: result.message,
-      data: result.data,
+      data: {
+        ...result.data,
+        redirectUrl: getFrontendRedirectUrl(req.body && req.body.redirectUrl, req.get('origin')),
+      },
     });
   } catch (error) {
     if (error.statusCode) {
@@ -46,7 +50,10 @@ const loginWithGithub = async (req, res, next) => {
     return res.status(result.statusCode).json({
       success: true,
       message: result.message,
-      data: result.data,
+      data: {
+        ...result.data,
+        redirectUrl: getFrontendRedirectUrl(req.body && req.body.redirectUrl, req.get('origin')),
+      },
     });
   } catch (error) {
     if (error.statusCode) {

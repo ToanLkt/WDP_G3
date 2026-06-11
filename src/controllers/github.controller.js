@@ -3,7 +3,10 @@ const { successResponse } = require('../utils/response');
 
 const startOAuth = async (req, res, next) => {
   try {
-    const result = await githubService.startOAuth(req.user);
+    const result = await githubService.startOAuth(req.user, {
+      redirectUrl: req.query.redirectUrl,
+      origin: req.get('origin'),
+    });
     return successResponse(res, result.message, result.data, result.statusCode);
   } catch (error) {
     return next(error);
@@ -12,8 +15,8 @@ const startOAuth = async (req, res, next) => {
 
 const handleOAuthCallback = async (req, res, next) => {
   try {
-    const html = await githubService.handleOAuthCallback(req.query);
-    return res.status(200).send(html);
+    const redirectUrl = await githubService.handleOAuthCallback(req.query);
+    return res.redirect(302, redirectUrl);
   } catch (error) {
     return next(error);
   }
