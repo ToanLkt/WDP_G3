@@ -3,6 +3,7 @@ const cors = require("cors");
 const swaggerUi = require("swagger-ui-express");
 
 const swaggerSpec = require("./config/swagger");
+const { getAllowedFrontendUrls } = require("./config/frontend");
 const authRoutes = require("./routes/auth.routes");
 const profileRoutes = require("./routes/profile.routes");
 const dashboardRoutes = require("./routes/dashboard.routes");
@@ -24,8 +25,7 @@ const { errorResponse } = require("./utils/response");
 const app = express();
 
 const allowedOrigins = [
-  process.env.FRONTEND_URL,
-  process.env.CLIENT_URL,
+  ...getAllowedFrontendUrls(),
   process.env.API_BASE_URL,
   "http://localhost:3000",
   "http://localhost:5173",

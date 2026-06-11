@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const GithubOAuthState = require('../../models/GithubOAuthState');
 const GithubAccount = require('../../models/GithubAccount');
 const StudentProfile = require('../../models/StudentProfile');
+const { getFrontendRedirectUrl } = require('../../config/frontend');
 
 const {
   GITHUB_AUTHORIZE_URL,
@@ -50,28 +51,23 @@ const ensureGithubQuery = (query) => {
   return { code, state };
 };
 
-const buildAuthSuccessHtml = () => `
-<html>
-  <head>
-    <title>GitHub connected successfully</title>
-  </head>
-  <body>
-    <h1>GitHub connected successfully</h1>
-    <p>You can close this tab and return to Postman.</p>
-  </body>
-</html>`;
-
-const startOAuth = async (authUser) => {
+const startOAuth = async (authUser, options = {}) => {
   ensureAuthorizedUser(authUser);
 
-  const { GITHUB_CLIENT_ID, GITHUB_CALLBACK_URL } = requireGithubConfig();
+  const { GITHUB_CLIENT_ID, GITHUB_CALLBACK_URL, FRONTEND_URL } = requireGithubConfig();
   const state = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + OAUTH_STATE_TTL_MS);
+  const redirectUrl = getFrontendRedirectUrl(
+    options.redirectUrl,
+    options.origin,
+    FRONTEND_URL
+  );
 
   await GithubOAuthState.create({
     userId: authUser.userId,
     state,
     used: false,
+    redirectUrl,
     expiresAt,
   });
 
@@ -157,10 +153,14 @@ const handleOAuthCallback = async (query) => {
     }
   );
 
+  stateRecord.redirectUrl = getFrontendRedirectUrl(
+    stateRecord.redirectUrl,
+    process.env.FRONTEND_URL
+  );
   stateRecord.used = true;
   await stateRecord.save();
 
-  return buildAuthSuccessHtml();
+  return stateRecord.redirectUrl;
 };
 
 module.exports = {

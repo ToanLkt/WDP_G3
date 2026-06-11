@@ -244,6 +244,10 @@ Profile is used later by AI feedback and chat context.
 
 Usage notes:
 
+- `GET /api/github/oauth` remembers the requesting frontend origin and the callback redirects there after GitHub is connected.
+- The allowed frontend URLs are configured with `FRONTEND_URLS` (comma-separated). `redirectUrl` is accepted only when it matches that allowlist.
+- `POST /api/auth/google` and `POST /api/auth/github` include `data.redirectUrl` so the frontend can navigate after storing the returned access token.
+
 - `GET /api/github/repositories` syncs from GitHub to MongoDB
 - `GET /api/github/repositories/cached` only reads local database
 - `GET /api/github/repositories/:repoId/packages` fetches package/config files from GitHub and stores cache
@@ -468,6 +472,7 @@ For the current Render/Vercel deployment, set:
 API_BASE_URL=https://career-roadmap-api-zs7y.onrender.com
 FRONTEND_URL=https://web-project-seven-rust.vercel.app
 CLIENT_URL=https://web-project-seven-rust.vercel.app
+FRONTEND_URLS=https://web-project-seven-rust.vercel.app,http://localhost:5173
 GITHUB_CALLBACK_URL=https://career-roadmap-api-zs7y.onrender.com/api/github/oauth/callback
 ```
 
