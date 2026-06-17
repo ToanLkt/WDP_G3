@@ -4,6 +4,7 @@ const RepositoryCommit = require('../models/RepositoryCommit');
 
 const { findRepositoryForUser } = require('./github/github.repository.service');
 const { buildAnalysisPayload, sanitizeAnalysisSnapshot } = require('./analysis/analysis.engine');
+const { createSnapshotFromAnalysisResult } = require('./snapshot.service');
 
 const validateAuthUser = (authUser) => {
   if (!authUser || !authUser.userId) {
@@ -56,11 +57,13 @@ const analyzeRepository = async ({ user, params }) => {
     repositoryId: repository._id,
     ...analysisPayload,
   });
+  const repoSnapshot = await createSnapshotFromAnalysisResult(snapshot);
 
   return {
     message: 'Repository analyzed successfully',
     data: {
       analysis: sanitizeAnalysisSnapshot(snapshot, { excludeRawAnalysis: true }),
+      snapshotId: repoSnapshot?._id || null,
     },
     statusCode: 200,
   };
