@@ -1,8 +1,16 @@
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const axios = require('axios');
 
+const GithubAuthState = require('../models/GithubAuthState');
 const RevokedToken = require('../models/RevokedToken');
 const User = require('../models/User');
+const { getGithubAuthRedirectUrl } = require('../config/frontend');
+const {
+  GITHUB_AUTHORIZE_URL,
+  GITHUB_TOKEN_URL,
+  OAUTH_STATE_TTL_MS,
+} = require('./github/github.utils');
 const generateToken = require('../utils/generateToken');
 
 const sanitizeUser = (userDocument) => ({
@@ -55,6 +63,42 @@ const createStatusError = (message, statusCode) => {
   const error = new Error(message);
   error.statusCode = statusCode;
   return error;
+};
+
+const getGithubAuthCallbackUrl = () => {
+  const explicitUrl = String(process.env.GITHUB_CALLBACK_URL || '').trim();
+  if (explicitUrl) return explicitUrl;
+
+  const apiBaseUrl = String(process.env.API_BASE_URL || '').trim();
+  if (apiBaseUrl) {
+    return `${apiBaseUrl.replace(/\/$/, '')}/api/auth/github/callback`;
+  }
+
+  return 'http://localhost:5000/api/auth/github/callback';
+};
+
+const requireGithubAuthConfig = () => {
+  const clientId = String(process.env.GITHUB_CLIENT_ID || '').trim();
+  const clientSecret = String(process.env.GITHUB_CLIENT_SECRET || '').trim();
+  const callbackUrl = getGithubAuthCallbackUrl();
+
+  if (!clientId) {
+    throw createStatusError('GITHUB_CLIENT_ID is not configured', 500);
+  }
+
+  if (!clientSecret) {
+    throw createStatusError('GITHUB_CLIENT_SECRET is not configured', 500);
+  }
+
+  if (!callbackUrl) {
+    throw createStatusError('GITHUB_CALLBACK_URL is not configured', 500);
+  }
+
+  return {
+    clientId,
+    clientSecret,
+    callbackUrl,
+  };
 };
 
 const normalizeEmail = (email) => {
@@ -235,13 +279,7 @@ const getGithubPrimaryEmail = async (accessToken) => {
   return normalizeEmail((primaryVerifiedEmail || verifiedEmail || {}).email);
 };
 
-const loginWithGithub = async (payload) => {
-  const accessToken = String(payload.accessToken || '').trim();
-
-  if (!accessToken) {
-    throw createStatusError('accessToken is required', 400);
-  }
-
+const fetchGithubProfile = async (accessToken) => {
   let githubUser;
   try {
     const response = await axios.get('https://api.github.com/user', {
@@ -259,7 +297,17 @@ const loginWithGithub = async (payload) => {
     throw createStatusError('Invalid GitHub token', 401);
   }
 
+  return githubUser;
+};
+
+const loginWithGithubAccessToken = async (accessToken) => {
+  if (!accessToken) {
+    throw createStatusError('GitHub access token not received', 400);
+  }
+
+  const githubUser = await fetchGithubProfile(accessToken);
   let email = normalizeEmail(githubUser.email);
+
   try {
     email = email || (await getGithubPrimaryEmail(accessToken));
   } catch (error) {
@@ -281,6 +329,131 @@ const loginWithGithub = async (payload) => {
     data: buildSocialAuthPayload(user, 'github'),
     statusCode: 200,
   };
+};
+
+const startGithubOAuthLogin = async (options = {}) => {
+  const { clientId, callbackUrl } = requireGithubAuthConfig();
+  const redirectUrl = getGithubAuthRedirectUrl(options.redirectUrl, options.origin);
+
+  if (!redirectUrl) {
+    throw createStatusError('Frontend redirect URL is not configured', 500);
+  }
+
+  const state = crypto.randomBytes(32).toString('hex');
+
+  // Store a short-lived state so the callback can reject forged OAuth responses.
+  await GithubAuthState.create({
+    state,
+    redirectUrl,
+    used: false,
+    expiresAt: new Date(Date.now() + OAUTH_STATE_TTL_MS),
+  });
+
+  const authorizeUrl = new URL(GITHUB_AUTHORIZE_URL);
+  authorizeUrl.searchParams.set('client_id', clientId);
+  authorizeUrl.searchParams.set('redirect_uri', callbackUrl);
+  authorizeUrl.searchParams.set('scope', 'read:user user:email');
+  authorizeUrl.searchParams.set('state', state);
+
+  return authorizeUrl.toString();
+};
+
+const exchangeGithubCodeForToken = async (code) => {
+  const normalizedCode = String(code || '').trim();
+  if (!normalizedCode) {
+    throw createStatusError('GitHub authorization code is required', 400);
+  }
+
+  const { clientId, clientSecret, callbackUrl } = requireGithubAuthConfig();
+
+  let response;
+  try {
+    response = await axios.post(
+      GITHUB_TOKEN_URL,
+      {
+        client_id: clientId,
+        client_secret: clientSecret,
+        code: normalizedCode,
+        redirect_uri: callbackUrl,
+      },
+      {
+        headers: {
+          Accept: 'application/json',
+        },
+      }
+    );
+  } catch (error) {
+    throw createStatusError('Failed to exchange GitHub authorization code', 400);
+  }
+
+  const accessToken = response.data && response.data.access_token;
+  if (!accessToken) {
+    throw createStatusError('GitHub access token not received', 400);
+  }
+
+  return accessToken;
+};
+
+const consumeGithubOAuthState = async (state) => {
+  const normalizedState = String(state || '').trim();
+  if (!normalizedState) {
+    throw createStatusError('GitHub OAuth state is required', 400);
+  }
+
+  const stateRecord = await GithubAuthState.findOne({ state: normalizedState });
+  if (!stateRecord) {
+    throw createStatusError('Invalid GitHub OAuth state', 400);
+  }
+
+  if (stateRecord.used) {
+    throw createStatusError('GitHub OAuth state has already been used', 400);
+  }
+
+  if (stateRecord.expiresAt.getTime() < Date.now()) {
+    throw createStatusError('GitHub OAuth state has expired', 400);
+  }
+
+  stateRecord.used = true;
+  await stateRecord.save();
+
+  return stateRecord;
+};
+
+const buildGithubAuthErrorRedirect = (redirectUrl, error) => {
+  const url = new URL(redirectUrl);
+  url.searchParams.set('error', error.message || 'GitHub login failed');
+  return url.toString();
+};
+
+const handleGithubOAuthCallback = async (query = {}) => {
+  if (query.error) {
+    const oauthError = createStatusError(String(query.error_description || query.error), 400);
+    if (query.state) {
+      const stateRecord = await consumeGithubOAuthState(query.state);
+      return buildGithubAuthErrorRedirect(stateRecord.redirectUrl, oauthError);
+    }
+
+    throw oauthError;
+  }
+
+  const stateRecord = await consumeGithubOAuthState(query.state);
+
+  try {
+    const githubAccessToken = await exchangeGithubCodeForToken(query.code);
+    const result = await loginWithGithubAccessToken(githubAccessToken);
+
+    const redirectUrl = new URL(stateRecord.redirectUrl);
+    // Use URL fragment so the JWT is not sent back to the frontend server in an HTTP request.
+    redirectUrl.hash = new URLSearchParams({
+      success: 'true',
+      accessToken: result.data.accessToken,
+      provider: 'github',
+    }).toString();
+
+    return redirectUrl.toString();
+  } catch (error) {
+    return buildGithubAuthErrorRedirect(stateRecord.redirectUrl, error);
+  }
 };
 
 const getCurrentUser = async (authUser) => {
@@ -377,7 +550,8 @@ module.exports = {
   registerUser,
   loginUser,
   loginWithGoogle,
-  loginWithGithub,
+  startGithubOAuthLogin,
+  handleGithubOAuthCallback,
   getCurrentUser,
   logoutUser,
 };
