@@ -217,9 +217,9 @@ This is the safest and most consistent format across routes.
 
 - `POST /api/auth/register`
 - `POST /api/auth/login`
+- `POST /api/auth/github`
+- `GET /api/auth/github/callback`
 - `GET /api/auth/me`
-
-Use these first to obtain JWT token and inspect current user.
 
 ### 3. Profile
 
@@ -457,8 +457,12 @@ Set these variables on Render/Railway:
 - `GITHUB_CLIENT_ID`
 - `GITHUB_CLIENT_SECRET`
 - `GITHUB_CALLBACK_URL`
+- `GITHUB_AUTH_REDIRECT_URL`
+- `MOBILE_AUTH_REDIRECT_URL`
 - `FRONTEND_URL`
 - `CLIENT_URL`
+- `FRONTEND_URLS`
+- `MOBILE_REDIRECT_URL`
 - `LLM_PROVIDER`
 - `LLM_API_KEY`
 - `LLM_MODEL`
@@ -473,8 +477,14 @@ For the current Render/Vercel deployment, set:
 API_BASE_URL=https://career-roadmap-api-zs7y.onrender.com
 FRONTEND_URL=https://web-project-seven-rust.vercel.app
 CLIENT_URL=https://web-project-seven-rust.vercel.app
-GITHUB_CALLBACK_URL=https://career-roadmap-api-zs7y.onrender.com/api/github/oauth/callback
+GITHUB_CALLBACK_URL=https://career-roadmap-api-zs7y.onrender.com/api/auth/github/callback
+GITHUB_AUTH_REDIRECT_URL=https://web-project-seven-rust.vercel.app/auth/github/callback
+MOBILE_AUTH_REDIRECT_URL=gitanalyzer://auth/github/callback
+FRONTEND_URLS=https://web-project-seven-rust.vercel.app,http://localhost:5173
+MOBILE_REDIRECT_URL=gitanalyzer://github/connect
 ```
+
+Use this same `GITHUB_CALLBACK_URL` in the GitHub OAuth App. The shared callback dispatches both Login with GitHub and GitHub repository connect by checking the saved OAuth `state`.
 
 ### Test After Deploy
 
@@ -483,6 +493,17 @@ GITHUB_CALLBACK_URL=https://career-roadmap-api-zs7y.onrender.com/api/github/oaut
 - `GET /api/swagger`
 - `POST /api/auth/register`
 - `POST /api/auth/login`
+- `POST /api/auth/github`
+- `GET /api/auth/me` with the JWT returned from GitHub login redirect
+
+Local GitHub login test:
+
+1. Start backend with `npm run dev`.
+2. Call `POST http://localhost:5000/api/auth/github` with `{}`.
+3. Open the returned `authUrl` in the browser.
+4. Authorize the app on GitHub.
+5. Confirm the browser is redirected to `http://localhost:5173/auth/github/callback#success=true&accessToken=...`.
+6. Copy the `accessToken` value and call `GET /api/auth/me` with `Authorization: Bearer <accessToken>`.
 
 ### Frontend Handoff
 

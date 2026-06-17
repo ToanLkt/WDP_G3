@@ -23,6 +23,12 @@ const normalizeUrl = (value) => {
 const getMobileRedirectUrl = () =>
   normalizeUrl(process.env.MOBILE_REDIRECT_URL);
 
+const getMobileAuthRedirectUrl = () =>
+  normalizeUrl(process.env.MOBILE_AUTH_REDIRECT_URL);
+
+const getGithubAuthRedirectUrlConfig = () =>
+  normalizeUrl(process.env.GITHUB_AUTH_REDIRECT_URL);
+
 const getAllowedFrontendOrigins = () => {
   const configuredUrls = [
     process.env.FRONTEND_URL,
@@ -40,29 +46,59 @@ const getAllowedFrontendOrigins = () => {
   ];
 };
 
-const getGithubConnectUrl = (...candidates) => {
+const getFrontendPathUrl = (path, exactRedirectUrl, ...candidates) => {
   const allowedOrigins = getAllowedFrontendOrigins();
-  const mobileRedirectUrl = getMobileRedirectUrl();
 
   for (const candidate of candidates) {
     const normalizedCandidate = normalizeUrl(candidate);
-    if (mobileRedirectUrl && normalizedCandidate === mobileRedirectUrl) {
-      return mobileRedirectUrl;
+    if (exactRedirectUrl && normalizedCandidate === exactRedirectUrl) {
+      return exactRedirectUrl;
     }
 
     const url = parseHttpUrl(candidate);
     if (!url || !allowedOrigins.includes(url.origin)) continue;
 
-    return `${url.origin}/github/connect`;
+    return `${url.origin}${path}`;
   }
 
   return allowedOrigins[0]
-    ? `${allowedOrigins[0]}/github/connect`
+    ? `${allowedOrigins[0]}${path}`
     : null;
 };
 
+const getGithubConnectUrl = (...candidates) => {
+  return getFrontendPathUrl('/github/connect', getMobileRedirectUrl(), ...candidates);
+};
+
+const getGithubAuthRedirectUrl = (...candidates) => {
+  const mobileAuthRedirectUrl = getMobileAuthRedirectUrl();
+  const webAuthRedirectUrl = getGithubAuthRedirectUrlConfig();
+  const allowedOrigins = getAllowedFrontendOrigins();
+
+  for (const candidate of candidates) {
+    const normalizedCandidate = normalizeUrl(candidate);
+    if (mobileAuthRedirectUrl && normalizedCandidate === mobileAuthRedirectUrl) {
+      return mobileAuthRedirectUrl;
+    }
+
+    if (webAuthRedirectUrl && normalizedCandidate === webAuthRedirectUrl) {
+      return webAuthRedirectUrl;
+    }
+
+    const url = parseHttpUrl(candidate);
+    if (url && allowedOrigins.includes(url.origin)) {
+      return `${url.origin}/auth/github/callback`;
+    }
+  }
+
+  return webAuthRedirectUrl || getFrontendPathUrl('/auth/github/callback', null);
+};
+
 module.exports = {
+  DEFAULT_FRONTEND_ORIGINS,
   getAllowedFrontendOrigins,
+  getGithubAuthRedirectUrl,
   getGithubConnectUrl,
+  getMobileAuthRedirectUrl,
   getMobileRedirectUrl,
 };
