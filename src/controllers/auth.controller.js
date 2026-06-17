@@ -69,8 +69,8 @@ const handleGithubCallback = async (req, res, next) => {
     } catch (connectError) {
       try {
         const fallbackUrl = new URL(
-          getGithubConnectUrl(req.get('origin'), process.env.FRONTEND_URL) ||
-          getGithubAuthRedirectUrl(req.get('origin'))
+          getGithubAuthRedirectUrl(req.get('origin')) ||
+          getGithubConnectUrl(req.get('origin'), process.env.FRONTEND_URL)
         );
         fallbackUrl.searchParams.set('error', connectError.message || authError.message || 'GitHub OAuth failed');
         return res.redirect(302, fallbackUrl.toString());

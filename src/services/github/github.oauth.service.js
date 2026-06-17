@@ -51,6 +51,29 @@ const ensureGithubQuery = (query) => {
   return { code, state };
 };
 
+const getValidStateRecord = async (state) => {
+  const stateRecord = await GithubOAuthState.findOne({ state });
+  if (!stateRecord) {
+    throw createStatusError('Invalid OAuth state', 400);
+  }
+
+  if (stateRecord.used) {
+    throw createStatusError('OAuth state has already been used', 400);
+  }
+
+  if (stateRecord.expiresAt.getTime() < Date.now()) {
+    throw createStatusError('OAuth state has expired', 400);
+  }
+
+  return stateRecord;
+};
+
+const buildErrorRedirect = (redirectUrl, error) => {
+  const url = new URL(redirectUrl);
+  url.searchParams.set('error', error.message || 'GitHub OAuth failed');
+  return url.toString();
+};
+
 const startOAuth = async (authUser, options = {}) => {
   ensureAuthorizedUser(authUser);
 
@@ -91,71 +114,90 @@ const startOAuth = async (authUser, options = {}) => {
 };
 
 const handleOAuthCallback = async (query) => {
+  if (query.error) {
+    const state = String(query.state || '').trim();
+    if (!state) {
+      throw createStatusError(String(query.error_description || query.error), 400);
+    }
+
+    const stateRecord = await getValidStateRecord(state);
+    stateRecord.used = true;
+    await stateRecord.save();
+
+    return buildErrorRedirect(
+      stateRecord.redirectUrl,
+      createStatusError(String(query.error_description || query.error), 400)
+    );
+  }
+
   const { code, state } = ensureGithubQuery(query);
   const { GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GITHUB_CALLBACK_URL } = requireGithubConfig();
 
-  const stateRecord = await GithubOAuthState.findOne({ state });
-  if (!stateRecord) {
-    throw createStatusError('Invalid OAuth state', 400);
-  }
+  const stateRecord = await getValidStateRecord(state);
+  let tokenPayload;
+  let accessToken;
 
-  if (stateRecord.used) {
-    throw createStatusError('OAuth state has already been used', 400);
-  }
+  try {
+    tokenPayload = await fetchGithubAccessToken({
+      clientId: GITHUB_CLIENT_ID,
+      clientSecret: GITHUB_CLIENT_SECRET,
+      code,
+      redirectUri: GITHUB_CALLBACK_URL,
+    });
 
-  if (stateRecord.expiresAt.getTime() < Date.now()) {
-    throw createStatusError('OAuth state has expired', 400);
-  }
-
-  const tokenPayload = await fetchGithubAccessToken({
-    clientId: GITHUB_CLIENT_ID,
-    clientSecret: GITHUB_CLIENT_SECRET,
-    code,
-    redirectUri: GITHUB_CALLBACK_URL,
-  });
-
-  const accessToken = tokenPayload && tokenPayload.access_token;
-  if (!accessToken) {
-    throw createStatusError('GitHub access token not received', 400);
-  }
-
-  const githubUser = await fetchGithubUserProfile(accessToken);
-
-  await GithubAccount.findOneAndUpdate(
-    { userId: stateRecord.userId },
-    {
-      userId: stateRecord.userId,
-      githubId: githubUser.id,
-      username: githubUser.login,
-      displayName: githubUser.name || '',
-      avatarUrl: githubUser.avatar_url || '',
-      profileUrl: githubUser.html_url || '',
-      accessToken,
-      tokenType: tokenPayload.token_type || 'bearer',
-      scope: tokenPayload.scope || '',
-      connectedAt: new Date(),
-    },
-    {
-      upsert: true,
-      new: true,
-      runValidators: true,
-      setDefaultsOnInsert: true,
+    accessToken = tokenPayload && tokenPayload.access_token;
+    if (!accessToken) {
+      throw createStatusError('GitHub access token not received', 400);
     }
-  );
+  } catch (error) {
+    stateRecord.used = true;
+    await stateRecord.save();
+    return buildErrorRedirect(stateRecord.redirectUrl, error);
+  }
 
-  await StudentProfile.findOneAndUpdate(
-    { userId: stateRecord.userId },
-    {
-      $set: {
-        githubUsername: githubUser.login || '',
-        githubConnected: true,
+  try {
+    const githubUser = await fetchGithubUserProfile(accessToken);
+
+    await GithubAccount.findOneAndUpdate(
+      { userId: stateRecord.userId },
+      {
+        userId: stateRecord.userId,
+        githubId: githubUser.id,
+        username: githubUser.login,
+        displayName: githubUser.name || '',
+        avatarUrl: githubUser.avatar_url || '',
+        profileUrl: githubUser.html_url || '',
+        accessToken,
+        tokenType: tokenPayload.token_type || 'bearer',
+        scope: tokenPayload.scope || '',
+        connectedAt: new Date(),
       },
-    },
-    {
-      new: true,
-      runValidators: true,
-    }
-  );
+      {
+        upsert: true,
+        new: true,
+        runValidators: true,
+        setDefaultsOnInsert: true,
+      }
+    );
+
+    await StudentProfile.findOneAndUpdate(
+      { userId: stateRecord.userId },
+      {
+        $set: {
+          githubUsername: githubUser.login || '',
+          githubConnected: true,
+        },
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+  } catch (error) {
+    stateRecord.used = true;
+    await stateRecord.save();
+    return buildErrorRedirect(stateRecord.redirectUrl, error);
+  }
 
   stateRecord.used = true;
   await stateRecord.save();
