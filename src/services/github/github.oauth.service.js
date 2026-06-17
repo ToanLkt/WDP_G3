@@ -63,6 +63,10 @@ const startOAuth = async (authUser, options = {}) => {
     FRONTEND_URL
   );
 
+  if (!redirectUrl) {
+    throw createStatusError('Frontend redirect URL is not configured', 500);
+  }
+
   await GithubOAuthState.create({
     userId: authUser.userId,
     state,
@@ -153,10 +157,6 @@ const handleOAuthCallback = async (query) => {
     }
   );
 
-  stateRecord.redirectUrl = getGithubConnectUrl(
-    stateRecord.redirectUrl,
-    process.env.FRONTEND_URL
-  );
   stateRecord.used = true;
   await stateRecord.save();
 
