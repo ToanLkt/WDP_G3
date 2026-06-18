@@ -5,6 +5,7 @@ const RepositoryCommit = require('../models/RepositoryCommit');
 const { findRepositoryForUser } = require('./github/github.repository.service');
 const { buildAnalysisPayload, sanitizeAnalysisSnapshot } = require('./analysis/analysis.engine');
 const { createSnapshotFromAnalysisResult } = require('./snapshot.service');
+const { createAutomaticNotification } = require('./notification.service');
 
 const validateAuthUser = (authUser) => {
   if (!authUser || !authUser.userId) {
@@ -58,6 +59,21 @@ const analyzeRepository = async ({ user, params }) => {
     ...analysisPayload,
   });
   const repoSnapshot = await createSnapshotFromAnalysisResult(snapshot);
+  await createAutomaticNotification({
+    userId: user.userId,
+    title: 'Phân tích repository hoàn tất',
+    message: `Repository ${repository.name || repository.fullName || 'của bạn'} đã được phân tích xong.`,
+    type: 'GITHUB_ANALYSIS_REMINDER',
+    metadata: {
+      event: 'repository_analysis_completed',
+      repositoryId: repository._id,
+      analysisId: snapshot._id,
+      snapshotId: repoSnapshot?._id || null,
+      repoName: repository.name || snapshot.repoName,
+      fullName: repository.fullName || snapshot.fullName,
+      overallScore: snapshot.scores?.overallScore || 0,
+    },
+  });
 
   return {
     message: 'Repository analyzed successfully',
