@@ -1,6 +1,13 @@
 const mongoose = require('mongoose');
 
 const Notification = require('../models/Notification');
+const UserSettings = require('../models/UserSettings');
+
+const notificationTypeSettingMap = {
+  GITHUB_ANALYSIS_REMINDER: 'githubAnalysisReminder',
+  ROADMAP_TASK_REMINDER: 'roadmapTaskReminder',
+  REPOSITORY_IMPROVEMENT: 'repositoryImprovementReminder',
+};
 
 const ensureAuthUser = (authUser) => {
   if (!authUser || !authUser.userId) {
@@ -91,6 +98,35 @@ const createNotification = async ({ authUser, body }) => {
   };
 };
 
+const createAutomaticNotification = async ({ userId, title, message, type = 'SYSTEM', scheduledAt = null, metadata = {} }) => {
+  try {
+    if (!userId || !title || !message) {
+      return null;
+    }
+
+    const settings = await UserSettings.findOne({ user: userId }).lean();
+    const typeSettingKey = notificationTypeSettingMap[type];
+
+    if (settings?.notificationEnabled === false || (typeSettingKey && settings?.[typeSettingKey] === false)) {
+      return null;
+    }
+
+    const notification = await Notification.create({
+      user: userId,
+      title: String(title).trim(),
+      message: String(message).trim(),
+      type,
+      scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+      metadata,
+    });
+
+    return sanitizeNotification(notification);
+  } catch (error) {
+    console.error('Create automatic notification failed:', error.message);
+    return null;
+  }
+};
+
 const markNotificationAsRead = async ({ authUser, notificationId }) => {
   ensureAuthUser(authUser);
   ensureValidObjectId(notificationId);
@@ -142,6 +178,7 @@ const deleteNotification = async ({ authUser, notificationId }) => {
 };
 
 module.exports = {
+  createAutomaticNotification,
   createNotification,
   deleteNotification,
   getNotifications,

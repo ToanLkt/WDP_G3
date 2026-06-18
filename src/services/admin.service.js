@@ -7,6 +7,7 @@ const Report = require('../models/Report');
 const Roadmap = require('../models/Roadmap');
 const User = require('../models/User');
 const { roles } = require('../utils/constants');
+const { createAutomaticNotification } = require('./notification.service');
 
 const createStatusError = (message, statusCode) => {
   const error = new Error(message);
@@ -485,6 +486,30 @@ const updateReportStatus = async ({ reportId, status, adminNote, adminUser }) =>
 
   if (!report) {
     throw createStatusError('Report not found', 404);
+  }
+
+  if (['reviewing', 'resolved', 'rejected'].includes(status)) {
+    const statusLabels = {
+      reviewing: 'đang được xem xét',
+      resolved: 'đã được xử lý',
+      rejected: 'đã bị từ chối',
+    };
+
+    await createAutomaticNotification({
+      userId: report.reporterId?._id || report.reporterId,
+      title: 'Phản hồi báo cáo từ quản trị viên',
+      message: `Báo cáo của bạn ${statusLabels[status]}.`,
+      type: 'SYSTEM',
+      metadata: {
+        event: 'report_status_updated',
+        reportId: report._id,
+        status: report.status,
+        targetType: report.targetType,
+        targetId: report.targetId,
+        adminNote: report.adminNote || '',
+        resolvedAt: report.resolvedAt || null,
+      },
+    });
   }
 
   return {

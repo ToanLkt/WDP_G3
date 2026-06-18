@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const Roadmap = require('../models/Roadmap');
 const RoadmapProgress = require('../models/RoadmapProgress');
 const { createStatusError } = require('./github/github.utils');
+const { createAutomaticNotification } = require('./notification.service');
 const normalizeText = require('../utils/normalizeText');
 
 const ALLOWED_STATUSES = ['not_started', 'in_progress', 'completed'];
@@ -195,6 +196,7 @@ const updateRoadmapItemStatus = async (authUserOrId, roadmapId, { skillName, sta
   }
 
   const now = new Date();
+  const previousOverallProgress = Number(progress.overallProgress || 0);
   item.status = status;
   item.progressPercent = getItemProgressPercent(status);
 
@@ -216,6 +218,27 @@ const updateRoadmapItemStatus = async (authUserOrId, roadmapId, { skillName, sta
   item.updatedAt = now;
   progress.overallProgress = calculateOverallProgress(progress.items);
   await progress.save();
+
+  if (previousOverallProgress < 100 && progress.overallProgress === 100) {
+    const roadmap = await Roadmap.findOne({ _id: roadmapId, userId: progress.userId })
+      .select('targetRole mainPath.title')
+      .lean();
+    const roadmapTitle = roadmap?.mainPath?.title || roadmap?.targetRole || 'roadmap';
+
+    await createAutomaticNotification({
+      userId: progress.userId,
+      title: 'Roadmap đã hoàn thành',
+      message: `Bạn đã hoàn thành 100% roadmap ${roadmapTitle}.`,
+      type: 'ROADMAP_TASK_REMINDER',
+      metadata: {
+        event: 'roadmap_completed',
+        roadmapId: progress.roadmapId,
+        targetRole: roadmap?.targetRole || '',
+        completedSkillName: item.skillName,
+        overallProgress: progress.overallProgress,
+      },
+    });
+  }
 
   return {
     message: 'Roadmap item progress updated successfully',
