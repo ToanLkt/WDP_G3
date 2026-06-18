@@ -27,9 +27,11 @@ const ensureValidObjectId = (id) => {
 
 const sanitizeNotification = (notification) => ({
   _id: notification._id,
+  userId: notification.user,
   title: notification.title,
   message: notification.message,
   type: notification.type,
+  reportId: notification.reportId || null,
   isRead: notification.isRead,
   scheduledAt: notification.scheduledAt,
   createdAt: notification.createdAt,
@@ -79,36 +81,29 @@ const getNotifications = async ({ authUser, query }) => {
   };
 };
 
-const createNotification = async ({ authUser, body }) => {
-  ensureAuthUser(authUser);
-
-  const notification = await Notification.create({
-    user: authUser.userId,
-    title: String(body.title).trim(),
-    message: String(body.message).trim(),
-    type: body.type,
-    scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
-    metadata: body.metadata || {},
-  });
-
-  return {
-    message: 'Create notification successfully',
-    data: sanitizeNotification(notification),
-    statusCode: 201,
-  };
-};
-
-const createAutomaticNotification = async ({ userId, title, message, type = 'SYSTEM', scheduledAt = null, metadata = {} }) => {
+const createAutomaticNotification = async ({
+  userId,
+  title,
+  message,
+  type = 'SYSTEM',
+  scheduledAt = null,
+  metadata = {},
+  reportId = null,
+  respectUserSettings = true,
+  throwOnError = false,
+}) => {
   try {
     if (!userId || !title || !message) {
       return null;
     }
 
-    const settings = await UserSettings.findOne({ user: userId }).lean();
-    const typeSettingKey = notificationTypeSettingMap[type];
+    if (respectUserSettings) {
+      const settings = await UserSettings.findOne({ user: userId }).lean();
+      const typeSettingKey = notificationTypeSettingMap[type];
 
-    if (settings?.notificationEnabled === false || (typeSettingKey && settings?.[typeSettingKey] === false)) {
-      return null;
+      if (settings?.notificationEnabled === false || (typeSettingKey && settings?.[typeSettingKey] === false)) {
+        return null;
+      }
     }
 
     const notification = await Notification.create({
@@ -116,12 +111,17 @@ const createAutomaticNotification = async ({ userId, title, message, type = 'SYS
       title: String(title).trim(),
       message: String(message).trim(),
       type,
+      reportId,
       scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
       metadata,
     });
 
     return sanitizeNotification(notification);
   } catch (error) {
+    if (throwOnError) {
+      throw error;
+    }
+
     console.error('Create automatic notification failed:', error.message);
     return null;
   }
@@ -179,7 +179,6 @@ const deleteNotification = async ({ authUser, notificationId }) => {
 
 module.exports = {
   createAutomaticNotification,
-  createNotification,
   deleteNotification,
   getNotifications,
   markNotificationAsRead,
