@@ -9,7 +9,7 @@ const router = express.Router();
  * @swagger
  * tags:
  *   - name: Analysis
- *     description: Repository analysis APIs
+ *     description: Repository analysis APIs. Scores are rule-based and calculated from detected languages, frameworks, packages, configs, checklist, and commit summary.
  */
 
 /**

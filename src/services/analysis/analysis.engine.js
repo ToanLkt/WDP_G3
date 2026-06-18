@@ -49,7 +49,10 @@ const buildChecklist = (packageRecord, skillSignals) => {
     configLower.includes('github actions') ||
     configLower.includes('ci/cd');
   const hasTesting =
-    packageLower.some((pkg) => ['jest', 'vitest', 'mocha', 'cypress', 'playwright', 'junit'].includes(pkg)) ||
+    packageLower.some((pkg) =>
+      ['jest', 'vitest', 'mocha', 'chai', 'supertest', 'cypress', 'playwright', 'junit'].includes(pkg)
+    ) ||
+    packageLower.some((pkg) => pkg.includes('testing-library')) ||
     signalLower.includes('testing') ||
     signalLower.includes('unit testing') ||
     signalLower.includes('e2e testing');
@@ -270,8 +273,8 @@ const buildAnalysisPayload = ({ repository, packageRecord, commits, rules }) => 
     weaknesses.push('Repository package/config data has not been fetched yet.');
   }
 
-  const missingSkills = buildMissingSkills({ checklist, packageRecord: normalizedPackageRecord });
-  const recommendations = buildRecommendations({ packageRecord: normalizedPackageRecord, missingSkills, rules });
+  let missingSkills = buildMissingSkills({ checklist, packageRecord: normalizedPackageRecord });
+  let recommendations = buildRecommendations({ packageRecord: normalizedPackageRecord, missingSkills, rules });
   const projectType = inferProjectType({ frameworks, configs, packages, rules });
   const careerDirection = inferCareerDirection({
     skillSignals: extracted.skillSignals,
@@ -285,8 +288,28 @@ const buildAnalysisPayload = ({ repository, packageRecord, commits, rules }) => 
     frameworks,
     languages,
     packages,
-    rules,
+    configs,
+    skillSignals: extracted.skillSignals,
+    careerDirection,
+    projectType,
   });
+
+  if (scores.testingScore === 0) {
+    weaknesses.push('Repo chua co automated testing setup ro rang.');
+    missingSkills.push('Testing');
+  }
+
+  if (scores.deploymentScore < 50) {
+    weaknesses.push('Repo con thieu tin hieu trien khai nhu Docker, CI/CD hoac deployment config.');
+    missingSkills.push('Deployment');
+  }
+
+  if (scores.documentationScore < 60) {
+    recommendations.push('Nen bo sung README, .env.example hoac API docs de cai thien kha nang ban giao project.');
+  }
+
+  missingSkills = dedupeStrings(missingSkills);
+  recommendations = dedupeStrings(recommendations);
 
   return {
     githubRepoId: repository.githubRepoId,
