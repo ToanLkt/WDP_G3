@@ -212,18 +212,12 @@ Response mẫu rút gọn:
         "_id": "analysis_id",
         "repoName": "WDP_G3",
         "careerDirection": "Backend Developer",
-        "strengths": [
-          "Repo có sử dụng Express.js để xây dựng backend API."
-        ],
+        "strengths": ["Repo có sử dụng Express.js để xây dựng backend API."],
         "weaknesses": [
           "Repo chưa có CI/CD workflow.",
           "Repo chua co automated testing setup ro rang."
         ],
-        "missingSkills": [
-          "Testing",
-          "CI/CD",
-          "Code Quality"
-        ],
+        "missingSkills": ["Testing", "CI/CD", "Code Quality"],
         "recommendations": [
           "Nên bổ sung unit test hoặc testing framework như Jest, Vitest, JUnit, Cypress hoặc Playwright."
         ],
@@ -322,10 +316,7 @@ Response mẫu:
           "portfolioReadinessScore": 80,
           "overallScore": 67
         },
-        "missingSkills": [
-          "Testing",
-          "CI/CD"
-        ],
+        "missingSkills": ["Testing", "CI/CD"],
         "analyzedAt": "2026-06-18T00:00:00.000Z",
         "createdAt": "2026-06-18T00:00:00.000Z"
       }
@@ -506,7 +497,381 @@ FE nên hiển thị:
 
 ---
 
-## 4. Flow FE nên tích hợp
+## 4. Learning Content & Learning Resources
+
+Mục đích: cho phép FE mở màn chi tiết học cho từng skill trong roadmap, lấy nội dung học bằng tiếng Việt và lấy video/resource phù hợp.
+
+Ghi chú logic:
+
+- `LearningContent` dùng chung theo `skillName + targetRole + level + language`, không lưu theo user.
+- Default `language` cho LearningContent là `vi`.
+- `GET` content chỉ đọc DB, không gọi Gemini.
+- `POST /generate` mới gọi Gemini nếu DB chưa có hoặc `forceRegenerate = true`.
+- `LearningResource` dùng chung theo `skillName + targetRole + level + language + type`, không lưu theo user.
+- `GET resources` chỉ đọc DB, không đọc catalog, không gọi YouTube.
+- `POST resources/search` chạy flow: DB cache -> catalog curated URL thật -> YouTube API.
+- Catalog URL dạng `TODO_*` bị bỏ qua, không cache vào MongoDB.
+- YouTube fallback chỉ lấy tối đa 4 video, chấm điểm, cache và trả về 1 video tốt nhất.
+
+### 4.1 GET learning content
+
+Endpoint:
+
+```http
+GET /api/learning/skills/:skillName?targetRole=Frontend%20Developer&level=beginner&language=vi
+Authorization: Bearer <token>
+```
+
+FE dùng khi:
+
+- User bấm vào skill trong roadmap.
+- FE muốn kiểm tra DB đã có nội dung học chưa.
+
+Response khi có content:
+
+```json
+{
+  "success": true,
+  "message": "Learning content found",
+  "data": {
+    "skillName": "HTML",
+    "targetRole": "Frontend Developer",
+    "level": "beginner",
+    "language": "vi",
+    "title": "HTML cơ bản cho Frontend Developer",
+    "overview": "Phần này giúp bạn nắm cách xây dựng cấu trúc trang web bằng HTML.",
+    "whyLearn": "HTML là nền tảng để xây dựng giao diện web.",
+    "useCases": [
+      "Tạo layout trang",
+      "Xây dựng form",
+      "Tổ chức nội dung có ngữ nghĩa"
+    ],
+    "howToApply": "Áp dụng semantic HTML khi chia layout và viết form.",
+    "examples": [
+      {
+        "title": "Form đăng nhập cơ bản",
+        "code": "<form><input type=\"email\" /></form>",
+        "explanation": "Ví dụ này minh họa cách tạo form nhập email."
+      }
+    ],
+    "checklist": ["Hiểu semantic tags", "Biết tạo form", "Biết liên kết CSS"],
+    "exercises": [
+      {
+        "title": "Tạo trang giới thiệu bản thân",
+        "description": "Dùng HTML để tạo trang có heading, paragraph, image và link."
+      }
+    ],
+    "commonMistakes": ["Dùng quá nhiều div không có ngữ nghĩa"],
+    "nextSkills": ["CSS", "JavaScript"]
+  }
+}
+```
+
+Response khi chưa có:
+
+```json
+{
+  "success": false,
+  "message": "Learning content not found. Please generate it first.",
+  "data": null
+}
+```
+
+FE nên xử lý:
+
+- Nếu 200: hiển thị nội dung học.
+- Nếu 404: hiển thị nút "Tạo nội dung học" và gọi API generate.
+
+### 4.2 POST generate learning content
+
+Endpoint:
+
+```http
+POST /api/learning/skills/generate
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "skillName": "HTML",
+  "targetRole": "Frontend Developer",
+  "level": "beginner",
+  "language": "vi",
+  "forceRegenerate": false
+}
+```
+
+FE dùng khi:
+
+- GET content trả 404.
+- User muốn tạo nội dung học cho skill.
+- Admin/dev muốn generate lại nội dung bằng `forceRegenerate = true`.
+
+Response khi content đã có:
+
+```json
+{
+  "success": true,
+  "message": "Learning content already exists",
+  "data": {
+    "skillName": "HTML",
+    "targetRole": "Frontend Developer",
+    "level": "beginner",
+    "language": "vi",
+    "title": "HTML cơ bản cho Frontend Developer"
+  }
+}
+```
+
+Response khi generate mới:
+
+```json
+{
+  "success": true,
+  "message": "Learning content generated successfully",
+  "data": {
+    "skillName": "HTML",
+    "targetRole": "Frontend Developer",
+    "level": "beginner",
+    "language": "vi",
+    "title": "HTML cơ bản cho Frontend Developer",
+    "overview": "..."
+  }
+}
+```
+
+Ghi chú cho FE:
+
+- Nội dung natural language mặc định là tiếng Việt.
+- Code trong `examples.code` vẫn là code thật, không dịch.
+- Sau khi generate thành công, FE có thể render trực tiếp response hoặc refetch GET content.
+
+### 4.3 GET learning resources
+
+Endpoint:
+
+```http
+GET /api/learning/skills/:skillName/resources?targetRole=Frontend%20Developer&level=beginner&language=en&type=video
+Authorization: Bearer <token>
+```
+
+FE dùng khi:
+
+- Mở màn Skill Learning Detail.
+- Cần lấy video/resource đã cache trong DB.
+
+Response khi có resource:
+
+```json
+{
+  "success": true,
+  "message": "Learning resources fetched successfully",
+  "data": [
+    {
+      "skillName": "HTML",
+      "targetRole": "Frontend Developer",
+      "level": "beginner",
+      "language": "en",
+      "type": "video",
+      "title": "HTML Tutorial for Beginners",
+      "url": "https://www.youtube.com/watch?v=UB1O30fR-EE",
+      "provider": "YouTube",
+      "thumbnailUrl": "",
+      "channelTitle": "",
+      "source": "curated",
+      "score": 95
+    }
+  ]
+}
+```
+
+Response khi chưa có:
+
+```json
+{
+  "success": true,
+  "message": "No learning resources found",
+  "data": []
+}
+```
+
+FE nên xử lý:
+
+- Nếu `data` có item: hiển thị danh sách video/resource.
+- Nếu `data` rỗng: hiển thị nút "Tìm video học" và gọi API search/cache.
+
+### 4.4 POST search/cache learning resources
+
+Endpoint:
+
+```http
+POST /api/learning/skills/:skillName/resources/search
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "targetRole": "Frontend Developer",
+  "level": "beginner",
+  "language": "en"
+}
+```
+
+Flow backend:
+
+1. Check MongoDB cache.
+2. Nếu DB có resource phù hợp, trả về ngay.
+3. Nếu DB chưa có, check curated catalog trong source code.
+4. Catalog item có URL `TODO_*` sẽ bị bỏ qua.
+5. Nếu có catalog URL thật, cache vào DB với `source = "curated"`.
+6. Nếu catalog không có URL hợp lệ, fallback YouTube API.
+7. YouTube lấy tối đa 4 video, tính score, chỉ cache/trả 1 video tốt nhất.
+
+Response khi DB đã có cache:
+
+```json
+{
+  "success": true,
+  "message": "Learning resources already cached",
+  "data": [
+    {
+      "title": "HTML Tutorial for Beginners",
+      "url": "https://www.youtube.com/watch?v=UB1O30fR-EE",
+      "source": "curated",
+      "score": 95
+    }
+  ]
+}
+```
+
+Response khi load từ catalog:
+
+```json
+{
+  "success": true,
+  "message": "Learning resources loaded from catalog and cached successfully",
+  "data": [
+    {
+      "title": "HTML Tutorial for Beginners",
+      "url": "https://www.youtube.com/watch?v=UB1O30fR-EE",
+      "source": "curated",
+      "score": 95
+    }
+  ]
+}
+```
+
+Response khi search YouTube thành công:
+
+```json
+{
+  "success": true,
+  "message": "Best YouTube resource searched and cached successfully",
+  "data": [
+    {
+      "title": "HTML Tutorial for Beginners",
+      "url": "https://www.youtube.com/watch?v=example",
+      "provider": "YouTube",
+      "source": "youtube_api",
+      "score": 60
+    }
+  ]
+}
+```
+
+Response khi YouTube không có video đủ liên quan:
+
+```json
+{
+  "success": true,
+  "message": "No relevant YouTube resources found",
+  "data": []
+}
+```
+
+Response khi thiếu key và không có catalog hợp lệ:
+
+```json
+{
+  "success": false,
+  "message": "No valid catalog resources found and YOUTUBE_API_KEY is not configured",
+  "data": null
+}
+```
+
+FE nên xử lý:
+
+- Sau khi search/cache thành công, render `data` hoặc refetch GET resources.
+- Nếu thiếu key, hiển thị message cấu hình backend, không retry liên tục.
+- Nếu `No relevant YouTube resources found`, hiển thị trạng thái rỗng và gợi ý thử skill/level khác.
+
+### 4.5 POST seed learning resource thủ công
+
+Endpoint:
+
+```http
+POST /api/learning/skills/:skillName/resources
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "title": "HTML Tutorial for Beginners",
+  "url": "https://www.youtube.com/watch?v=UB1O30fR-EE",
+  "provider": "YouTube",
+  "type": "video",
+  "language": "en",
+  "level": "beginner",
+  "targetRole": "Frontend Developer",
+  "tags": ["html", "frontend", "web"],
+  "source": "curated",
+  "score": 95
+}
+```
+
+FE thường không cần gọi API này cho user thường. API này phù hợp cho admin/dev tool để seed resource thật vào DB.
+
+Response mẫu:
+
+```json
+{
+  "success": true,
+  "message": "Learning resource saved successfully",
+  "data": {
+    "skillName": "HTML",
+    "targetRole": "Frontend Developer",
+    "level": "beginner",
+    "language": "en",
+    "type": "video",
+    "title": "HTML Tutorial for Beginners",
+    "url": "https://www.youtube.com/watch?v=UB1O30fR-EE",
+    "source": "curated",
+    "score": 95
+  }
+}
+```
+
+### 4.6 Flow FE gợi ý cho Skill Learning Detail
+
+1. User bấm skill trong Roadmap Detail.
+2. FE gọi `GET /api/learning/skills/:skillName?targetRole=...&level=...&language=vi`.
+3. Nếu 404, FE hiển thị nút generate hoặc tự gọi `POST /api/learning/skills/generate` tùy UX.
+4. FE gọi `GET /api/learning/skills/:skillName/resources?targetRole=...&level=...&language=en&type=video`.
+5. Nếu resource rỗng, FE gọi `POST /api/learning/skills/:skillName/resources/search`.
+6. FE hiển thị content tiếng Việt và video/resource.
+
+---
+
+## 5. Flow FE nên tích hợp
 
 ### Flow 1: User xem roadmap và cập nhật tiến độ
 
@@ -517,14 +882,21 @@ FE nên hiển thị:
 5. Gọi `PATCH /api/roadmaps/:roadmapId/progress/items`.
 6. FE refetch progress hoặc cập nhật local state.
 
-### Flow 2: User xem kết quả analysis sau khi scoring đã chuẩn hóa
+### Flow 2: User mở Skill Learning Detail
+
+1. FE lấy hoặc generate LearningContent tiếng Việt.
+2. FE lấy LearningResource từ DB.
+3. Nếu resource rỗng, FE gọi search/cache.
+4. FE hiển thị bài học, ví dụ code, checklist, exercises và video.
+
+### Flow 3: User xem kết quả analysis sau khi scoring đã chuẩn hóa
 
 1. FE gọi `GET /api/analysis/me` hoặc `GET /api/analysis/results/:repoId`.
 2. Hiển thị scores.
 3. Hiển thị strengths/weaknesses/missingSkills/recommendations.
 4. Hiển thị checklist.
 
-### Flow 3: User xem tiến bộ theo snapshot
+### Flow 4: User xem tiến bộ theo snapshot
 
 1. User phân tích repo lần 1.
 2. BE tạo snapshot.
@@ -533,7 +905,7 @@ FE nên hiển thị:
 5. FE gọi `GET /api/repositories/:repoId/progress-comparison`.
 6. FE hiển thị `overallChange`, `improvements`, `resolvedMissingSkills`, `summary`.
 
-### Flow 4: User so sánh thủ công 2 snapshot
+### Flow 5: User so sánh thủ công 2 snapshot
 
 1. FE gọi `GET /api/repositories/:repoId/snapshots`.
 2. User chọn 2 snapshot.
@@ -542,7 +914,7 @@ FE nên hiển thị:
 
 ---
 
-## 5. Error handling FE cần chú ý
+## 6. Error handling FE cần chú ý
 
 ### 401 Unauthorized
 
@@ -580,6 +952,18 @@ FE message:
 
 "Dữ liệu gửi lên chưa hợp lệ. Vui lòng thử lại."
 
+### 500 Missing backend config
+
+Trường hợp LearningResource search fallback YouTube nhưng backend chưa có key:
+
+```txt
+No valid catalog resources found and YOUTUBE_API_KEY is not configured
+```
+
+FE message:
+
+"Backend chưa cấu hình YouTube API key và chưa có video curated hợp lệ cho skill này."
+
 ### Chưa đủ snapshot
 
 Message từ BE:
@@ -594,7 +978,7 @@ FE message:
 
 ---
 
-## 6. Planned Next Backend Updates
+## 7. Planned Next Backend Updates
 
 Phần này chưa có API chính thức trong code hiện tại, chỉ là hướng backend dự kiến để FE biết trước phạm vi.
 
@@ -610,11 +994,12 @@ FE chưa cần tích hợp phần này cho đến khi có endpoint chính thức
 
 ---
 
-## 7. Kết quả mong muốn
+## 8. Kết quả mong muốn
 
 Sau khi đọc file này, FE cần nắm được:
 
 - Cách tích hợp Roadmap Progress.
+- Cách tích hợp LearningContent và LearningResource.
 - Ý nghĩa `scores` mới trong Analysis.
 - Cách lấy Snapshot History.
 - Cách Compare Snapshot.

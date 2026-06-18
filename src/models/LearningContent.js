@@ -47,6 +47,7 @@ const learningContentSchema = new mongoose.Schema(
       type: String,
       default: 'vi',
       trim: true,
+      lowercase: true,
     },
     title: { type: String, default: '' },
     overview: { type: String, default: '' },
@@ -67,7 +68,8 @@ const learningContentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// If MongoDB already has the old unique index without language, drop it once during deployment.
+// Unique key: skillName + targetRole + level + language.
+// If MongoDB already has the old unique index without language, run scripts/fixLearningContentIndexes.js once.
 learningContentSchema.index(
   { normalizedSkillName: 1, normalizedTargetRole: 1, level: 1, language: 1 },
   { unique: true }
