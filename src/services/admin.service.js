@@ -4,10 +4,38 @@ const AiFeedback = require('../models/AiFeedback');
 const AnalysisSnapshot = require('../models/AnalysisSnapshot');
 const Repository = require('../models/Repository');
 const Report = require('../models/Report');
+const ReportStatusLog = require('../models/ReportStatusLog');
 const Roadmap = require('../models/Roadmap');
 const User = require('../models/User');
 const { roles } = require('../utils/constants');
 const { createAutomaticNotification } = require('./notification.service');
+
+const REPORT_STATUSES = ['PENDING', 'IN_REVIEW', 'RESOLVED', 'REJECTED'];
+const REPORT_TYPES = ['user', 'repository', 'analysis', 'ai_feedback', 'roadmap', 'other'];
+const legacyReportStatusMap = {
+  pending: 'PENDING',
+  reviewing: 'IN_REVIEW',
+  in_review: 'IN_REVIEW',
+  resolved: 'RESOLVED',
+  rejected: 'REJECTED',
+};
+const reportNotificationByStatus = {
+  IN_REVIEW: {
+    type: 'REPORT_IN_REVIEW',
+    title: 'Report Under Review',
+    message: 'Your report is currently being reviewed by our team.',
+  },
+  RESOLVED: {
+    type: 'REPORT_RESOLVED',
+    title: 'Report Resolved',
+    message: 'Your report has been resolved successfully.',
+  },
+  REJECTED: {
+    type: 'REPORT_REJECTED',
+    title: 'Report Rejected',
+    message: 'Your report was reviewed but could not be approved.',
+  },
+};
 
 const createStatusError = (message, statusCode) => {
   const error = new Error(message);
@@ -29,6 +57,17 @@ const getPagination = (query = {}) => {
     limit,
     skip: (page - 1) * limit,
   };
+};
+
+const normalizeReportStatus = (status) => {
+  const rawStatus = String(status || '').trim();
+  const upperStatus = rawStatus.toUpperCase();
+
+  if (REPORT_STATUSES.includes(upperStatus)) {
+    return upperStatus;
+  }
+
+  return legacyReportStatusMap[rawStatus.toLowerCase()] || '';
 };
 
 const buildListResult = async ({ model, query, pagination, sort, populate, select }) => {
@@ -75,7 +114,7 @@ const getDashboard = async () => {
     AnalysisSnapshot.countDocuments(),
     AiFeedback.countDocuments(),
     Roadmap.countDocuments({ status: 'active' }),
-    Report.countDocuments({ status: 'pending' }),
+    Report.countDocuments({ status: { $in: ['PENDING', 'pending'] } }),
   ]);
 
   return {
@@ -412,13 +451,16 @@ const updateRoadmapStatus = async (roadmapId, status) => {
 
 const getReports = async (filters) => {
   const query = {};
+  const status = normalizeReportStatus(filters.status);
 
-  if (['pending', 'reviewing', 'resolved', 'rejected'].includes(filters.status)) {
-    query.status = filters.status;
+  if (status) {
+    query.status = status;
   }
 
-  if (['user', 'repository', 'analysis', 'ai_feedback', 'roadmap', 'other'].includes(filters.targetType)) {
-    query.targetType = filters.targetType;
+  if (REPORT_TYPES.includes(filters.type)) {
+    query.type = filters.type;
+  } else if (REPORT_TYPES.includes(filters.targetType)) {
+    query.type = filters.targetType;
   }
 
   const data = await buildListResult({
@@ -427,7 +469,7 @@ const getReports = async (filters) => {
     pagination: getPagination(filters),
     sort: { createdAt: -1 },
     populate: [
-      { path: 'reporterId', select: 'fullName name email role status' },
+      { path: 'userId', select: 'fullName name email role status' },
       { path: 'resolvedBy', select: 'fullName name email role status' },
     ],
   });
@@ -443,7 +485,7 @@ const getReportById = async (reportId) => {
   ensureObjectId(reportId, 'Report');
 
   const report = await Report.findById(reportId)
-    .populate('reporterId', 'fullName name email role status')
+    .populate('userId', 'fullName name email role status')
     .populate('resolvedBy', 'fullName name email role status')
     .lean();
 
@@ -451,9 +493,14 @@ const getReportById = async (reportId) => {
     throw createStatusError('Report not found', 404);
   }
 
+  const statusLogs = await ReportStatusLog.find({ reportId })
+    .sort({ createdAt: -1 })
+    .populate('changedBy', 'fullName name email role status')
+    .lean();
+
   return {
     message: 'Report fetched successfully',
-    data: { report },
+    data: { report, statusLogs },
     statusCode: 200,
   };
 };
@@ -461,17 +508,28 @@ const getReportById = async (reportId) => {
 const updateReportStatus = async ({ reportId, status, adminNote, adminUser }) => {
   ensureObjectId(reportId, 'Report');
 
-  if (!['pending', 'reviewing', 'resolved', 'rejected'].includes(status)) {
-    throw createStatusError('status must be one of pending, reviewing, resolved, rejected', 400);
+  const normalizedStatus = normalizeReportStatus(status);
+
+  if (!REPORT_STATUSES.includes(normalizedStatus) || normalizedStatus === 'PENDING') {
+    throw createStatusError('status must be one of IN_REVIEW, RESOLVED, REJECTED', 400);
   }
 
   const userId = adminUser && (adminUser.userId || adminUser.id);
+  if (!userId) {
+    throw createStatusError('Unauthorized', 401);
+  }
+
+  const existingReport = await Report.findById(reportId).lean();
+  if (!existingReport) {
+    throw createStatusError('Report not found', 404);
+  }
+
   const update = {
-    status,
+    status: normalizedStatus,
     adminNote: String(adminNote || '').trim(),
   };
 
-  if (['resolved', 'rejected'].includes(status)) {
+  if (['RESOLVED', 'REJECTED'].includes(normalizedStatus)) {
     update.resolvedBy = userId || null;
     update.resolvedAt = new Date();
   } else {
@@ -480,31 +538,33 @@ const updateReportStatus = async ({ reportId, status, adminNote, adminUser }) =>
   }
 
   const report = await Report.findByIdAndUpdate(reportId, { $set: update }, { new: true })
-    .populate('reporterId', 'fullName name email role status')
+    .populate('userId', 'fullName name email role status')
     .populate('resolvedBy', 'fullName name email role status')
     .lean();
 
-  if (!report) {
-    throw createStatusError('Report not found', 404);
-  }
+  await ReportStatusLog.create({
+    reportId,
+    changedBy: userId,
+    fromStatus: normalizeReportStatus(existingReport.status) || 'PENDING',
+    toStatus: normalizedStatus,
+    adminNote: update.adminNote,
+  });
 
-  if (['reviewing', 'resolved', 'rejected'].includes(status)) {
-    const statusLabels = {
-      reviewing: 'đang được xem xét',
-      resolved: 'đã được xử lý',
-      rejected: 'đã bị từ chối',
-    };
-
+  const notificationPayload = reportNotificationByStatus[normalizedStatus];
+  if (notificationPayload) {
     await createAutomaticNotification({
-      userId: report.reporterId?._id || report.reporterId,
-      title: 'Phản hồi báo cáo từ quản trị viên',
-      message: `Báo cáo của bạn ${statusLabels[status]}.`,
-      type: 'SYSTEM',
+      userId: report.userId?._id || report.userId,
+      title: notificationPayload.title,
+      message: update.adminNote || notificationPayload.message,
+      type: notificationPayload.type,
+      reportId: report._id,
+      respectUserSettings: false,
+      throwOnError: true,
       metadata: {
         event: 'report_status_updated',
         reportId: report._id,
         status: report.status,
-        targetType: report.targetType,
+        type: report.type,
         targetId: report.targetId,
         adminNote: report.adminNote || '',
         resolvedAt: report.resolvedAt || null,

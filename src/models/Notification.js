@@ -20,8 +20,22 @@ const notificationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['GITHUB_ANALYSIS_REMINDER', 'ROADMAP_TASK_REMINDER', 'REPOSITORY_IMPROVEMENT', 'SYSTEM'],
+      enum: [
+        'GITHUB_ANALYSIS_REMINDER',
+        'ROADMAP_TASK_REMINDER',
+        'REPOSITORY_IMPROVEMENT',
+        'SYSTEM',
+        'REPORT_IN_REVIEW',
+        'REPORT_RESOLVED',
+        'REPORT_REJECTED',
+      ],
       default: 'SYSTEM',
+    },
+    reportId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Report',
+      default: null,
+      index: true,
     },
     isRead: {
       type: Boolean,

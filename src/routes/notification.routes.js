@@ -2,8 +2,6 @@ const express = require('express');
 
 const notificationController = require('../controllers/notification.controller');
 const authMiddleware = require('../middlewares/auth.middleware');
-const validate = require('../middlewares/validate.middleware');
-const { validateCreateNotificationBody } = require('../validators/notification.validator');
 
 const router = express.Router();
 
@@ -44,40 +42,6 @@ const router = express.Router();
  *         description: Get notifications successfully
  */
 router.get('/me', authMiddleware, notificationController.getMe);
-
-/**
- * @swagger
- * /api/notifications:
- *   post:
- *     tags: [Notifications]
- *     summary: Create a notification for current user
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [title, message, type]
- *             properties:
- *               title:
- *                 type: string
- *               message:
- *                 type: string
- *               type:
- *                 type: string
- *                 enum: [GITHUB_ANALYSIS_REMINDER, ROADMAP_TASK_REMINDER, REPOSITORY_IMPROVEMENT, SYSTEM]
- *               scheduledAt:
- *                 type: string
- *                 format: date-time
- *               metadata:
- *                 type: object
- *     responses:
- *       201:
- *         description: Create notification successfully
- */
-router.post('/', authMiddleware, validate(validateCreateNotificationBody), notificationController.create);
 
 /**
  * @swagger

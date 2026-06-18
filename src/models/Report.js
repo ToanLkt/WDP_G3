@@ -2,13 +2,13 @@ const mongoose = require('mongoose');
 
 const reportSchema = new mongoose.Schema(
   {
-    reporterId: {
+    userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
       index: true,
     },
-    targetType: {
+    type: {
       type: String,
       enum: ['user', 'repository', 'analysis', 'ai_feedback', 'roadmap', 'other'],
       default: 'other',
@@ -29,8 +29,8 @@ const reportSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['pending', 'reviewing', 'resolved', 'rejected'],
-      default: 'pending',
+      enum: ['PENDING', 'IN_REVIEW', 'RESOLVED', 'REJECTED'],
+      default: 'PENDING',
       index: true,
     },
     adminNote: {
@@ -52,5 +52,16 @@ const reportSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+reportSchema.virtual('reporterId').get(function getReporterId() {
+  return this.userId;
+});
+
+reportSchema.virtual('targetType').get(function getTargetType() {
+  return this.type;
+});
+
+reportSchema.set('toJSON', { virtuals: true });
+reportSchema.set('toObject', { virtuals: true });
 
 module.exports = mongoose.model('Report', reportSchema);

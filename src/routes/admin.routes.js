@@ -452,9 +452,9 @@ router.patch(
  *         name: status
  *         schema:
  *           type: string
- *           enum: [pending, reviewing, resolved, rejected]
+ *           enum: [PENDING, IN_REVIEW, RESOLVED, REJECTED]
  *       - in: query
- *         name: targetType
+ *         name: type
  *         schema:
  *           type: string
  *           enum: [user, repository, analysis, ai_feedback, roadmap, other]
@@ -493,7 +493,7 @@ router.get("/reports/:reportId", adminController.getReportById);
  *   patch:
  *     tags: [Admin]
  *     summary: Update report status
- *     description: Updates the moderation status of a report. When status is resolved or rejected, the API records the admin who handled it and the resolution timestamp.
+ *     description: Updates the moderation status of a report, logs the status change, and creates a notification for the report owner.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -512,11 +512,11 @@ router.get("/reports/:reportId", adminController.getReportById);
  *             properties:
  *               status:
  *                 type: string
- *                 enum: [pending, reviewing, resolved, rejected]
- *                 example: resolved
+ *                 enum: [IN_REVIEW, RESOLVED, REJECTED]
+ *                 example: RESOLVED
  *               adminNote:
  *                 type: string
- *                 example: Reviewed and resolved
+ *                 example: The incorrect roadmap recommendation has been updated.
  *     responses:
  *       200:
  *         description: Report status updated successfully
