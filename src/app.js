@@ -20,6 +20,8 @@ const learningRoutes = require("./routes/learning.routes");
 const progressRoutes = require("./routes/progress.routes");
 const adminRoutes = require("./routes/admin.routes");
 const reportRoutes = require("./routes/report.routes");
+const skillRoutes = require("./routes/skill.routes");
+const roleRoutes = require("./routes/role.routes");
 
 const errorMiddleware = require("./middlewares/error.middleware");
 const { errorResponse } = require("./utils/response");
@@ -89,6 +91,8 @@ app.use("/api/learning", learningRoutes);
 app.use("/api/progress", progressRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/reports", reportRoutes);
+app.use("/api/skills", skillRoutes);
+app.use("/api/roles", roleRoutes);
 app.use(
   "/api/swagger",
   swaggerUi.serve,
