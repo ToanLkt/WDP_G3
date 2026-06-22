@@ -9,7 +9,7 @@ const router = express.Router();
  * @swagger
  * tags:
  *   - name: Learning
- *     description: Shared skill learning content and resource cache APIs. Suggested skills to seed first include HTML, CSS, JavaScript, TypeScript, React, Node.js, Express.js, REST API, MongoDB, Mongoose, JWT Authentication, Git, GitHub, Docker, and Render Deployment.
+ *     description: Shared learning APIs. skillName may be canonical or an alias; the backend canonicalizes it before query, generation, save, search, and cache.
  */
 
 /**
@@ -18,6 +18,7 @@ const router = express.Router();
  *   post:
  *     tags: [Learning]
  *     summary: Generate shared learning content for a skill
+ *     description: Canonicalizes skillName before generation and persistence. New documents are stored only under the canonical skill key.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -31,7 +32,7 @@ const router = express.Router();
  *             properties:
  *               skillName:
  *                 type: string
- *                 example: HTML
+ *                 example: Code Quality
  *               targetRole:
  *                 type: string
  *                 example: Frontend Developer
@@ -48,7 +49,7 @@ const router = express.Router();
  *                 example: false
  *     responses:
  *       201:
- *         description: Learning content generated successfully
+ *         description: Learning content generated successfully with requestedSkillName, canonicalSkillName, and normalizedSkillName metadata
  *       200:
  *         description: Learning content already exists
  *       400:
@@ -64,6 +65,7 @@ router.post('/skills/generate', authMiddleware, learningController.generateLearn
  *   get:
  *     tags: [Learning]
  *     summary: Get shared learning content for a skill
+ *     description: Accepts a canonical skill or alias. Roadmap clients should prefer task.canonicalSkillName.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -72,7 +74,7 @@ router.post('/skills/generate', authMiddleware, learningController.generateLearn
  *         required: true
  *         schema:
  *           type: string
- *         example: HTML
+ *         example: Code Quality
  *       - in: query
  *         name: targetRole
  *         schema:
@@ -126,6 +128,7 @@ router.get('/skills/:skillName', authMiddleware, learningController.getLearningC
  *   get:
  *     tags: [Learning]
  *     summary: Get cached learning resources for a skill
+ *     description: Canonicalizes skillName before reading the resource cache and returns canonical metadata with resources.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -134,7 +137,7 @@ router.get('/skills/:skillName', authMiddleware, learningController.getLearningC
  *         required: true
  *         schema:
  *           type: string
- *         example: HTML
+ *         example: JWT Auth
  *       - in: query
  *         name: targetRole
  *         schema:
@@ -184,6 +187,7 @@ router.get('/skills/:skillName', authMiddleware, learningController.getLearningC
  *   post:
  *     tags: [Learning]
  *     summary: Seed or update a learning resource manually
+ *     description: Saves the resource under the canonical path skill; body.skillName cannot override it.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -192,7 +196,7 @@ router.get('/skills/:skillName', authMiddleware, learningController.getLearningC
  *         required: true
  *         schema:
  *           type: string
- *         example: HTML
+ *         example: CICD
  *     requestBody:
  *       required: true
  *       content:
@@ -255,7 +259,7 @@ router.post('/skills/:skillName/resources', authMiddleware, learningController.s
  *   post:
  *     tags: [Learning]
  *     summary: Load or search learning resources for a skill and cache them
- *     description: Checks MongoDB cache first. If not found, loads curated resources from the local catalog and caches them. Catalog resources with placeholder TODO URLs are ignored. If no valid catalog resource exists, searches YouTube with maxResults=4, scores videos by relevance, then caches and returns only the best matching video.
+ *     description: Canonicalizes skillName, checks the canonical cache, then loads curated resources or searches YouTube using the canonical skill name. Alias-specific cache documents are not created.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -264,7 +268,7 @@ router.post('/skills/:skillName/resources', authMiddleware, learningController.s
  *         required: true
  *         schema:
  *           type: string
- *         example: HTML
+ *         example: docker-compose
  *     requestBody:
  *       required: false
  *       content:

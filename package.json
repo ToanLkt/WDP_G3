@@ -12,7 +12,14 @@
     "docker:logs": "docker compose logs -f api",
     "docker:restart": "docker compose down && docker compose up -d && node scripts/print-docker-help.js",
     "docker:help": "node scripts/print-docker-help.js",
-    "fix:learning-indexes": "node scripts/fixLearningContentIndexes.js"
+    "fix:learning-indexes": "node scripts/fixLearningContentIndexes.js",
+    "test:skill-vector": "node scripts/testSkillVectorBuilder.js",
+    "test:skill-insights": "node scripts/testSkillInsights.js",
+    "test:snapshot-vector": "node scripts/testSnapshotVectorMapper.js",
+    "test:skill-vector-compare": "node scripts/testSkillVectorComparison.js",
+    "test:role-matching": "node scripts/testRoleMatching.js",
+    "test:roadmap-skill-gap": "node scripts/testRoadmapSkillGap.js",
+    "test:learning-canonicalization": "node scripts/testLearningCanonicalization.js"
   },
   "dependencies": {
     "axios": "^1.11.0",

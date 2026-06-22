@@ -36,6 +36,11 @@ const roadmapTaskSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    skillName: { type: String, default: '', trim: true },
+    canonicalSkillName: { type: String, default: '', trim: true },
+    category: { type: String, default: 'General', trim: true },
+    priority: { type: Number, default: 0 },
+    targetRole: { type: String, default: '', trim: true },
     status: {
       type: String,
       enum: ['not_started', 'in_progress', 'completed'],
@@ -112,6 +117,11 @@ const roadmapSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    repositoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Repository',
+      default: null,
+    },
     targetRole: {
       type: String,
       required: true,
@@ -161,6 +171,25 @@ const roadmapSchema = new mongoose.Schema(
         ref: 'AnalysisSnapshot',
         default: null,
       },
+    },
+    roadmapSource: {
+      type: String,
+      enum: ['role_matching', 'fallback_analysis', 'legacy'],
+      default: 'legacy',
+    },
+    roleMatch: {
+      roleId: { type: String, default: '' },
+      roleName: { type: String, default: '' },
+      matchScore: { type: Number, default: 0 },
+      matchLevel: { type: String, default: '' },
+      matchLevelLabel: { type: String, default: '' },
+    },
+    skillGapSummary: {
+      totalGaps: { type: Number, default: 0 },
+      missingRequiredCount: { type: Number, default: 0 },
+      weakSkillCount: { type: Number, default: 0 },
+      recommendedNextSkills: { type: [String], default: [] },
+      prioritySkills: { type: [String], default: [] },
     },
     status: {
       type: String,

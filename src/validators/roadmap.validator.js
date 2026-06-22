@@ -10,6 +10,7 @@ const validateGenerateRoadmapBody = (req) => {
   const errors = [];
   const targetRole = req.body && req.body.targetRole;
   const forceRegenerate = req.body && req.body.forceRegenerate;
+  const { repoId, roleId, level, durationWeeks, language, useRoleMatching } = req.body || {};
 
   if (!targetRole || typeof targetRole !== 'string' || !targetRole.trim()) {
     errors.push('targetRole is required');
@@ -23,6 +24,19 @@ const validateGenerateRoadmapBody = (req) => {
 
   if (forceRegenerate !== undefined && typeof forceRegenerate !== 'boolean') {
     errors.push('forceRegenerate must be a boolean');
+  }
+  if (repoId !== undefined && typeof repoId !== 'string') errors.push('repoId must be a string');
+  if (roleId !== undefined && typeof roleId !== 'string') errors.push('roleId must be a string');
+  if (level !== undefined && typeof level !== 'string') errors.push('level must be a string');
+  if (language !== undefined && typeof language !== 'string') errors.push('language must be a string');
+  if (
+    durationWeeks !== undefined &&
+    (!Number.isInteger(Number(durationWeeks)) || Number(durationWeeks) < 1)
+  ) {
+    errors.push('durationWeeks must be a positive integer');
+  }
+  if (useRoleMatching !== undefined && typeof useRoleMatching !== 'boolean') {
+    errors.push('useRoleMatching must be a boolean');
   }
 
   return buildValidationResult(errors);
