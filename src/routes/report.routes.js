@@ -29,7 +29,7 @@ const router = express.Router();
  *             required:
  *               - reason
  *             properties:
- *               targetType:
+ *               type:
  *                 type: string
  *                 enum: [user, repository, analysis, ai_feedback, roadmap, other]
  *                 example: repository

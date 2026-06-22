@@ -740,6 +740,18 @@ const generateRoadmap = async (
       roadmapGapContext,
     })
   );
+  await createAutomaticNotification({
+    userId,
+    title: 'Lộ trình học đã sẵn sàng',
+    message: `Lộ trình học cho mục tiêu ${normalizedTargetRole} đã được tạo thành công.`,
+    type: 'ROADMAP_TASK_REMINDER',
+    metadata: {
+      event: 'roadmap_generated',
+      roadmapId: roadmap._id,
+      targetRole: roadmap.targetRole,
+      mainPathTitle: roadmap.mainPath?.title || '',
+    },
+  });
 
   return {
     message: 'Roadmap generated successfully',

@@ -2,6 +2,8 @@ const mongoose = require('mongoose');
 
 const Report = require('../models/Report');
 
+const REPORT_TYPES = ['user', 'repository', 'analysis', 'ai_feedback', 'roadmap', 'other'];
+
 const createStatusError = (message, statusCode) => {
   const error = new Error(message);
   error.statusCode = statusCode;
@@ -15,13 +17,13 @@ const createReport = async ({ authUser, body }) => {
     throw createStatusError('Unauthorized', 401);
   }
 
-  const targetType = String(body.targetType || 'other').trim();
+  const type = String(body.type || body.targetType || 'other').trim();
   const targetId = body.targetId ? String(body.targetId).trim() : null;
   const reason = String(body.reason || '').trim();
   const description = String(body.description || '').trim();
 
-  if (!['user', 'repository', 'analysis', 'ai_feedback', 'roadmap', 'other'].includes(targetType)) {
-    throw createStatusError('targetType is invalid', 400);
+  if (!REPORT_TYPES.includes(type)) {
+    throw createStatusError(`type must be one of ${REPORT_TYPES.join(', ')}`, 400);
   }
 
   if (targetId && !mongoose.Types.ObjectId.isValid(targetId)) {
@@ -33,11 +35,12 @@ const createReport = async ({ authUser, body }) => {
   }
 
   const report = await Report.create({
-    reporterId,
-    targetType,
+    userId: reporterId,
+    type,
     targetId: targetId || null,
     reason,
     description,
+    status: 'PENDING',
   });
 
   return {

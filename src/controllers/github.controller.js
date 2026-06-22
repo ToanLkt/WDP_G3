@@ -1,4 +1,5 @@
 const githubService = require('../services/github.service');
+const authService = require('../services/auth.service');
 const { getGithubConnectUrl } = require('../config/frontend');
 const { successResponse } = require('../utils/response');
 
@@ -16,14 +17,19 @@ const startOAuth = async (req, res, next) => {
 
 const handleOAuthCallback = async (req, res, next) => {
   try {
-    const redirectUrl = await githubService.handleOAuthCallback(req.query);
+    const redirectUrl = await authService.handleGithubOAuthCallback(req.query);
     return res.redirect(302, redirectUrl);
-  } catch (error) {
-    const fallbackUrl = new URL(
-      getGithubConnectUrl(req.get('origin'), process.env.FRONTEND_URL)
-    );
-    fallbackUrl.searchParams.set('error', error.message || 'GitHub OAuth failed');
-    return res.redirect(302, fallbackUrl.toString());
+  } catch (authError) {
+    try {
+      const redirectUrl = await githubService.handleOAuthCallback(req.query);
+      return res.redirect(302, redirectUrl);
+    } catch (connectError) {
+      const fallbackUrl = new URL(
+        getGithubConnectUrl(req.get('origin'), process.env.FRONTEND_URL)
+      );
+      fallbackUrl.searchParams.set('error', connectError.message || authError.message || 'GitHub OAuth failed');
+      return res.redirect(302, fallbackUrl.toString());
+    }
   }
 };
 
