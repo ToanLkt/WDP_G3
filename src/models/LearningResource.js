@@ -7,6 +7,12 @@ const learningResourceSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    canonicalSkillName: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true,
+    },
     normalizedSkillName: {
       type: String,
       required: true,
