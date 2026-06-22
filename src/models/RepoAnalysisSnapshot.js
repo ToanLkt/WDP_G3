@@ -40,6 +40,55 @@ const checklistSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const skillEvidenceSchema = new mongoose.Schema(
+  {
+    skill: { type: String, required: true, trim: true },
+    canonicalSkillName: { type: String, required: true, trim: true },
+    normalizedSkillName: { type: String, required: true, trim: true, lowercase: true },
+    category: { type: String, default: 'General', trim: true },
+    source: {
+      type: String,
+      enum: [
+        'language',
+        'framework',
+        'package',
+        'config',
+        'skill_signal',
+        'career_signal',
+        'checklist',
+        'score',
+        'missing_signal',
+        'inferred',
+      ],
+      required: true,
+    },
+    sourceValue: { type: String, default: '', trim: true },
+    weight: { type: Number, default: 0, min: 0, max: 1 },
+    confidence: { type: Number, default: 0, min: 0, max: 1 },
+    note: { type: String, default: '', trim: true },
+  },
+  { _id: false }
+);
+
+const skillVectorSchema = new mongoose.Schema(
+  {
+    skill: { type: String, required: true, trim: true },
+    canonicalSkillName: { type: String, required: true, trim: true },
+    normalizedSkillName: { type: String, required: true, trim: true, lowercase: true },
+    category: { type: String, default: 'General', trim: true },
+    score: { type: Number, default: 0, min: 0, max: 1 },
+    level: {
+      type: String,
+      enum: ['missing', 'weak', 'developing', 'strong'],
+      default: 'missing',
+    },
+    evidence: { type: [String], default: [] },
+    sources: { type: [String], default: [] },
+    lastCalculatedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const repoAnalysisSnapshotSchema = new mongoose.Schema(
   {
     userId: {
@@ -96,6 +145,8 @@ const repoAnalysisSnapshotSchema = new mongoose.Schema(
       type: checklistSchema,
       default: () => ({}),
     },
+    skillEvidence: { type: [skillEvidenceSchema], default: [] },
+    skillVector: { type: [skillVectorSchema], default: [] },
     analyzedAt: {
       type: Date,
       default: Date.now,

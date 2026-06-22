@@ -1,6 +1,8 @@
 const { analyzeCommits } = require('./analysis.commitAnalyzer');
 const { calculateScores } = require('./analysis.scoring');
 const { dedupeStrings, extractSkillSignals } = require('./analysis.skillExtractor');
+const { buildSkillVectorFromAnalysis } = require('../skillVector.service');
+const { generateAnalysisInsightsFromSkillVector } = require('../skillInsight.service');
 
 const getFileRule = (rules, checklistKey) => {
   const fileRules = rules.fileRules || {};
@@ -310,6 +312,32 @@ const buildAnalysisPayload = ({ repository, packageRecord, commits, rules }) => 
 
   missingSkills = dedupeStrings(missingSkills);
   recommendations = dedupeStrings(recommendations);
+  const skillRepresentation = buildSkillVectorFromAnalysis({
+    languages,
+    frameworks,
+    packages,
+    configs,
+    skillSignals: extracted.skillSignals,
+    careerSignals: extracted.careerSignals,
+    checklist,
+    scores,
+    missingSkills,
+    projectType,
+    careerDirection,
+  });
+  const vectorInsights = generateAnalysisInsightsFromSkillVector(skillRepresentation.skillVector, {
+    projectType,
+    careerDirection,
+    scores,
+    checklist,
+    languages,
+    frameworks,
+    packages,
+    configs,
+    commitSummary: commitAnalysis.commitSummary,
+  });
+  const oldStrengths = dedupeStrings(strengths.length > 0 ? strengths : rules.defaultStrengths);
+  const oldWeaknesses = dedupeStrings(weaknesses.length > 0 ? weaknesses : rules.defaultWeaknesses);
 
   return {
     githubRepoId: repository.githubRepoId,
@@ -323,13 +351,14 @@ const buildAnalysisPayload = ({ repository, packageRecord, commits, rules }) => 
     skillSignals: dedupeStrings(extracted.skillSignals),
     careerSignals: dedupeStrings(extracted.careerSignals),
     careerDirection,
-    strengths: dedupeStrings(strengths.length > 0 ? strengths : rules.defaultStrengths),
-    weaknesses: dedupeStrings(weaknesses.length > 0 ? weaknesses : rules.defaultWeaknesses),
-    missingSkills,
-    recommendations,
+    strengths: vectorInsights.strengths.length ? vectorInsights.strengths : oldStrengths,
+    weaknesses: vectorInsights.weaknesses.length ? vectorInsights.weaknesses : oldWeaknesses,
+    missingSkills: vectorInsights.missingSkills.length ? vectorInsights.missingSkills : missingSkills,
+    recommendations: vectorInsights.recommendations.length ? vectorInsights.recommendations : recommendations,
     scores,
     commitSummary: commitAnalysis.commitSummary,
     checklist,
+    ...skillRepresentation,
     rawAnalysis: {
       repository: {
         id: repository._id,
@@ -363,6 +392,10 @@ const sanitizeAnalysisSnapshot = (snapshot, options = {}) => {
 
   if (options.excludeRawAnalysis) {
     delete sanitized.rawAnalysis;
+  }
+
+  if (options.includeEvidence !== true) {
+    delete sanitized.skillEvidence;
   }
 
   return sanitized;
