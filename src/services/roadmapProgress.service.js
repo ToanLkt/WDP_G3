@@ -5,7 +5,6 @@ const RoadmapProgress = require('../models/RoadmapProgress');
 const { createStatusError } = require('./github/github.utils');
 const { createAutomaticNotification } = require('./notification.service');
 const normalizeText = require('../utils/normalizeText');
-const { canonicalizeSkillName } = require('../utils/skillCanonicalizer');
 
 const ALLOWED_STATUSES = ['not_started', 'in_progress', 'completed'];
 
@@ -52,11 +51,11 @@ const readSkillName = (item) => {
     return '';
   }
 
-  return item.canonicalSkillName || item.skillName || item.skill || item.name || item.title || item.label || '';
+  return item.skillName || item.skill || item.name || item.title || item.label || '';
 };
 
 const addSkill = (skills, seen, value) => {
-  const skillName = canonicalizeSkillName(readSkillName(value));
+  const skillName = String(readSkillName(value) || '').trim();
   const normalizedSkillName = normalizeText(skillName);
 
   if (!skillName || !normalizedSkillName || seen.has(normalizedSkillName)) {
@@ -99,7 +98,6 @@ function extractRoadmapSkills(roadmap) {
 
     if (Array.isArray(phase?.tasks)) {
       for (const task of phase.tasks) {
-        addSkill(skills, seen, task);
         addList(skills, seen, task?.skillTags);
         addList(skills, seen, task?.skills);
       }
@@ -191,12 +189,7 @@ const updateRoadmapItemStatus = async (authUserOrId, roadmapId, { skillName, sta
 
   const progress = await getOrCreateRoadmapProgress(authUserOrId, roadmapId);
   const normalizedSkillName = normalizeText(skillName);
-  const canonicalNormalizedSkillName = normalizeText(canonicalizeSkillName(skillName));
-  const item = progress.items.find(
-    (progressItem) =>
-      progressItem.normalizedSkillName === normalizedSkillName ||
-      progressItem.normalizedSkillName === canonicalNormalizedSkillName
-  );
+  const item = progress.items.find((progressItem) => progressItem.normalizedSkillName === normalizedSkillName);
 
   if (!item) {
     throw createStatusError('Roadmap progress item not found', 404);

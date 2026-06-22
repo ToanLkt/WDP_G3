@@ -22,7 +22,7 @@ const router = express.Router();
  *           type: string
  *     responses:
  *       200:
- *         description: Repository snapshots fetched successfully. Each item includes a compact skillVectorSummary.
+ *         description: Repository snapshots fetched successfully
  *         content:
  *           application/json:
  *             example:
@@ -38,12 +38,6 @@ const router = express.Router();
  *                     careerDirection: Backend Developer
  *                     overallScore: 67
  *                     missingSkills: [Testing, CI/CD]
- *                     skillVectorSummary:
- *                       totalSkills: 18
- *                       strongSkills: 13
- *                       developingSkills: 2
- *                       weakSkills: 0
- *                       missingSkills: 3
  *                     analyzedAt: 2026-06-18T00:00:00.000Z
  *                     createdAt: 2026-06-18T00:00:00.000Z
  *       401:
@@ -67,21 +61,9 @@ router.get('/:repoId/snapshots', authMiddleware, snapshotController.getRepositor
  *         required: true
  *         schema:
  *           type: string
- *       - in: query
- *         name: includeSkillDetails
- *         schema:
- *           type: boolean
- *           default: false
- *         description: Include full per-skill comparison arrays
- *       - in: query
- *         name: includeEvidence
- *         schema:
- *           type: boolean
- *           default: false
- *         description: Include evidence and sources when includeSkillDetails=true
  *     responses:
  *       200:
- *         description: Returns compact skillVectorComparison between the first and latest snapshot by default.
+ *         description: Snapshots compared successfully
  *       400:
  *         description: At least two snapshots are required for comparison
  *         content:

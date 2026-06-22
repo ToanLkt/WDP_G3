@@ -20,19 +20,6 @@ const router = express.Router();
  *     summary: Compare two repository analysis snapshots
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: includeSkillDetails
- *         schema:
- *           type: boolean
- *           default: false
- *         description: Include full per-skill comparison arrays
- *       - in: query
- *         name: includeEvidence
- *         schema:
- *           type: boolean
- *           default: false
- *         description: Include evidence and sources when includeSkillDetails=true
  *     requestBody:
  *       required: true
  *       content:
@@ -49,7 +36,7 @@ const router = express.Router();
  *                 type: string
  *     responses:
  *       200:
- *         description: Returns compact skillVectorComparison by default. Full skill changes require includeSkillDetails=true; evidence additionally requires includeEvidence=true.
+ *         description: Snapshots compared successfully
  *         content:
  *           application/json:
  *             example:
@@ -87,15 +74,9 @@ router.post('/compare', authMiddleware, snapshotController.compareSnapshots);
  *         required: true
  *         schema:
  *           type: string
- *       - in: query
- *         name: includeEvidence
- *         schema:
- *           type: boolean
- *           default: false
- *         description: Include raw skillEvidence together with the snapshot skillVector
  *     responses:
  *       200:
- *         description: Snapshot fetched successfully. skillVector represents skills at analysis time; skillEvidence is included only when includeEvidence=true.
+ *         description: Snapshot fetched successfully
  *       401:
  *         description: Unauthorized
  *       404:
