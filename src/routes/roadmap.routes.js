@@ -21,7 +21,6 @@ const router = express.Router();
  *   post:
  *     tags: [Roadmaps]
  *     summary: Generate a personalized roadmap for the current user
- *     description: Uses the latest repository skillVector and role matching gaps when repoId is provided. The frontend does not need to call the role-matches API first.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -36,30 +35,12 @@ const router = express.Router();
  *               targetRole:
  *                 type: string
  *                 example: Backend Developer
- *               repoId:
- *                 type: string
- *                 description: Optional repository id used to load the latest skillVector and prioritize role skill gaps
- *               roleId:
- *                 type: string
- *                 example: backend-developer
- *               level:
- *                 type: string
- *                 example: beginner
- *               durationWeeks:
- *                 type: integer
- *                 example: 6
- *               language:
- *                 type: string
- *                 example: vi
- *               useRoleMatching:
- *                 type: boolean
- *                 default: true
  *               forceRegenerate:
  *                 type: boolean
  *                 example: false
  *     responses:
  *       201:
- *         description: Roadmap generated successfully. When repoId has a latest skillVector, role matching gaps are prioritized and metadata includes roadmapSource, roleMatch, and skillGapSummary.
+ *         description: Roadmap generated successfully
  *       200:
  *         description: Existing roadmap fetched successfully
  *       400:

@@ -6,7 +6,7 @@ function safeJson(data) {
   }
 }
 
-function buildRoadmapPrompt({ targetRole, githubContext, roadmapGapContext }) {
+function buildRoadmapPrompt({ targetRole, githubContext }) {
   return `
 You are an AI Career Mentor and Software Engineering curriculum designer.
 
@@ -25,11 +25,6 @@ Important rules:
   2. One path that improves job-readiness and employability.
 - Do not invent repositories, technologies, or skills not present in the context.
 - You may suggest missing skills only if they are relevant to the selected target role.
-- If Roadmap Skill Gap Context is available, prioritize its prioritySkills in order.
-- Do not make alreadyStrongSkills the main learning content.
-- Every skill name must use the canonical name from Roadmap Skill Gap Context.
-- Do not include learning resource links, books, courses, videos, or documentation URLs.
-- Set every task resources field to an empty array. Learning resources are handled by a separate Learning API.
 - Answer as valid JSON only.
 - Do not wrap JSON in markdown.
 - Use Vietnamese text for user-facing fields.
@@ -91,9 +86,6 @@ Constraints:
 
 Student GitHub Context:
 ${safeJson(githubContext)}
-
-Roadmap Skill Gap Context:
-${safeJson(roadmapGapContext)}
 `;
 }
 

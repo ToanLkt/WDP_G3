@@ -776,7 +776,7 @@ Response khi search YouTube thành công:
   "data": [
     {
       "title": "HTML Tutorial for Beginners",
-      "url": "https://www.youtube.com/watch?v=qz0aGYrrlhU",
+      "url": "https://www.youtube.com/watch?v=example",
       "provider": "YouTube",
       "source": "youtube_api",
       "score": 60

@@ -1,6 +1,5 @@
 const learningResourcesSeed = require('../seeds/learningResources.seed');
 const normalizeText = require('../utils/normalizeText');
-const { canonicalizeSkillName } = require('../utils/skillCanonicalizer');
 
 const DEFAULT_TARGET_ROLE = 'Software Developer';
 const DEFAULT_LEVEL = 'beginner';
@@ -32,14 +31,14 @@ function isValidResourceUrl(url) {
 }
 
 const findCatalogResources = ({ skillName, targetRole, level, language, type }) => {
-  const normalizedSkillName = normalizeText(canonicalizeSkillName(skillName));
+  const normalizedSkillName = normalizeText(skillName);
   const normalizedTargetRole = normalizeText(targetRole || DEFAULT_TARGET_ROLE);
   const normalizedLevel = normalizeText(level || DEFAULT_LEVEL);
   const normalizedLanguage = normalizeText(language || DEFAULT_LANGUAGE);
   const normalizedType = normalizeText(type || DEFAULT_TYPE);
 
   return learningResourcesSeed.filter((resource) => {
-    const catalogSkillName = normalizeText(canonicalizeSkillName(resource.skillName));
+    const catalogSkillName = normalizeText(resource.skillName);
     const catalogTargetRole = normalizeText(resource.targetRole);
     const catalogLevel = normalizeText(resource.level || DEFAULT_LEVEL);
     const catalogLanguage = normalizeText(resource.language || DEFAULT_LANGUAGE);
