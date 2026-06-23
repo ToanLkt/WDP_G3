@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const RepoAnalysisSnapshot = require('../models/RepoAnalysisSnapshot');
 const { findRepositoryForUser } = require('./github/github.repository.service');
 const { createStatusError } = require('./github/github.utils');
+const { compareSkillVectors, formatSkillVectorComparison } = require('./skillVectorCompare.service');
+const { canonicalizeSkillName } = require('../utils/skillCanonicalizer');
 
 const SCORE_LABELS = {
   techStackScore: 'Tech Stack',
@@ -35,13 +37,20 @@ const validateAuthUser = (authUser) => {
 const toObject = (doc) => (doc && typeof doc.toObject === 'function' ? doc.toObject() : doc);
 
 const stringArray = (values) => (Array.isArray(values) ? values.map((value) => String(value || '').trim()).filter(Boolean) : []);
+const objectArray = (values) =>
+  Array.isArray(values)
+    ? values
+        .filter((value) => value && typeof value === 'object')
+        .map((value) => ({ ...(value.toObject ? value.toObject() : value) }))
+    : [];
 
 const normalizeListMap = (values) => {
   const map = new Map();
   for (const value of stringArray(values)) {
-    const normalized = value.toLowerCase();
+    const canonicalValue = canonicalizeSkillName(value);
+    const normalized = canonicalValue.toLowerCase();
     if (normalized && !map.has(normalized)) {
-      map.set(normalized, value);
+      map.set(normalized, canonicalValue);
     }
   }
   return map;
@@ -72,6 +81,8 @@ const buildSnapshotPayload = (analysisResult) => {
     scores: source.scores || {},
     commitSummary: source.commitSummary || {},
     checklist: source.checklist || {},
+    skillEvidence: objectArray(source.skillEvidence),
+    skillVector: objectArray(source.skillVector),
     analyzedAt: source.analyzedAt || source.createdAt || new Date(),
     snapshotType: 'after_analysis',
     source: 'github',
@@ -86,6 +97,17 @@ const createSnapshotFromAnalysisResult = async (analysisResult) => {
   return RepoAnalysisSnapshot.create(buildSnapshotPayload(analysisResult));
 };
 
+const buildSkillVectorSummary = (skillVector) => {
+  const vector = objectArray(skillVector);
+  return {
+    totalSkills: vector.length,
+    strongSkills: vector.filter((item) => item.level === 'strong').length,
+    developingSkills: vector.filter((item) => item.level === 'developing').length,
+    weakSkills: vector.filter((item) => item.level === 'weak').length,
+    missingSkills: vector.filter((item) => item.level === 'missing').length,
+  };
+};
+
 const summarizeSnapshot = (snapshot) => ({
   _id: snapshot._id,
   repositoryId: snapshot.repositoryId,
@@ -95,6 +117,7 @@ const summarizeSnapshot = (snapshot) => ({
   overallScore: snapshot.scores?.overallScore || 0,
   scores: snapshot.scores || {},
   missingSkills: snapshot.missingSkills || [],
+  skillVectorSummary: buildSkillVectorSummary(snapshot.skillVector),
   analyzedAt: snapshot.analyzedAt,
   createdAt: snapshot.createdAt,
 });
@@ -119,7 +142,7 @@ const getRepositorySnapshots = async (user, repoId) => {
   };
 };
 
-const getSnapshotById = async (user, snapshotId) => {
+const getSnapshotById = async (user, snapshotId, query = {}) => {
   validateAuthUser(user);
 
   if (!mongoose.Types.ObjectId.isValid(String(snapshotId || ''))) {
@@ -131,9 +154,19 @@ const getSnapshotById = async (user, snapshotId) => {
     throw createStatusError('Snapshot not found', 404);
   }
 
+  const sanitizedSnapshot = {
+    ...snapshot,
+    skillVector: objectArray(snapshot.skillVector),
+  };
+  if (query.includeEvidence !== 'true') {
+    delete sanitizedSnapshot.skillEvidence;
+  } else {
+    sanitizedSnapshot.skillEvidence = objectArray(snapshot.skillEvidence);
+  }
+
   return {
     message: 'Snapshot fetched successfully',
-    data: snapshot,
+    data: sanitizedSnapshot,
     statusCode: 200,
   };
 };
@@ -224,7 +257,7 @@ const buildVietnameseSummary = ({ overallChange, improvements, resolvedMissingSk
   return sentences.join(' ');
 };
 
-const buildComparisonResult = (fromSnapshotInput, toSnapshotInput) => {
+const buildComparisonResult = (fromSnapshotInput, toSnapshotInput, options = {}) => {
   const fromSnapshot = toObject(fromSnapshotInput);
   const toSnapshot = toObject(toSnapshotInput);
   const fromRepositoryId = String(fromSnapshot.repositoryId || '');
@@ -240,6 +273,7 @@ const buildComparisonResult = (fromSnapshotInput, toSnapshotInput) => {
   const scoreComparison = compareScores(fromSnapshot, toSnapshot);
   const checklistComparison = compareChecklist(fromSnapshot, toSnapshot);
   const missingSkillComparison = compareMissingSkills(fromSnapshot, toSnapshot);
+  const skillVectorComparison = compareSkillVectors(fromSnapshot.skillVector, toSnapshot.skillVector);
   const summary = buildVietnameseSummary({
     overallChange,
     improvements: scoreComparison.improvements,
@@ -261,11 +295,12 @@ const buildComparisonResult = (fromSnapshotInput, toSnapshotInput) => {
     ...scoreComparison,
     ...checklistComparison,
     ...missingSkillComparison,
+    skillVectorComparison: formatSkillVectorComparison(skillVectorComparison, options),
     summary,
   };
 };
 
-const compareSnapshots = async (user, { fromSnapshotId, toSnapshotId } = {}) => {
+const compareSnapshots = async (user, { fromSnapshotId, toSnapshotId } = {}, query = {}) => {
   validateAuthUser(user);
 
   if (!mongoose.Types.ObjectId.isValid(String(fromSnapshotId || '')) || !mongoose.Types.ObjectId.isValid(String(toSnapshotId || ''))) {
@@ -283,12 +318,15 @@ const compareSnapshots = async (user, { fromSnapshotId, toSnapshotId } = {}) => 
 
   return {
     message: 'Snapshots compared successfully',
-    data: buildComparisonResult(fromSnapshot, toSnapshot),
+    data: buildComparisonResult(fromSnapshot, toSnapshot, {
+      includeSkillDetails: query.includeSkillDetails === 'true',
+      includeEvidence: query.includeEvidence === 'true',
+    }),
     statusCode: 200,
   };
 };
 
-const compareRepositoryProgress = async (user, repoId) => {
+const compareRepositoryProgress = async (user, repoId, query = {}) => {
   validateAuthUser(user);
   const repository = await findRepositoryForUser(user, repoId);
   const snapshots = await RepoAnalysisSnapshot.find({
@@ -304,7 +342,10 @@ const compareRepositoryProgress = async (user, repoId) => {
 
   return {
     message: 'Snapshots compared successfully',
-    data: buildComparisonResult(snapshots[0], snapshots[snapshots.length - 1]),
+    data: buildComparisonResult(snapshots[0], snapshots[snapshots.length - 1], {
+      includeSkillDetails: query.includeSkillDetails === 'true',
+      includeEvidence: query.includeEvidence === 'true',
+    }),
     statusCode: 200,
   };
 };
@@ -316,4 +357,6 @@ module.exports = {
   compareSnapshots,
   compareRepositoryProgress,
   buildComparisonResult,
+  buildSnapshotPayload,
+  buildSkillVectorSummary,
 };

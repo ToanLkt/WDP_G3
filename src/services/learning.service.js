@@ -6,6 +6,7 @@ const { createStatusError } = require('./github/github.utils');
 const { findCatalogResources } = require('./learningResourceCatalog.service');
 const { searchYoutubeVideos } = require('./youtube.service');
 const normalizeText = require('../utils/normalizeText');
+const { canonicalizeSkillName } = require('../utils/skillCanonicalizer');
 
 const DEFAULT_TARGET_ROLE = 'Software Developer';
 const DEFAULT_LEVEL = 'beginner';
@@ -35,18 +36,49 @@ const normalizeLanguage = (language, defaultLanguage) =>
   normalizeText(language || defaultLanguage) || defaultLanguage;
 
 const buildLearningIdentity = ({ skillName, targetRole, level, language }) => {
-  const cleanSkillName = String(skillName || '').trim();
+  const requestedSkillName = String(skillName || '').trim();
+  const canonicalSkillName = canonicalizeSkillName(requestedSkillName);
   const cleanTargetRole = String(targetRole || DEFAULT_TARGET_ROLE).trim() || DEFAULT_TARGET_ROLE;
 
   return {
-    skillName: cleanSkillName,
-    normalizedSkillName: normalizeText(cleanSkillName),
+    requestedSkillName,
+    skillName: canonicalSkillName,
+    canonicalSkillName,
+    normalizedSkillName: normalizeText(canonicalSkillName),
+    legacyNormalizedSkillName: normalizeText(requestedSkillName),
     targetRole: cleanTargetRole,
     normalizedTargetRole: normalizeText(cleanTargetRole),
     level: normalizeLevel(level),
     language: normalizeLanguage(language, DEFAULT_CONTENT_LANGUAGE),
   };
 };
+
+const buildLearningContentKey = (input = {}) => buildLearningIdentity(input);
+
+const getLearningMetadata = (identity) => ({
+  requestedSkillName: identity.requestedSkillName,
+  skillName: identity.skillName,
+  canonicalSkillName: identity.canonicalSkillName,
+  normalizedSkillName: identity.normalizedSkillName,
+  targetRole: identity.targetRole,
+  level: identity.level,
+  language: identity.language,
+});
+
+const canonicalizeStoredDocument = (document, identity) => ({
+  ...document,
+  ...getLearningMetadata(identity),
+});
+
+const getPersistedIdentity = (identity) => ({
+  skillName: identity.skillName,
+  canonicalSkillName: identity.canonicalSkillName,
+  normalizedSkillName: identity.normalizedSkillName,
+  targetRole: identity.targetRole,
+  normalizedTargetRole: identity.normalizedTargetRole,
+  level: identity.level,
+  language: identity.language,
+});
 
 const buildResourceQuery = ({ skillName, targetRole, level, language, type }) => {
   const identity = buildLearningIdentity({ skillName, targetRole, level, language: DEFAULT_CONTENT_LANGUAGE });
@@ -100,7 +132,9 @@ const sanitizeLearningContent = (payload) => ({
     .filter((exercise) => exercise.title || exercise.description)
     .slice(0, 6),
   commonMistakes: stringArray(payload?.commonMistakes),
-  nextSkills: stringArray(payload?.nextSkills),
+  nextSkills: stringArray(payload?.nextSkills)
+    .map(canonicalizeSkillName)
+    .filter((value, index, values) => values.indexOf(value) === index),
 });
 
 const getLearningContent = async ({ skillName, targetRole, level, language }) => {
@@ -110,12 +144,23 @@ const getLearningContent = async ({ skillName, targetRole, level, language }) =>
     throw createStatusError('skillName is required', 400);
   }
 
-  const content = await LearningContent.findOne({
+  const canonicalQuery = {
     normalizedSkillName: identity.normalizedSkillName,
     normalizedTargetRole: identity.normalizedTargetRole,
     level: identity.level,
     language: identity.language,
-  }).lean();
+  };
+  let content = await LearningContent.findOne(canonicalQuery).lean();
+  if (
+    !content &&
+    identity.legacyNormalizedSkillName &&
+    identity.legacyNormalizedSkillName !== identity.normalizedSkillName
+  ) {
+    content = await LearningContent.findOne({
+      ...canonicalQuery,
+      normalizedSkillName: identity.legacyNormalizedSkillName,
+    }).lean();
+  }
 
   if (!content) {
     throw createStatusError('Learning content not found. Please generate it first.', 404);
@@ -123,7 +168,7 @@ const getLearningContent = async ({ skillName, targetRole, level, language }) =>
 
   return {
     message: 'Learning content found',
-    data: content,
+    data: canonicalizeStoredDocument(content, identity),
     statusCode: 200,
   };
 };
@@ -141,12 +186,23 @@ const generateLearningContent = async ({ skillName, targetRole, level, language,
     level: identity.level,
     language: identity.language,
   };
-  const existing = forceRegenerate ? null : await LearningContent.findOne(contentQuery).lean();
+  let existing = forceRegenerate ? null : await LearningContent.findOne(contentQuery).lean();
+  if (
+    !forceRegenerate &&
+    !existing &&
+    identity.legacyNormalizedSkillName &&
+    identity.legacyNormalizedSkillName !== identity.normalizedSkillName
+  ) {
+    existing = await LearningContent.findOne({
+      ...contentQuery,
+      normalizedSkillName: identity.legacyNormalizedSkillName,
+    }).lean();
+  }
 
   if (existing) {
     return {
       message: 'Learning content already exists',
-      data: existing,
+      data: canonicalizeStoredDocument(existing, identity),
       statusCode: 200,
     };
   }
@@ -158,7 +214,7 @@ const generateLearningContent = async ({ skillName, targetRole, level, language,
     contentQuery,
     {
       $set: {
-        ...identity,
+        ...getPersistedIdentity(identity),
         ...sanitizeLearningContent(parsed),
         generatedBy: 'ai',
       },
@@ -168,7 +224,7 @@ const generateLearningContent = async ({ skillName, targetRole, level, language,
 
   return {
     message: 'Learning content generated successfully',
-    data: content.toObject(),
+    data: canonicalizeStoredDocument(content.toObject(), identity),
     statusCode: 201,
   };
 };
@@ -200,11 +256,30 @@ const getLearningResources = async ({ skillName, targetRole, level, language, ty
     throw createStatusError('skillName is required', 400);
   }
 
-  const resources = await sortResources(query);
+  let resources = await sortResources(query);
+  if (
+    !resources.length &&
+    identity.legacyNormalizedSkillName &&
+    identity.legacyNormalizedSkillName !== identity.normalizedSkillName
+  ) {
+    resources = await sortResources({
+      ...query,
+      normalizedSkillName: identity.legacyNormalizedSkillName,
+    });
+  }
 
   return {
     message: resources.length ? 'Learning resources fetched successfully' : 'No learning resources found',
-    data: resources,
+    data: {
+      ...getLearningMetadata({
+        ...identity,
+        language: query.language,
+      }),
+      resources: resources.map((resource) => canonicalizeStoredDocument(resource, {
+        ...identity,
+        language: query.language,
+      })),
+    },
     statusCode: 200,
   };
 };
@@ -234,7 +309,7 @@ const saveLearningResource = async ({ skillName, body = {} }) => {
   }
 
   const resourcePayload = {
-    ...identity,
+    ...getPersistedIdentity(identity),
     language: normalizeLanguage(body.language, DEFAULT_RESOURCE_LANGUAGE),
     type: normalizeType(body.type),
     title: String(body.title).trim(),
@@ -252,7 +327,16 @@ const saveLearningResource = async ({ skillName, body = {} }) => {
 
   return {
     message: 'Learning resource saved successfully',
-    data: resource,
+    data: {
+      ...getLearningMetadata({
+        ...identity,
+        language: resourcePayload.language,
+      }),
+      resource: canonicalizeStoredDocument(resource, {
+        ...identity,
+        language: resourcePayload.language,
+      }),
+    },
     statusCode: 200,
   };
 };
@@ -270,11 +354,26 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
     throw createStatusError('skillName is required', 400);
   }
 
-  const existing = await sortResources(query);
+  let existing = await sortResources(query);
+  if (
+    !existing.length &&
+    identity.legacyNormalizedSkillName &&
+    identity.legacyNormalizedSkillName !== identity.normalizedSkillName
+  ) {
+    existing = await sortResources({
+      ...query,
+      normalizedSkillName: identity.legacyNormalizedSkillName,
+    });
+  }
   if (existing.length) {
     return {
       message: 'Learning resources already cached',
-      data: existing,
+      data: {
+        ...getLearningMetadata({ ...identity, language: query.language }),
+        resources: existing.map((resource) =>
+          canonicalizeStoredDocument(resource, { ...identity, language: query.language })
+        ),
+      },
       statusCode: 200,
     };
   }
@@ -291,7 +390,7 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
     const savedCatalogResources = [];
     for (const catalogResource of catalogResources) {
       const resource = await saveResourceByUrl({
-        ...identity,
+        ...getPersistedIdentity(identity),
         language: String(catalogResource.language || query.language).trim() || query.language,
         type: normalizeType(catalogResource.type),
         title: String(catalogResource.title || '').trim(),
@@ -313,7 +412,14 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
 
     return {
       message: 'Learning resources loaded from catalog and cached successfully',
-      data: savedCatalogResources.sort((a, b) => (b.score || 0) - (a.score || 0)),
+      data: {
+        ...getLearningMetadata({ ...identity, language: query.language }),
+        resources: savedCatalogResources
+          .sort((a, b) => (b.score || 0) - (a.score || 0))
+          .map((resource) =>
+            canonicalizeStoredDocument(resource, { ...identity, language: query.language })
+          ),
+      },
       statusCode: 201,
     };
   }
@@ -333,13 +439,16 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
   if (!bestVideo) {
     return {
       message: 'No relevant YouTube resources found',
-      data: [],
+      data: {
+        ...getLearningMetadata({ ...identity, language: query.language }),
+        resources: [],
+      },
       statusCode: 200,
     };
   }
 
   const savedResource = await saveResourceByUrl({
-    ...identity,
+    ...getPersistedIdentity(identity),
     language: query.language,
     type: DEFAULT_RESOURCE_TYPE,
     title: bestVideo.title,
@@ -356,7 +465,12 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
 
   return {
     message: 'Best YouTube resource searched and cached successfully',
-    data: [savedResource],
+    data: {
+      ...getLearningMetadata({ ...identity, language: query.language }),
+      resources: [
+        canonicalizeStoredDocument(savedResource, { ...identity, language: query.language }),
+      ],
+    },
     statusCode: 201,
   };
 };
@@ -368,4 +482,6 @@ module.exports = {
   saveLearningResource,
   searchAndCacheYoutubeResources,
   extractJsonFromText,
+  buildLearningIdentity,
+  buildLearningContentKey,
 };
