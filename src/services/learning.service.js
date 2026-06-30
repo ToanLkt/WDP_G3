@@ -173,7 +173,7 @@ const getLearningContent = async ({ skillName, targetRole, level, language }) =>
   };
 };
 
-const generateLearningContent = async ({ skillName, targetRole, level, language, forceRegenerate } = {}) => {
+const generateLearningContent = async ({ skillName, targetRole, level, language, forceRegenerate, context } = {}) => {
   const identity = buildLearningIdentity({ skillName, targetRole, level, language });
 
   if (!identity.skillName) {
@@ -207,7 +207,7 @@ const generateLearningContent = async ({ skillName, targetRole, level, language,
     };
   }
 
-  const prompt = buildLearningPrompt(identity);
+  const prompt = buildLearningPrompt({ ...identity, context });
   const aiResult = await generateJsonWithGemini(prompt, { temperature: 0.4 });
   const parsed = extractJsonFromText(aiResult.text);
   const content = await LearningContent.findOneAndUpdate(

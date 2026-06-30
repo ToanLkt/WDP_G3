@@ -3,7 +3,7 @@ const { successResponse } = require('../utils/response');
 
 const getRepositorySnapshots = async (req, res, next) => {
   try {
-    const result = await snapshotService.getRepositorySnapshots(req.user, req.params.repoId);
+    const result = await snapshotService.getRepositorySnapshots(req.user, req.params.repoId, req.query);
     return successResponse(res, result.message, result.data, result.statusCode);
   } catch (error) {
     return next(error);

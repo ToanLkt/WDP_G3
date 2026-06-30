@@ -21,8 +21,18 @@ const getLanguageInstruction = (language) => {
   };
 };
 
-const buildLearningPrompt = ({ skillName, targetRole, level, language = 'vi' }) => {
+const safeJson = (value) => JSON.stringify(value || {}, null, 2);
+
+const buildLearningPrompt = ({ skillName, targetRole, level, language = 'vi', context }) => {
   const languageInstruction = getLanguageInstruction(language);
+  const contextBlock = context
+    ? `
+Roadmap/task context for better examples:
+${safeJson(context)}
+
+Use this context to make the content practical for the task, but the output must remain reusable shared learning content for the skill.
+`
+    : '';
 
   return `Generate learning content for Software Engineering students.
 
@@ -30,6 +40,7 @@ Skill: ${skillName}
 Target role: ${targetRole}
 Level: ${level}
 Language: ${languageInstruction.label}
+${contextBlock}
 
 Return only valid JSON with this exact structure:
 {

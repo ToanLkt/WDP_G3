@@ -11,7 +11,8 @@ const router = express.Router();
  * /api/repositories/{repoId}/snapshots:
  *   get:
  *     tags: [Snapshots]
- *     summary: Get snapshot history for one repository
+ *     summary: Get user-contribution snapshot history for one repository
+ *     description: Get user-contribution snapshot history for the current user in one repository.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -20,32 +21,59 @@ const router = express.Router();
  *         required: true
  *         schema:
  *           type: string
+ *       - in: query
+ *         name: view
+ *         schema:
+ *           type: string
+ *           enum: [summary, detail]
+ *           default: summary
+ *       - in: query
+ *         name: includeEvidence
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: Only works with view=detail.
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
  *     responses:
  *       200:
- *         description: Repository snapshots fetched successfully. Each item includes a compact skillVectorSummary.
+ *         description: Repository snapshots fetched successfully with compact user-contribution snapshots.
  *         content:
  *           application/json:
  *             example:
  *               success: true
  *               message: Repository snapshots fetched successfully
  *               data:
- *                 total: 2
+ *                 repositoryId: 665f1f000000000000000010
+ *                 repoName: WDP_G3
+ *                 fullName: ToanLkt/WDP_G3
+ *                 analysisScopeType: user_contribution
  *                 snapshots:
- *                   - _id: 665f1f000000000000000001
- *                     repositoryId: 665f1f000000000000000010
- *                     repoName: WDP_G3
- *                     fullName: ToanLkt/WDP_G3
- *                     careerDirection: Backend Developer
- *                     overallScore: 67
- *                     missingSkills: [Testing, CI/CD]
- *                     skillVectorSummary:
- *                       totalSkills: 18
- *                       strongSkills: 13
- *                       developingSkills: 2
- *                       weakSkills: 0
- *                       missingSkills: 3
+ *                   - snapshotId: 665f1f000000000000000001
+ *                     analysisScope:
+ *                       type: user_contribution
+ *                       userCommits: 11
+ *                       activeDays: 6
+ *                     summary:
+ *                       userLevel: intermediate
+ *                       userReadinessScore: 66
+ *                       careerDirection: Backend Developer
+ *                     topSkills: []
+ *                     missingSkills: []
  *                     analyzedAt: 2026-06-18T00:00:00.000Z
  *                     createdAt: 2026-06-18T00:00:00.000Z
+ *                 pagination:
+ *                   total: 2
+ *                   limit: 20
+ *                   page: 1
  *       401:
  *         description: Unauthorized
  *       404:
@@ -58,7 +86,8 @@ router.get('/:repoId/snapshots', authMiddleware, snapshotController.getRepositor
  * /api/repositories/{repoId}/progress-comparison:
  *   get:
  *     tags: [Snapshots]
- *     summary: Compare first and latest snapshots for one repository
+ *     summary: Compare first and latest user-contribution snapshots for one repository
+ *     description: Compare the first and latest user-contribution snapshots for the current user in one repository.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -67,29 +96,21 @@ router.get('/:repoId/snapshots', authMiddleware, snapshotController.getRepositor
  *         required: true
  *         schema:
  *           type: string
- *       - in: query
- *         name: includeSkillDetails
- *         schema:
- *           type: boolean
- *           default: false
- *         description: Include full per-skill comparison arrays
- *       - in: query
- *         name: includeEvidence
- *         schema:
- *           type: boolean
- *           default: false
- *         description: Include evidence and sources when includeSkillDetails=true
  *     responses:
  *       200:
- *         description: Returns compact skillVectorComparison between the first and latest snapshot by default.
- *       400:
- *         description: At least two snapshots are required for comparison
+ *         description: Returns compact progress comparison, or enoughData=false if there are fewer than two snapshots.
  *         content:
  *           application/json:
  *             example:
- *               success: false
- *               message: At least two snapshots are required for comparison
- *               data: null
+ *               success: true
+ *               message: Not enough snapshots to compare yet
+ *               data:
+ *                 repositoryId: 665f1f000000000000000010
+ *                 repoName: WDP_G3
+ *                 analysisScopeType: user_contribution
+ *                 enoughData: false
+ *                 snapshotsCount: 1
+ *                 comparison: null
  *       401:
  *         description: Unauthorized
  *       404:

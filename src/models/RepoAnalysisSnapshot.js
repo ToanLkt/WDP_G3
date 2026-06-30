@@ -137,6 +137,9 @@ const repoAnalysisSnapshotSchema = new mongoose.Schema(
       type: scoresSchema,
       default: () => ({}),
     },
+    summary: { type: Object, default: {} },
+    analysisScope: { type: Object, default: {} },
+    scoreBreakdown: { type: Object, default: {} },
     commitSummary: {
       type: commitSummarySchema,
       default: () => ({}),

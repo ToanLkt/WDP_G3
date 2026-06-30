@@ -64,10 +64,12 @@ const buildRoadmapSkillPriorities = (roleMatch, analysis = {}) => {
       canonicalSkillName,
       category: item?.category || vectorSkill?.category || getCanonicalSkillCategory(canonicalSkillName),
       priority,
+      reason: reasonVi,
       reasonVi,
       currentScore: Number(item?.userScore ?? vectorSkill?.score ?? 0),
       currentLevel: item?.level || vectorSkill?.level || 'missing',
-      targetMinScore: Number(item?.requiredMinScore || 0),
+      requiredScore: Number(item?.requiredMinScore || 0),
+      targetLevel: 'strong',
       importance: item?.importance || (priority === 1 ? 'required' : 'important'),
       source,
     });
@@ -91,6 +93,7 @@ const buildRoadmapSkillPriorities = (roleMatch, analysis = {}) => {
       ...item,
       skillName: normalizeRoadmapSkillName(item.skillName),
       canonicalSkillName: normalizeRoadmapSkillName(item.canonicalSkillName),
+      gap: Math.max(0, Number(item.requiredScore || 0) - Number(item.currentScore || 0)),
     }))
     .sort((a, b) => a.priority - b.priority);
 };
@@ -102,10 +105,13 @@ const buildFallbackGap = (analysis = {}, options = {}) => {
     canonicalSkillName: name,
     category: getCanonicalSkillCategory(name),
     priority: 4,
+    reason: 'Kỹ năng còn thiếu trong kết quả phân tích repository.',
     reasonVi: 'Kỹ năng còn thiếu trong kết quả phân tích repository.',
     currentScore: 0,
     currentLevel: 'missing',
-    targetMinScore: 0,
+    requiredScore: 0.4,
+    targetLevel: 'strong',
+    gap: 0.4,
     importance: 'important',
     source: 'analysis',
   }));
