@@ -7,6 +7,7 @@ interface SectionHeaderProps {
   actionText?: string;
   onActionTextPress?: () => void;
   accentColor?: string;
+  icon?: React.ReactNode;
 }
 
 export const SectionHeader: React.FC<SectionHeaderProps> = ({
@@ -14,11 +15,13 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
   actionText,
   onActionTextPress,
   accentColor = theme.colors.primary,
+  icon,
 }) => {
   return (
     <View style={styles.container}>
       <View style={styles.leftWrapper}>
         <View style={[styles.indicator, { backgroundColor: accentColor }]} />
+        {icon && <View style={styles.iconContainer}>{icon}</View>}
         <Text style={styles.titleText}>{title}</Text>
       </View>
       {actionText && onActionTextPress && (
@@ -47,6 +50,11 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: 2,
     marginRight: theme.spacing.sm,
+  },
+  iconContainer: {
+    marginRight: theme.spacing.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   titleText: {
     fontSize: theme.typography.sizes.md + 1,

@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
 import { theme } from '../../theme';
 
-type BadgeVariant = 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'muted';
+type BadgeVariant = 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'muted' | 'info';
 
 interface BadgeProps {
   label: string;
@@ -48,6 +48,12 @@ export const Badge: React.FC<BadgeProps> = ({
           bg: 'rgba(239, 104, 104, 0.12)',
           border: 'rgba(239, 104, 104, 0.3)',
           text: theme.colors.error,
+        };
+      case 'info':
+        return {
+          bg: 'rgba(59, 130, 246, 0.15)',
+          border: 'rgba(59, 130, 246, 0.3)',
+          text: '#3B82F6',
         };
       case 'muted':
       default:

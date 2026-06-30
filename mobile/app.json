@@ -6,11 +6,12 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "scheme": "gitanalyzer",
+    "scheme": ["gitanalyzer", "com.anonymous.wdp"],
     "ios": {
       "supportsTablet": true
     },
     "android": {
+      "package": "com.anonymous.WDP",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -23,7 +24,11 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-web-browser"
-    ]
+      "expo-web-browser",
+      "@react-native-google-signin/google-signin"
+    ],
+    "experiments": {
+      "tsconfigPaths": true
+    }
   }
 }

@@ -9,6 +9,15 @@ type RegisterRequest = LoginRequest & {
   fullName: string;
 };
 
+type GoogleLoginRequest = {
+  idToken: string;
+};
+
+type GithubLoginRequest = {
+  accessToken?: string;
+  redirectUrl?: string;
+};
+
 export type ChangePasswordRequest = {
   currentPassword: string;
   newPassword: string;
@@ -53,6 +62,26 @@ export const authApi = {
 
   async login(payload: LoginRequest) {
     const response = await apiClient.post('/auth/login', payload);
+    await persistToken(response.data);
+    return unwrapResponse<AuthPayload>(response.data);
+  },
+
+  async loginWithGoogle(payload: GoogleLoginRequest) {
+    const response = await apiClient.post('/auth/google', payload);
+    await persistToken(response.data);
+    return unwrapResponse<AuthPayload>(response.data);
+  },
+
+  async getGithubAuthUrl(redirectUrl: string) {
+    const response = await apiClient.post('/auth/github', { redirectUrl });
+    const record = response.data as Record<string, unknown>;
+    const url = record.authUrl ?? record.authorizeUrl ?? record.oauthUrl ?? record.url;
+    if (typeof url === 'string') return url;
+    throw new Error('Backend không trả về authUrl hợp lệ');
+  },
+
+  async loginWithGithub(payload: GithubLoginRequest) {
+    const response = await apiClient.post('/auth/github', payload);
     await persistToken(response.data);
     return unwrapResponse<AuthPayload>(response.data);
   },

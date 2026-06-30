@@ -12,6 +12,7 @@ export type RepositoriesStackParamList = {
 export type RoadmapStackParamList = {
   RoadmapList: undefined;
   RoadmapDetail: { roadmapId: string; title: string };
+  SkillLearningDetail: { roadmapId: string; skillName: string; nodeId?: string };
 };
 
 export type MainTabParamList = {

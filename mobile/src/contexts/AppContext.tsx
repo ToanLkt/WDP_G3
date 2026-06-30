@@ -7,6 +7,8 @@ import {
   fetchCurrentUser,
   fetchProfile,
   AuthResponse,
+  loginWithGoogle as apiLoginWithGoogle,
+  loginWithGithub as apiLoginWithGithub,
 } from '../services/auth';
 import { GitHubUser, connectGitHubOAuth, fetchGitHubMe, disconnectGitHub } from '../services/github';
 import {
@@ -23,6 +25,7 @@ import {
   clearToken,
   loadStoredToken,
   setUnauthorizedHandler,
+  setToken,
 } from '../api/client';
 import type { Profile } from '../types';
 
@@ -40,6 +43,8 @@ interface AppContextType {
   isLoading: boolean;
 
   loginUser: (email: string, password: string) => Promise<AuthResponse>;
+  loginWithGoogleAction: (idToken: string) => Promise<AuthResponse>;
+  loginWithGithubAction: (accessToken: string) => Promise<AuthResponse>;
   registerUser: (email: string, password: string, name: string) => Promise<AuthResponse>;
   logoutUser: () => Promise<void>;
   connectToGitHub: () => Promise<void>;
@@ -212,6 +217,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setTokenState(res.token);
       await hydrateUserSession();
       return res;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loginWithGoogleAction = async (idToken: string) => {
+    setIsLoading(true);
+    try {
+      const res = await apiLoginWithGoogle(idToken);
+      setUser(res.user);
+      setTokenState(res.token);
+      await hydrateUserSession();
+      return res;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loginWithGithubAction = async (appToken: string) => {
+    setIsLoading(true);
+    try {
+      await setToken(appToken);
+      const currentUser = await fetchCurrentUser();
+      setUser(currentUser);
+      setTokenState(appToken);
+      await hydrateUserSession();
+      return { token: appToken, user: currentUser };
+    } catch (e) {
+      await clearToken();
+      throw e;
     } finally {
       setIsLoading(false);
     }
@@ -481,6 +516,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activeRoadmapId,
         isLoading,
         loginUser,
+        loginWithGoogleAction,
+        loginWithGithubAction,
         registerUser,
         logoutUser,
         connectToGitHub,

@@ -7,19 +7,21 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
-import { RouteProp, useRoute } from '@react-navigation/native';
+import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import {
   Milestone,
   CheckCircle2,
   Circle,
   Lock,
-  Award,
   ChevronRight,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react-native';
 
 import { theme } from '../../theme';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
+import { Button } from '../../components/ui/Button';
 import { SectionHeader } from '../../components/ui/SectionHeader';
 import { useTabBarAwareScroll } from '../../hooks/useTabBarAwareScroll';
 import { roadmapService } from '../../features/roadmaps/api';
@@ -27,13 +29,6 @@ import type { LearningNode, LearningNodeStatus, Roadmap } from '../../features/r
 import type { RoadmapStackParamList } from '../../navigation/types';
 
 type DetailRoute = RouteProp<RoadmapStackParamList, 'RoadmapDetail'>;
-
-const nextStatus = (status: LearningNodeStatus): LearningNodeStatus => {
-  if (status === 'locked') return 'in-progress';
-  if (status === 'in-progress') return 'completed';
-  if (status === 'unlocked') return 'in-progress';
-  return 'locked';
-};
 
 const getStepStatusIcon = (status: LearningNodeStatus) => {
   if (status === 'completed') return <CheckCircle2 size={24} color={theme.colors.success} />;
@@ -43,19 +38,15 @@ const getStepStatusIcon = (status: LearningNodeStatus) => {
   return <Lock size={20} color={theme.colors.textMuted} />;
 };
 
-const getStepStatusBadge = (status: LearningNodeStatus) => {
-  if (status === 'completed') return <Badge label="Đã Xong" variant="success" />;
-  if (status === 'in-progress' || status === 'unlocked') return <Badge label="Đang Học" variant="secondary" />;
-  return <Badge label="Chưa Mở" variant="muted" />;
-};
-
 export const RoadmapDetailScreen: React.FC = () => {
   const route = useRoute<DetailRoute>();
+  const navigation = useNavigation<any>();
   const { tabBarPaddingBottom } = useTabBarAwareScroll();
   const { roadmapId } = route.params;
 
   const [roadmap, setRoadmap] = useState<Roadmap | null>(null);
   const [nodeStatuses, setNodeStatuses] = useState<Record<string, LearningNodeStatus>>({});
+  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState(true);
 
   const loadRoadmap = useCallback(async () => {
@@ -98,11 +89,22 @@ export const RoadmapDetailScreen: React.FC = () => {
     return Math.round((completed / nodes.length) * 100);
   }, [nodes, nodeStatuses]);
 
-  const toggleNode = (nodeId: string) => {
-    setNodeStatuses((prev) => ({
-      ...prev,
-      [nodeId]: nextStatus(prev[nodeId] ?? 'locked'),
-    }));
+  const markNodeCompleted = (nodeId: string) => {
+    setNodeStatuses((prev) => {
+      const newStatuses = { ...prev, [nodeId]: 'completed' as LearningNodeStatus };
+      const nodeIndex = nodes.findIndex(n => n.id === nodeId);
+      if (nodeIndex !== -1 && nodeIndex < nodes.length - 1) {
+        const nextNodeId = nodes[nodeIndex + 1].id;
+        if (newStatuses[nextNodeId] === 'locked' || !newStatuses[nextNodeId]) {
+          newStatuses[nextNodeId] = 'unlocked';
+        }
+      }
+      return newStatuses;
+    });
+  };
+
+  const toggleExpand = (nodeId: string) => {
+    setExpandedNodes(prev => ({ ...prev, [nodeId]: !prev[nodeId] }));
   };
 
   if (isLoading) {
@@ -147,88 +149,137 @@ export const RoadmapDetailScreen: React.FC = () => {
         </View>
       </Card>
 
-      <SectionHeader title="Các nhiệm vụ học tập" accentColor={theme.colors.primary} />
+      {roadmap.roleMatch && (
+        <View style={styles.matchSection}>
+          <SectionHeader title="Mức độ phù hợp vai trò" accentColor={theme.colors.secondary} />
+          <Card style={styles.matchCard}>
+            <Text style={styles.matchTitle}>Vai trò: {roadmap.roleMatch.roleName}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+              <Badge label={`${roadmap.roleMatch.matchScore}%`} variant="success" />
+              <Text style={{ marginLeft: 8, color: theme.colors.textSecondary, fontSize: 13 }}>
+                Đánh giá: {roadmap.roleMatch.matchLevelLabel}
+              </Text>
+            </View>
+          </Card>
+        </View>
+      )}
+
+      <SectionHeader title="Lộ trình học tập" accentColor={theme.colors.primary} />
 
       <View style={styles.timelineContainer}>
-        {nodes.map((node, index) => {
-          const status = nodeStatuses[node.id] ?? node.status;
-          const isLast = index === nodes.length - 1;
-          const isCompleted = status === 'completed';
-          const isInProgress = status === 'in-progress' || status === 'unlocked';
-
-          return (
-            <View key={node.id} style={styles.stepContainer}>
-              <View style={styles.leftCol}>
-                <TouchableOpacity
-                  onPress={() => toggleNode(node.id)}
-                  activeOpacity={0.8}
-                  style={styles.iconWrapper}
-                >
-                  {getStepStatusIcon(status)}
-                </TouchableOpacity>
-                {!isLast && (
-                  <View
-                    style={[
-                      styles.connectorLine,
-                      isCompleted && styles.completedLine,
-                      isInProgress && styles.inProgressLine,
-                    ]}
-                  />
-                )}
+        {roadmap.modules.map((module, mIndex) => (
+          <View key={module.id} style={styles.moduleContainer}>
+            <View style={styles.moduleHeaderRow}>
+              <View style={styles.moduleNumberBadge}>
+                <Text style={styles.moduleNumberText}>{mIndex + 1}</Text>
               </View>
-
-              <View style={styles.rightCol}>
-                <Card
-                  style={StyleSheet.flatten([
-                    styles.stepCard,
-                    isInProgress && styles.inProgressCard,
-                    isCompleted && styles.completedCard,
-                  ])}
-                >
-                  <View style={styles.stepHeaderRow}>
-                    <Text style={styles.durationText}>{node.estimatedHours}h</Text>
-                    {getStepStatusBadge(status)}
-                  </View>
-
-                  <Text style={[styles.stepTitleText, isCompleted && styles.completedText]}>
-                    {node.title}
-                  </Text>
-                  <Text style={styles.stepDescText}>{node.description}</Text>
-
-                  <View style={styles.focusBox}>
-                    <Award size={14} color={theme.colors.warning} style={styles.focusIcon} />
-                    <Text style={styles.focusText}>
-                      <Text style={{ fontWeight: 'bold', color: theme.colors.warning }}>Giai đoạn: </Text>
-                      {node.moduleTitle}
-                    </Text>
-                  </View>
-
-                  {node.resources.length > 0 && (
-                    <>
-                      <Text style={styles.resLabel}>TÀI LIỆU HỌC TẬP:</Text>
-                      {node.resources.map((res) => (
-                        <View key={res.id} style={styles.resRow}>
-                          <ChevronRight size={12} color={theme.colors.secondary} style={{ marginRight: 4 }} />
-                          <Text style={styles.resText}>{res.title}</Text>
-                        </View>
-                      ))}
-                    </>
-                  )}
-
-                  <TouchableOpacity style={styles.toggleStatusBtn} onPress={() => toggleNode(node.id)}>
-                    <Text style={styles.toggleStatusText}>
-                      {status === 'completed'
-                        ? 'Đặt lại: Đang học'
-                        : status === 'in-progress' || status === 'unlocked'
-                          ? 'Đánh dấu: Hoàn thành'
-                          : 'Mở khóa nhiệm vụ này'}
-                    </Text>
-                  </TouchableOpacity>
-                </Card>
+              <View style={styles.moduleTitleCol}>
+                <Text style={styles.moduleTitleText}>{module.title}</Text>
+                <Text style={styles.moduleDescText}>{module.description}</Text>
               </View>
             </View>
-          );
-        })}
+
+            <View style={styles.moduleNodesContainer}>
+              {module.nodes.map((node, nIndex) => {
+                const status = nodeStatuses[node.id] ?? node.status;
+                const isCompleted = status === 'completed';
+                const isInProgress = status === 'in-progress' || status === 'unlocked';
+                const isExpanded = expandedNodes[node.id] || false;
+                const isLastNodeInModule = nIndex === module.nodes.length - 1;
+                const isLastNodeOverall = nodes[nodes.length - 1].id === node.id;
+
+                return (
+                  <View key={node.id} style={styles.stepContainer}>
+                    <View style={styles.leftCol}>
+                      <View style={styles.iconWrapper}>
+                        {getStepStatusIcon(status)}
+                      </View>
+                      {(!isLastNodeInModule || !isLastNodeOverall) && (
+                        <View
+                          style={[
+                            styles.connectorLine,
+                            isCompleted && styles.completedLine,
+                            isInProgress && styles.inProgressLine,
+                          ]}
+                        />
+                      )}
+                    </View>
+
+                    <View style={styles.rightCol}>
+                      <Card
+                        style={StyleSheet.flatten([
+                          styles.stepCard,
+                          isInProgress && styles.inProgressCard,
+                          isCompleted && styles.completedCard,
+                        ])}
+                      >
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={() => toggleExpand(node.id)}
+                        >
+                          <View style={styles.stepHeaderRow}>
+                            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                              <Text style={[styles.stepTitleText, isCompleted && styles.completedText]}>
+                                {node.title}
+                              </Text>
+                            </View>
+                            {isExpanded ? <ChevronUp size={20} color={theme.colors.textMuted} /> : <ChevronDown size={20} color={theme.colors.textMuted} />}
+                          </View>
+
+                          <Text style={styles.stepDescText}>{node.description}</Text>
+
+                          <View style={styles.nodeMetaRow}>
+                            <Badge label={node.difficulty === 'Advanced' ? 'Nâng cao' : node.difficulty} variant="warning" />
+                            <Text style={styles.durationText}>{node.estimatedHours}h</Text>
+                          </View>
+                        </TouchableOpacity>
+
+                        {isExpanded && (
+                          <View style={styles.expandedContent}>
+                            <Text style={styles.skillsLabel}>KỸ NĂNG CẦN HỌC</Text>
+                            <View style={styles.skillsList}>
+                              {node.skills && node.skills.length > 0 ? (
+                                node.skills.map((skill, sIndex) => (
+                                  <TouchableOpacity
+                                    key={sIndex}
+                                    style={[styles.skillItemRow, sIndex === node.skills.length - 1 && { borderBottomWidth: 0 }]}
+                                    onPress={() => navigation.navigate('SkillLearningDetail', { roadmapId, skillName: skill, nodeId: node.id })}
+                                  >
+                                    <Text style={styles.skillItemText}>{skill}</Text>
+                                    <ChevronRight size={16} color={theme.colors.textMuted} />
+                                  </TouchableOpacity>
+                                ))
+                              ) : (
+                                <Text style={styles.emptySkillsText}>Không có kỹ năng cụ thể</Text>
+                              )}
+                            </View>
+
+                            <View style={styles.actionButtonsRow}>
+                              <Button
+                                title={isCompleted ? "Đã hoàn thành" : "Đánh dấu hoàn thành"}
+                                variant={isCompleted ? "secondary" : "primary"}
+                                onPress={() => markNodeCompleted(node.id)}
+                                disabled={isCompleted}
+                                style={styles.completeBtn}
+                              />
+                              {isCompleted && (
+                                <Button
+                                  title="Tiếp tục"
+                                  variant="outline"
+                                  onPress={() => toggleExpand(node.id)}
+                                />
+                              )}
+                            </View>
+                          </View>
+                        )}
+                      </Card>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        ))}
       </View>
     </ScrollView>
   );
@@ -279,6 +330,17 @@ const styles = StyleSheet.create({
     gap: 6,
     marginBottom: theme.spacing.md,
   },
+  matchSection: {
+    marginBottom: theme.spacing.lg,
+  },
+  matchCard: {
+    padding: theme.spacing.md,
+  },
+  matchTitle: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.bold,
+    color: theme.colors.textPrimary,
+  },
   progressSection: {
     borderTopWidth: 1,
     borderColor: theme.colors.border,
@@ -311,128 +373,170 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   timelineContainer: {
-    paddingLeft: theme.spacing.xs,
+    paddingLeft: 0,
+  },
+  moduleContainer: {
+    marginBottom: theme.spacing.xl,
+  },
+  moduleHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: theme.spacing.md,
+  },
+  moduleNumberBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: theme.colors.secondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: theme.spacing.md,
+  },
+  moduleNumberText: {
+    color: '#000',
+    fontSize: theme.typography.sizes.md,
+    fontWeight: 'bold',
+  },
+  moduleTitleCol: {
+    flex: 1,
+  },
+  moduleTitleText: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: 'bold',
+    color: theme.colors.textPrimary,
+    marginBottom: 4,
+  },
+  moduleDescText: {
+    fontSize: theme.typography.sizes.xs + 1,
+    color: theme.colors.textSecondary,
+  },
+  moduleNodesContainer: {
+    paddingLeft: 18, 
   },
   stepContainer: {
     flexDirection: 'row',
-    marginBottom: theme.spacing.lg,
+    marginBottom: theme.spacing.md,
   },
   leftCol: {
     width: 32,
     alignItems: 'center',
   },
   iconWrapper: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.border,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1,
+    marginTop: 4,
   },
   connectorLine: {
-    width: 2,
+    width: 1,
     flex: 1,
     backgroundColor: theme.colors.border,
     marginVertical: 4,
-  },
-  rightCol: {
-    flex: 1,
-    paddingLeft: theme.spacing.md,
-  },
-  stepCard: {
-    padding: theme.spacing.md + 2,
-  },
-  stepHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing.sm,
-  },
-  durationText: {
-    fontSize: theme.typography.sizes.xs,
-    fontWeight: theme.typography.weights.bold,
-    color: theme.colors.secondaryLight,
-    letterSpacing: 0.5,
-  },
-  stepTitleText: {
-    fontSize: theme.typography.sizes.md - 1,
-    fontWeight: theme.typography.weights.bold,
-    color: theme.colors.textPrimary,
-    marginBottom: theme.spacing.xs,
-    lineHeight: theme.typography.lineHeights.sm,
-  },
-  completedText: {
-    textDecorationLine: 'line-through',
-    color: theme.colors.textSecondary,
-  },
-  stepDescText: {
-    fontSize: theme.typography.sizes.sm - 1,
-    color: theme.colors.textSecondary,
-    lineHeight: theme.typography.lineHeights.xs + 3,
-    marginBottom: theme.spacing.md,
-  },
-  focusBox: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(245, 158, 11, 0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.15)',
-    borderRadius: theme.roundness.sm - 2,
-    padding: theme.spacing.md,
-    marginBottom: theme.spacing.md,
-  },
-  focusIcon: {
-    marginRight: 6,
-    marginTop: 2,
-  },
-  focusText: {
-    flex: 1,
-    fontSize: theme.typography.sizes.xs + 1,
-    color: theme.colors.textSecondary,
-    lineHeight: theme.typography.lineHeights.xs + 3,
-  },
-  resLabel: {
-    fontSize: 9,
-    fontWeight: theme.typography.weights.bold,
-    color: theme.colors.textMuted,
-    letterSpacing: 1,
-    marginBottom: theme.spacing.xs,
-  },
-  resRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  resText: {
-    fontSize: theme.typography.sizes.xs + 1,
-    color: theme.colors.secondaryLight,
-    lineHeight: theme.typography.lineHeights.xs + 2,
-    flex: 1,
-  },
-  toggleStatusBtn: {
-    marginTop: theme.spacing.md,
-    borderTopWidth: 1,
-    borderColor: theme.colors.border,
-    paddingTop: theme.spacing.md,
-    alignItems: 'center',
-  },
-  toggleStatusText: {
-    fontSize: theme.typography.sizes.xs + 1,
-    color: theme.colors.secondary,
-    fontWeight: theme.typography.weights.bold,
-  },
-  inProgressCard: {
-    borderColor: theme.colors.secondary,
-  },
-  completedCard: {
-    opacity: 0.85,
   },
   completedLine: {
     backgroundColor: theme.colors.success,
   },
   inProgressLine: {
     backgroundColor: theme.colors.secondaryLight,
+  },
+  rightCol: {
+    flex: 1,
+    paddingLeft: theme.spacing.md,
+  },
+  stepCard: {
+    padding: theme.spacing.md,
+  },
+  inProgressCard: {
+    borderColor: theme.colors.secondaryLight,
+    borderWidth: 1,
+  },
+  completedCard: {
+    opacity: 0.9,
+  },
+  stepHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing.xs,
+  },
+  stepTitleText: {
+    fontSize: theme.typography.sizes.md - 1,
+    fontWeight: theme.typography.weights.bold,
+    color: theme.colors.textPrimary,
+    lineHeight: theme.typography.lineHeights.sm,
+  },
+  completedText: {
+    textDecorationLine: 'line-through',
+    color: theme.colors.textMuted,
+  },
+  stepDescText: {
+    fontSize: theme.typography.sizes.sm - 1,
+    color: theme.colors.textSecondary,
+    lineHeight: theme.typography.lineHeights.xs + 2,
+    marginBottom: theme.spacing.sm,
+  },
+  nodeMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  durationText: {
+    fontSize: theme.typography.sizes.xs,
+    color: theme.colors.textMuted,
+    fontWeight: 'bold',
+  },
+  expandedContent: {
+    marginTop: theme.spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    paddingTop: theme.spacing.md,
+  },
+  skillsLabel: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: theme.colors.textMuted,
+    letterSpacing: 1,
+    marginBottom: theme.spacing.xs,
+  },
+  skillsList: {
+    backgroundColor: theme.colors.surfaceLight,
+    borderRadius: theme.roundness.sm,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    marginBottom: theme.spacing.md,
+  },
+  skillItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: theme.spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  skillItemText: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textPrimary,
+    fontWeight: '500',
+  },
+  emptySkillsText: {
+    padding: theme.spacing.sm,
+    color: theme.colors.textMuted,
+    fontSize: theme.typography.sizes.xs,
+    fontStyle: 'italic',
+  },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+  completeBtn: {
+    flex: 1,
   },
 });

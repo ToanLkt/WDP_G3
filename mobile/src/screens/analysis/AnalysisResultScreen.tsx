@@ -1,6 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Text, ScrollView, TouchableOpacity } from 'react-native';
-import { AlertCircle, BookOpen, Layers, GitCommit, FileText, ChevronRight, MessageSquareCode, ChevronDown } from 'lucide-react-native';
+import {
+  Activity,
+  AlertCircle,
+  CheckCircle2,
+  ClipboardCheck,
+  Code2,
+  MessageSquare,
+  Package,
+  Play,
+  TrendingUp,
+  Wrench,
+  Bot
+} from 'lucide-react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 
 import { theme } from '../../theme';
@@ -10,23 +22,49 @@ import { Button } from '../../components/ui/Button';
 import { SectionHeader } from '../../components/ui/SectionHeader';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { ErrorDisplay } from '../../components/ui/ErrorDisplay';
-import { fetchAnalysisResult, AnalysisResult } from '../../services/analysis';
+import { fetchAnalysisResult } from '../../services/analysis';
+import type { AnalysisResult } from '../../types';
 import { useTabBarAwareScroll } from '../../hooks/useTabBarAwareScroll';
 
-const PACKAGE_PREVIEW_COUNT = 5;
+const BADGE_LIMIT = 10;
+const TEXT_LIST_LIMIT = 6;
+const RECOMMENDATION_LIMIT = 5;
+
+const clampScore = (value: number | undefined) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+  return Math.min(100, Math.max(0, Math.round(value)));
+};
+
+const getScoreTone = (score: number) => {
+  if (score >= 75) return { color: theme.colors.success, bg: 'rgba(16, 185, 129, 0.1)', label: 'Tốt' };
+  if (score >= 45) return { color: theme.colors.warning, bg: 'rgba(245, 158, 11, 0.1)', label: 'Cần cải thiện' };
+  return { color: theme.colors.error, bg: 'rgba(239, 68, 68, 0.1)', label: 'Ưu tiên cải thiện' };
+};
+
+const formatRatio = (value: number) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '0%';
+  return `${Math.round(value <= 1 ? value * 100 : value)}%`;
+};
+
+const formatDate = (dateStr: string | undefined) => {
+  if (!dateStr) return 'N/A';
+  try {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('vi-VN');
+  } catch (e) {
+    return dateStr;
+  }
+};
 
 export const AnalysisResultScreen: React.FC = () => {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { repoId, repoName } = route.params || { repoId: 'repo_1', repoName: 'Project' };
   const { tabBarPaddingBottom } = useTabBarAwareScroll();
-  
+
   const [data, setData] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  
-  const [activeTab, setActiveTab] = useState<'readme' | 'deps' | 'commits'>('readme');
-  const [showAllPackages, setShowAllPackages] = useState(false);
 
   const fetchAnalysis = async () => {
     setLoading(true);
@@ -43,25 +81,82 @@ export const AnalysisResultScreen: React.FC = () => {
 
   useEffect(() => {
     fetchAnalysis();
-    setShowAllPackages(false);
   }, [repoId]);
 
   if (loading) {
-    return <LoadingSpinner visible message={`Auditing ${repoName} files...`} />;
+    return <LoadingSpinner visible message={`Đang phân tích ${repoName}...`} />;
   }
 
   if (error || !data) {
-    return <ErrorDisplay message={error || 'No analysis data found.'} onRetry={fetchAnalysis} />;
+    return <ErrorDisplay message={error || 'Không tìm thấy dữ liệu phân tích.'} onRetry={fetchAnalysis} />;
   }
 
   const handleConsultAI = () => {
-    navigation.navigate('ChatTab', { repoId: data.repoId, repoName: repoName });
+    navigation.navigate('ChatTab', { repoId: data.repositoryId, repoName: repoName });
   };
 
-  const getDifficultyVariant = (diff: string) => {
-    if (diff === 'Advanced') return 'error';
-    if (diff === 'Intermediate') return 'warning';
-    return 'success';
+  const languages = data.languages?.length ? data.languages : (data.techStack || []);
+  const frameworks = data.frameworks?.length ? data.frameworks : (data.techStack || []);
+  const packages = data.packages || [];
+  const skillSignals = data.skillSignals || [];
+  const careerSignals = data.careerSignals || [];
+  const commitSummary = data.commitSummary || {
+    totalCommits: 0,
+    activeDays: 0,
+    vagueCommitRatio: 0,
+    conventionalCommitRatio: 0
+  };
+  const checklist = data.checklist || {
+    hasReadme: false,
+    hasEnvExample: false,
+    hasDocker: false,
+    hasDockerCompose: false,
+    hasCICD: false,
+    hasTesting: false,
+    hasLinting: false,
+    hasFormatter: false,
+    hasPackageFile: false
+  };
+
+  const checklistItems = [
+    { label: 'README', completed: checklist.hasReadme },
+    { label: '.env.example', completed: checklist.hasEnvExample },
+    { label: 'Docker', completed: checklist.hasDocker },
+    { label: 'Docker Compose', completed: checklist.hasDockerCompose },
+    { label: 'CI/CD', completed: checklist.hasCICD },
+    { label: 'Testing', completed: checklist.hasTesting },
+    { label: 'Linting', completed: checklist.hasLinting },
+    { label: 'Formatter', completed: checklist.hasFormatter },
+    { label: 'Package file', completed: checklist.hasPackageFile }
+  ];
+
+  const overallScore = clampScore(data.scores?.overallScore ?? data.scores?.overall);
+  const overallTone = getScoreTone(overallScore);
+
+  const scoreItems = [
+    { label: 'Tech stack', score: clampScore(data.scores?.techStackScore) },
+    { label: 'Tài liệu', score: clampScore(data.scores?.documentationScore ?? data.scores?.documentation) },
+    { label: 'Chất lượng commit', score: clampScore(data.scores?.commitQualityScore ?? data.scores?.commitQuality) },
+    { label: 'Triển khai', score: clampScore(data.scores?.deploymentScore) },
+    { label: 'Testing', score: clampScore(data.scores?.testingScore) },
+    { label: 'Độ sẵn sàng portfolio', score: clampScore(data.scores?.portfolioReadinessScore) }
+  ];
+
+  const renderTextList = (items: string[], emptyText: string) => {
+    if (!items || items.length === 0) return <Text style={styles.emptyText}>{emptyText}</Text>;
+    return (
+      <View style={styles.textList}>
+        {items.slice(0, TEXT_LIST_LIMIT).map((item, idx) => (
+          <View key={idx} style={styles.textListItem}>
+            <Text style={styles.textListBullet}>-</Text>
+            <Text style={styles.textListText}>{item}</Text>
+          </View>
+        ))}
+        {items.length > TEXT_LIST_LIMIT && (
+          <Text style={styles.moreText}>+{items.length - TEXT_LIST_LIMIT} mục khác</Text>
+        )}
+      </View>
+    );
   };
 
   return (
@@ -69,180 +164,192 @@ export const AnalysisResultScreen: React.FC = () => {
       style={styles.container}
       contentContainerStyle={[styles.contentContainer, { paddingBottom: tabBarPaddingBottom }]}
     >
-      
-      {/* 1. Profile Title Card */}
-      <Card style={styles.titleCard} glow="violet">
-        <Text style={styles.projTitle}>{repoName}</Text>
-        
-        <View style={styles.techStackRow}>
-          {data.tech_stack.map((tech) => (
-            <Badge key={tech} label={tech} variant="primary" style={styles.techBadge} />
+      <View style={styles.header}>
+        <Text style={styles.title}>{data.repoName || data.repositoryName}</Text>
+        <Text style={styles.subtitle}>{data.fullName || 'Repository Analysis'} - {formatDate(data.createdAt)}</Text>
+        <View style={styles.badgesRow}>
+          <Badge label={data.projectType || 'Unknown'} variant="info" />
+          {languages.slice(0, 3).map((lang) => (
+            <Badge key={lang} label={lang} variant="primary" style={{ marginLeft: 6 }} />
           ))}
+        </View>
+      </View>
+
+      {/* Điểm phân tích */}
+      <SectionHeader title="Điểm phân tích" icon={<Activity size={20} color={theme.colors.secondaryLight} />} />
+      <Card style={styles.scoresCard}>
+        <View style={[styles.overallScoreBox, { backgroundColor: overallTone.bg, borderColor: overallTone.color }]}>
+          <Text style={styles.overallScoreLabel}>Điểm tổng quan</Text>
+          <Text style={[styles.overallScoreValue, { color: overallTone.color }]}>{overallScore}</Text>
+          <Text style={[styles.overallScoreDesc, { color: overallTone.color }]}>{overallTone.label}</Text>
+        </View>
+
+        <View style={styles.subScoresContainer}>
+          {scoreItems.map((item) => {
+            const tone = getScoreTone(item.score);
+            return (
+              <View key={item.label} style={styles.subScoreRow}>
+                <View style={styles.subScoreHeader}>
+                  <Text style={styles.subScoreLabel}>{item.label}</Text>
+                  <Text style={[styles.subScoreValue, { color: tone.color }]}>{item.score}</Text>
+                </View>
+                <View style={styles.progressBarBg}>
+                  <View style={[styles.progressBarFill, { width: `${item.score}%`, backgroundColor: tone.color }]} />
+                </View>
+              </View>
+            );
+          })}
         </View>
       </Card>
 
-      {/* 2. Custom Diagnostic Tabs */}
-      <View style={styles.tabContainer}>
-        <TouchableOpacity 
-          style={[styles.tabBtn, activeTab === 'readme' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('readme')}
-        >
-          <FileText size={16} color={activeTab === 'readme' ? theme.colors.secondary : theme.colors.textMuted} />
-          <Text style={[styles.tabBtnText, activeTab === 'readme' && styles.tabBtnTextActive]}>Readme</Text>
-        </TouchableOpacity>
+      {/* Tổng quan */}
+      <SectionHeader title="Tổng quan" icon={<TrendingUp size={20} color={theme.colors.secondaryLight} />} />
+      <Card style={styles.overviewCard}>
+        <View style={styles.overviewRow}>
+          <View style={styles.overviewItem}>
+            <Text style={styles.overviewLabel}>LOẠI DỰ ÁN</Text>
+            <Text style={styles.overviewValue}>{data.projectType}</Text>
+          </View>
+          <View style={styles.overviewItem}>
+            <Text style={styles.overviewLabel}>ĐỊNH HƯỚNG NGHỀ NGHIỆP</Text>
+            <Text style={[styles.overviewValue, { color: theme.colors.secondaryLight }]}>{data.careerDirection?.primary || 'N/A'}</Text>
+          </View>
+        </View>
 
-        <TouchableOpacity 
-          style={[styles.tabBtn, activeTab === 'deps' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('deps')}
-        >
-          <Layers size={16} color={activeTab === 'deps' ? theme.colors.secondary : theme.colors.textMuted} />
-          <Text style={[styles.tabBtnText, activeTab === 'deps' && styles.tabBtnTextActive]}>Packages</Text>
-        </TouchableOpacity>
+        <View style={styles.overviewSection}>
+          <Text style={styles.overviewLabel}>NGÔN NGỮ</Text>
+          <View style={styles.chipRow}>
+            {languages.length ? languages.slice(0, BADGE_LIMIT).map((item) => <Badge key={item} label={item} variant="primary" style={styles.chip} />) : <Text style={styles.emptyText}>Chưa có dữ liệu.</Text>}
+            {languages.length > BADGE_LIMIT && <Badge label={`+${languages.length - BADGE_LIMIT}`} variant="primary" style={styles.chip} />}
+          </View>
+        </View>
 
-        <TouchableOpacity 
-          style={[styles.tabBtn, activeTab === 'commits' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('commits')}
-        >
-          <GitCommit size={16} color={activeTab === 'commits' ? theme.colors.secondary : theme.colors.textMuted} />
-          <Text style={[styles.tabBtnText, activeTab === 'commits' && styles.tabBtnTextActive]}>Commits</Text>
-        </TouchableOpacity>
+        <View style={styles.overviewSection}>
+          <Text style={styles.overviewLabel}>FRAMEWORKS</Text>
+          <View style={styles.chipRow}>
+            {frameworks.length ? frameworks.slice(0, BADGE_LIMIT).map((item) => <Badge key={item} label={item} variant="info" style={styles.chip} />) : <Text style={styles.emptyText}>Chưa có dữ liệu.</Text>}
+            {frameworks.length > BADGE_LIMIT && <Badge label={`+${frameworks.length - BADGE_LIMIT}`} variant="info" style={styles.chip} />}
+          </View>
+        </View>
+      </Card>
+
+      {/* Kỹ năng */}
+      <SectionHeader title="Kỹ năng & Tín hiệu" icon={<Code2 size={20} color={theme.colors.secondaryLight} />} />
+      <Card style={styles.skillsCard}>
+        <View style={styles.skillBox}>
+          <Text style={styles.skillBoxTitle}>Tín hiệu kỹ năng</Text>
+          {renderTextList(skillSignals, 'Chưa có tín hiệu kỹ năng.')}
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.skillBox}>
+          <Text style={styles.skillBoxTitle}>Tín hiệu nghề nghiệp</Text>
+          {renderTextList(careerSignals, 'Chưa có tín hiệu nghề nghiệp.')}
+        </View>
+      </Card>
+
+      {/* Điểm mạnh & Điểm yếu */}
+      <View style={styles.rowCards}>
+        <Card style={[styles.halfCard, { borderColor: 'rgba(16, 185, 129, 0.3)' }]}>
+          <View style={styles.halfCardHeader}>
+            <CheckCircle2 size={18} color={theme.colors.success} />
+            <Text style={styles.halfCardTitle}>Điểm mạnh</Text>
+          </View>
+          {renderTextList(data.strengths || [], 'Chưa có dữ liệu.')}
+        </Card>
+        <Card style={[styles.halfCard, { borderColor: 'rgba(245, 158, 11, 0.3)' }]}>
+          <View style={styles.halfCardHeader}>
+            <AlertCircle size={18} color={theme.colors.warning} />
+            <Text style={styles.halfCardTitle}>Cần cải thiện</Text>
+          </View>
+          {renderTextList(data.weaknesses || [], 'Chưa có dữ liệu.')}
+        </Card>
       </View>
 
-      {/* Tab Render Switch */}
-      <Card style={styles.tabContentCard}>
-        {activeTab === 'readme' && (
-          <View>
-            <Text style={styles.tabTitleText}>README.md Diagnostic Audit</Text>
-            <Text style={styles.tabBodyText}>
-              {data.readme_summary || 'This repository contains no README.md file, or the readme is empty. Establishing a descriptive readme is vital for developer coordination and open source contributions.'}
-            </Text>
+      {/* Missing Skills */}
+      {data.missingSkills && data.missingSkills.length > 0 && (
+        <Card style={styles.missingCard}>
+          <Text style={styles.missingTitle}>Kỹ năng còn thiếu</Text>
+          <View style={styles.textList}>
+            {data.missingSkills.slice(0, TEXT_LIST_LIMIT).map((item) => (
+              <View key={item.id} style={styles.textListItem}>
+                <Text style={[styles.textListBullet, { color: theme.colors.error }]}>-</Text>
+                <Text style={styles.textListText}>{item.name}</Text>
+              </View>
+            ))}
+            {data.missingSkills.length > TEXT_LIST_LIMIT && (
+              <Text style={styles.moreText}>+{data.missingSkills.length - TEXT_LIST_LIMIT} kỹ năng khác</Text>
+            )}
           </View>
-        )}
+        </Card>
+      )}
 
-        {activeTab === 'deps' && (
+      {/* Hoạt động Commit */}
+      <SectionHeader title="Hoạt động commit" icon={<Activity size={20} color={theme.colors.secondaryLight} />} />
+      <Card style={styles.statsCard}>
+        <View style={styles.statGrid}>
+          <View style={styles.statCell}>
+            <Text style={styles.statLabel}>Tổng số</Text>
+            <Text style={styles.statValue}>{commitSummary.totalCommits}</Text>
+          </View>
+          <View style={styles.statCell}>
+            <Text style={styles.statLabel}>Ngày HĐ</Text>
+            <Text style={styles.statValue}>{commitSummary.activeDays}</Text>
+          </View>
+          <View style={styles.statCell}>
+            <Text style={styles.statLabel}>Mơ hồ</Text>
+            <Text style={styles.statValue}>{formatRatio(commitSummary.vagueCommitRatio)}</Text>
+          </View>
+          <View style={styles.statCell}>
+            <Text style={styles.statLabel}>Chuẩn</Text>
+            <Text style={styles.statValue}>{formatRatio(commitSummary.conventionalCommitRatio)}</Text>
+          </View>
+        </View>
+        <View style={styles.statDates}>
+          <Text style={styles.statDateText}>Đầu: {formatDate(commitSummary.firstCommitDate)}</Text>
+          <Text style={styles.statDateText}>Cuối: {formatDate(commitSummary.lastCommitDate)}</Text>
+        </View>
+      </Card>
+
+      {/* Checklist */}
+      <SectionHeader title="Checklist dự án" icon={<ClipboardCheck size={20} color={theme.colors.secondaryLight} />} />
+      <Card style={styles.checklistCard}>
+        {checklistItems.map((item, index) => (
+          <View key={item.label} style={[styles.checklistItem, index === checklistItems.length - 1 && styles.noBorderBottom]}>
+            <Text style={styles.checklistLabel}>{item.label}</Text>
+            <Badge label={item.completed ? 'Có' : 'Chưa'} variant={item.completed ? 'success' : 'muted'} />
+          </View>
+        ))}
+      </Card>
+
+      {/* Gợi ý cải thiện */}
+      <SectionHeader title="Gợi ý cải thiện" icon={<Wrench size={20} color={theme.colors.secondaryLight} />} />
+      <Card style={styles.recsCard}>
+        {!data.recommendations || data.recommendations.length === 0 ? (
+          <Text style={styles.emptyText}>Chưa có suggestions.</Text>
+        ) : (
           <View>
-            <Text style={styles.tabTitleText}>Key Package Dependencies</Text>
-            {data.package_info.length === 0 ? (
-              <Text style={styles.tabBodyText}>No external packaging files (e.g. package.json, Cargo.toml) identified.</Text>
-            ) : (
-              <>
-                {(showAllPackages
-                  ? data.package_info
-                  : data.package_info.slice(0, PACKAGE_PREVIEW_COUNT)
-                ).map((pkg, i, arr) => (
-                  <View
-                    key={`${pkg.name}-${i}`}
-                    style={[styles.pkgRow, i === arr.length - 1 && !showAllPackages && data.package_info.length <= PACKAGE_PREVIEW_COUNT && { borderBottomWidth: 0 }]}
-                  >
-                    <View style={styles.pkgInfo}>
-                      <Text style={styles.pkgName} numberOfLines={2} ellipsizeMode="tail">
-                        {pkg.name}
-                      </Text>
-                      <Text style={styles.pkgVersion} numberOfLines={1} ellipsizeMode="tail">
-                        Version {pkg.version}
-                      </Text>
-                    </View>
-                    <Badge
-                      label={pkg.status}
-                      variant={pkg.status === 'outdated' ? 'warning' : 'muted'}
-                      style={styles.pkgBadge}
-                    />
-                  </View>
-                ))}
-
-                {data.package_info.length > PACKAGE_PREVIEW_COUNT ? (
-                  <TouchableOpacity
-                    style={styles.showMoreBtn}
-                    onPress={() => setShowAllPackages((current) => !current)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.showMoreText}>
-                      {showAllPackages
-                        ? 'Show less'
-                        : `Show more (${data.package_info.length - PACKAGE_PREVIEW_COUNT} more)`}
-                    </Text>
-                    <ChevronDown
-                      size={16}
-                      color={theme.colors.secondaryLight}
-                      style={showAllPackages ? styles.showMoreIconOpen : undefined}
-                    />
-                  </TouchableOpacity>
-                ) : null}
-              </>
+            {data.recommendations.slice(0, RECOMMENDATION_LIMIT).map((rec) => (
+              <View key={rec.id} style={styles.recItem}>
+                <Text style={styles.recTitle}>{rec.title}</Text>
+                <Text style={styles.recDesc}>{rec.description}</Text>
+              </View>
+            ))}
+            {data.recommendations.length > RECOMMENDATION_LIMIT && (
+              <Text style={styles.moreText}>Còn {data.recommendations.length - RECOMMENDATION_LIMIT} gợi ý khác.</Text>
             )}
           </View>
         )}
-
-        {activeTab === 'commits' && (
-          <View>
-            <Text style={styles.tabTitleText}>Commit History Health</Text>
-            <Text style={styles.tabBodyText}>{data.commit_summary}</Text>
-          </View>
-        )}
       </Card>
 
-      {/* 3. Missing Elements */}
-      {data.missing_items.length > 0 && (
-        <View style={styles.missingSection}>
-          <SectionHeader title="Identified Flaws" accentColor={theme.colors.error} />
-          <Card style={styles.missingCard}>
-            {data.missing_items.map((item, i) => (
-              <View key={i} style={styles.missingItemRow}>
-                <AlertCircle size={15} color={theme.colors.error} style={styles.bulletIcon} />
-                <Text style={styles.missingText}>{item}</Text>
-              </View>
-            ))}
-          </Card>
-        </View>
-      )}
-
-      {/* 4. Upgrade Recommendations */}
-      <SectionHeader title="Learning Pathways" accentColor={theme.colors.warning} />
-      
-      {data.recommendations.map((rec) => (
-        <Card key={rec.id} style={styles.recCard}>
-          <View style={styles.recHeader}>
-            <BookOpen size={18} color={theme.colors.warning} style={styles.recIcon} />
-            <Text style={styles.recTitle}>{rec.skill}</Text>
-            <Badge 
-              label={rec.difficulty} 
-              variant={getDifficultyVariant(rec.difficulty)} 
-              style={styles.diffBadge}
-            />
-          </View>
-          
-          <Text style={styles.recReasonLabel}>WHY LEARN THIS?</Text>
-          <Text style={styles.recReasonText}>{rec.reason}</Text>
-
-          <Text style={styles.recActionLabel}>RECOMMENDED STEPS</Text>
-          <View style={styles.actionBox}>
-            <ChevronRight size={14} color={theme.colors.secondary} style={styles.actionArrow} />
-            <Text style={styles.actionText}>{rec.action}</Text>
-          </View>
-        </Card>
-      ))}
-
-      {/* 5. Consultation Shortcut Button */}
-      <View style={styles.aiConsultSection}>
-        <Card style={styles.aiConsultCard} glow="cyan">
-          <View style={styles.aiConsultRow}>
-            <View style={styles.aiIconWrapper}>
-              <MessageSquareCode size={24} color={theme.colors.secondaryLight} />
-            </View>
-            <View style={styles.aiTextCol}>
-              <Text style={styles.aiConsultTitle}>Consult AI Mentor</Text>
-              <Text style={styles.aiConsultDesc}>Ask questions about this analysis or get code samples instantly.</Text>
-            </View>
-          </View>
-          <Button
-            title="Chat with AI Mentor"
-            onPress={handleConsultAI}
-            variant="secondary"
-            style={styles.consultBtn}
-          />
-        </Card>
+      {/* Actions */}
+      <View style={styles.actionsRow}>
+        <Button
+          title="Hỏi AI Mentor"
+          onPress={handleConsultAI}
+          icon={<MessageSquare size={18} color={theme.colors.textPrimary} />}
+          style={{ flex: 1 }}
+        />
       </View>
-      
     </ScrollView>
   );
 };
@@ -254,241 +361,277 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: theme.spacing.lg,
-    paddingBottom: theme.spacing.xxl,
   },
-  titleCard: {
-    padding: theme.spacing.xl,
-    marginBottom: theme.spacing.lg,
-    alignItems: 'center',
+  header: {
+    marginBottom: theme.spacing.xl,
   },
-  projTitle: {
+  title: {
     fontSize: theme.typography.sizes.xxl - 4,
     fontWeight: theme.typography.weights.heavy,
     color: theme.colors.textPrimary,
-    marginBottom: theme.spacing.md,
-    textAlign: 'center',
+    marginBottom: 4,
   },
-  techStackRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-  },
-  techBadge: {
-    margin: 3,
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.roundness.sm,
-    padding: 3,
-    marginBottom: theme.spacing.md,
-  },
-  tabBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.roundness.sm - 2,
-  },
-  tabBtnActive: {
-    backgroundColor: theme.colors.surfaceLight,
-  },
-  tabBtnText: {
-    fontSize: theme.typography.sizes.xs + 1,
-    fontWeight: theme.typography.weights.bold,
-    color: theme.colors.textMuted,
-    marginLeft: 6,
-  },
-  tabBtnTextActive: {
-    color: theme.colors.textPrimary,
-  },
-  tabContentCard: {
-    padding: theme.spacing.lg,
-    marginBottom: theme.spacing.lg,
-    backgroundColor: '#0F1117',
-  },
-  tabTitleText: {
-    fontSize: theme.typography.sizes.md,
-    fontWeight: theme.typography.weights.bold,
-    color: theme.colors.textPrimary,
-    marginBottom: theme.spacing.md,
-  },
-  tabBodyText: {
+  subtitle: {
     fontSize: theme.typography.sizes.sm,
     color: theme.colors.textSecondary,
-    lineHeight: theme.typography.lineHeights.sm + 2,
+    marginBottom: theme.spacing.sm,
   },
-  pkgRow: {
+  badgesRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    borderBottomWidth: 1,
-    borderColor: theme.colors.border,
-    paddingVertical: theme.spacing.sm,
-    gap: theme.spacing.sm,
+    flexWrap: 'wrap',
+    marginTop: 4,
   },
-  pkgInfo: {
+  scoresCard: {
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.lg,
+  },
+  overallScoreBox: {
+    padding: theme.spacing.lg,
+    borderRadius: theme.roundness.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    marginBottom: theme.spacing.lg,
+  },
+  overallScoreLabel: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.medium,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.xs,
+  },
+  overallScoreValue: {
+    fontSize: 48,
+    fontWeight: theme.typography.weights.heavy,
+  },
+  overallScoreDesc: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.bold,
+    marginTop: 4,
+  },
+  subScoresContainer: {
+    gap: theme.spacing.md,
+  },
+  subScoreRow: {
+    marginBottom: 4,
+  },
+  subScoreHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  subScoreLabel: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textPrimary,
+    fontWeight: theme.typography.weights.medium,
+  },
+  subScoreValue: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.bold,
+  },
+  progressBarBg: {
+    height: 8,
+    backgroundColor: theme.colors.border,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  overviewCard: {
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.lg,
+  },
+  overviewRow: {
+    flexDirection: 'row',
+    marginBottom: theme.spacing.md,
+  },
+  overviewItem: {
     flex: 1,
-    minWidth: 0,
-    paddingRight: theme.spacing.xs,
   },
-  pkgName: {
+  overviewLabel: {
+    fontSize: 10,
+    fontWeight: theme.typography.weights.bold,
+    color: theme.colors.textMuted,
+    marginBottom: 4,
+  },
+  overviewValue: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.textPrimary,
+    fontWeight: theme.typography.weights.bold,
+  },
+  overviewSection: {
+    marginBottom: theme.spacing.md,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  chip: {
+    marginRight: 6,
+    marginBottom: 6,
+  },
+  emptyText: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textMuted,
+  },
+  skillsCard: {
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.lg,
+  },
+  skillBox: {
+    paddingVertical: theme.spacing.sm,
+  },
+  skillBoxTitle: {
     fontSize: theme.typography.sizes.sm,
     fontWeight: theme.typography.weights.bold,
     color: theme.colors.textPrimary,
-    flexShrink: 1,
+    marginBottom: theme.spacing.sm,
   },
-  pkgVersion: {
+  divider: {
+    height: 1,
+    backgroundColor: theme.colors.border,
+    marginVertical: 4,
+  },
+  textList: {
+    gap: 6,
+  },
+  textListItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  textListBullet: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textMuted,
+    marginRight: 6,
+  },
+  textListText: {
+    flex: 1,
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    lineHeight: theme.typography.lineHeights.sm,
+  },
+  moreText: {
     fontSize: theme.typography.sizes.xs,
     color: theme.colors.textMuted,
-    marginTop: 2,
-    flexShrink: 1,
+    marginTop: 4,
+    fontStyle: 'italic',
   },
-  pkgBadge: {
-    flexShrink: 0,
-    marginTop: 2,
+  rowCards: {
+    flexDirection: 'row',
+    gap: theme.spacing.md,
+    marginBottom: theme.spacing.lg,
   },
-  showMoreBtn: {
+  halfCard: {
+    flex: 1,
+    padding: theme.spacing.md,
+    borderWidth: 1,
+  },
+  halfCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: theme.spacing.xs,
-    paddingVertical: theme.spacing.md,
-    marginTop: theme.spacing.xs,
+    marginBottom: theme.spacing.sm,
+    gap: 6,
+  },
+  halfCardTitle: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.bold,
+    color: theme.colors.textPrimary,
+  },
+  missingCard: {
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.lg,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    borderWidth: 1,
+  },
+  missingTitle: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.bold,
+    color: theme.colors.textPrimary,
+    marginBottom: theme.spacing.sm,
+  },
+  statsCard: {
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.lg,
+  },
+  statGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.md,
+    marginBottom: theme.spacing.md,
+  },
+  statCell: {
+    width: '45%',
+    backgroundColor: theme.colors.surfaceLight,
+    padding: theme.spacing.sm,
+    borderRadius: theme.roundness.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: theme.colors.textMuted,
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: theme.typography.sizes.lg,
+    fontWeight: theme.typography.weights.bold,
+    color: theme.colors.textPrimary,
+  },
+  statDates: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingTop: theme.spacing.sm,
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
   },
-  showMoreText: {
-    fontSize: theme.typography.sizes.sm,
-    fontWeight: theme.typography.weights.medium,
-    color: theme.colors.secondaryLight,
+  statDateText: {
+    fontSize: 11,
+    color: theme.colors.textMuted,
   },
-  showMoreIconOpen: {
-    transform: [{ rotate: '180deg' }],
-  },
-  missingSection: {
+  checklistCard: {
+    paddingHorizontal: theme.spacing.md,
     marginBottom: theme.spacing.lg,
   },
-  missingCard: {
-    padding: theme.spacing.lg,
-    backgroundColor: 'rgba(239, 68, 68, 0.03)',
-    borderColor: 'rgba(239, 68, 68, 0.15)',
-  },
-  missingItemRow: {
+  checklistItem: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: theme.spacing.sm,
-  },
-  bulletIcon: {
-    marginRight: theme.spacing.sm,
-    marginTop: 2,
-  },
-  missingText: {
-    flex: 1,
-    fontSize: theme.typography.sizes.sm,
-    color: theme.colors.textSecondary,
-    lineHeight: theme.typography.lineHeights.xs + 3,
-  },
-  recCard: {
-    padding: theme.spacing.lg,
-    marginBottom: theme.spacing.md,
-  },
-  recHeader: {
-    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: theme.spacing.md,
-    width: '100%',
+    paddingVertical: theme.spacing.sm + 2,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
   },
-  recIcon: {
-    marginRight: theme.spacing.sm,
+  noBorderBottom: {
+    borderBottomWidth: 0,
   },
-  recTitle: {
-    flex: 1,
-    fontSize: theme.typography.sizes.md,
-    fontWeight: theme.typography.weights.bold,
+  checklistLabel: {
+    fontSize: theme.typography.sizes.sm,
     color: theme.colors.textPrimary,
   },
-  diffBadge: {
-    paddingVertical: 1,
+  recsCard: {
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.xl,
   },
-  recReasonLabel: {
-    fontSize: 10,
-    fontWeight: theme.typography.weights.bold,
-    color: theme.colors.textMuted,
-    letterSpacing: 1,
-    marginBottom: theme.spacing.xs,
-  },
-  recReasonText: {
-    fontSize: theme.typography.sizes.sm - 1,
-    color: theme.colors.textSecondary,
-    lineHeight: theme.typography.lineHeights.xs + 3,
-    marginBottom: theme.spacing.md,
-  },
-  recActionLabel: {
-    fontSize: 10,
-    fontWeight: theme.typography.weights.bold,
-    color: theme.colors.textMuted,
-    letterSpacing: 1,
-    marginBottom: theme.spacing.xs,
-  },
-  actionBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#0F1117',
+  recItem: {
+    backgroundColor: theme.colors.surfaceLight,
+    padding: theme.spacing.md,
+    borderRadius: theme.roundness.sm,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    borderRadius: theme.roundness.sm - 2,
-    padding: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
   },
-  actionArrow: {
-    marginRight: 6,
-    marginTop: 2,
-  },
-  actionText: {
-    flex: 1,
-    fontSize: theme.typography.sizes.sm - 1,
-    color: theme.colors.textPrimary,
-    lineHeight: theme.typography.lineHeights.xs + 3,
-  },
-  aiConsultSection: {
-    marginTop: theme.spacing.xl,
-  },
-  aiConsultCard: {
-    padding: theme.spacing.lg,
-  },
-  aiConsultRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: theme.spacing.md,
-  },
-  aiIconWrapper: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(6, 182, 212, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(6, 182, 212, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: theme.spacing.md,
-  },
-  aiTextCol: {
-    flex: 1,
-  },
-  aiConsultTitle: {
-    fontSize: theme.typography.sizes.md,
+  recTitle: {
+    fontSize: theme.typography.sizes.sm,
     fontWeight: theme.typography.weights.bold,
     color: theme.colors.textPrimary,
+    marginBottom: 4,
   },
-  aiConsultDesc: {
+  recDesc: {
     fontSize: theme.typography.sizes.xs + 1,
     color: theme.colors.textSecondary,
-    marginTop: 2,
-    lineHeight: theme.typography.lineHeights.xs + 2,
+    lineHeight: theme.typography.lineHeights.sm,
   },
-  consultBtn: {
-    height: 40,
+  actionsRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.md,
   },
 });

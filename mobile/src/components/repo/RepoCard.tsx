@@ -52,11 +52,11 @@ export const RepoCard: React.FC<RepoCardProps> = ({
 
       <View style={styles.metaGrid}>
         <View style={styles.metaItem}>
-          <Text style={styles.metaLabel}>Language</Text>
+          <Text style={styles.metaLabel}>Ngôn ngữ</Text>
           <Badge label={repo.language} variant="muted" />
         </View>
         <View style={styles.metaItem}>
-          <Text style={styles.metaLabel}>Stats</Text>
+          <Text style={styles.metaLabel}>Thống kê</Text>
           <View style={styles.statsRow}>
             <View style={styles.statChip}>
               <Star size={12} color={theme.colors.textMuted} />
@@ -69,7 +69,7 @@ export const RepoCard: React.FC<RepoCardProps> = ({
           </View>
         </View>
         <View style={styles.metaItem}>
-          <Text style={styles.metaLabel}>README</Text>
+          <Text style={styles.metaLabel}>Tài liệu</Text>
           {repo.has_readme ? (
             <CheckCircle2 size={18} color={theme.colors.success} />
           ) : (
@@ -77,14 +77,14 @@ export const RepoCard: React.FC<RepoCardProps> = ({
           )}
         </View>
         <View style={styles.metaItem}>
-          <Text style={styles.metaLabel}>Analysis</Text>
+          <Text style={styles.metaLabel}>Phân tích</Text>
           <Badge
-            label={repo.is_analyzed ? 'Analyzed' : 'Not analyzed'}
+            label={repo.is_analyzed ? 'Đã phân tích' : 'Chưa phân tích'}
             variant={repo.is_analyzed ? 'success' : 'muted'}
           />
         </View>
         <View style={styles.metaItemWide}>
-          <Text style={styles.metaLabel}>Updated</Text>
+          <Text style={styles.metaLabel}>Cập nhật</Text>
           <Text style={styles.updatedText}>{formatRelativeTimeEn(repo.updated_at)}</Text>
         </View>
       </View>
@@ -93,13 +93,13 @@ export const RepoCard: React.FC<RepoCardProps> = ({
         {isAnalyzing ? (
           <View style={styles.loadingRow}>
             <ActivityIndicator size="small" color={theme.colors.primaryLight} />
-            <Text style={styles.loadingText}>Analyzing...</Text>
+            <Text style={styles.loadingText}>Đang phân tích...</Text>
           </View>
         ) : repo.is_analyzed ? (
           <View style={styles.dualActionRow}>
             <View style={styles.actionBtnSlot}>
               <Button
-                title="View analysis"
+                title="Xem phân tích"
                 variant="outline"
                 onPress={() => onViewAnalysis(repo.id, repo.name)}
                 style={styles.actionBtnFill}
@@ -107,7 +107,7 @@ export const RepoCard: React.FC<RepoCardProps> = ({
             </View>
             <View style={styles.actionBtnSlot}>
               <Button
-                title="Re-analyze"
+                title="Phân tích lại"
                 onPress={() => onAnalyze(repo.id)}
                 style={styles.actionBtnFill}
                 icon={<RefreshCw size={14} color={theme.colors.textPrimary} />}
@@ -116,7 +116,7 @@ export const RepoCard: React.FC<RepoCardProps> = ({
           </View>
         ) : (
           <Button
-            title="Analyze"
+            title="Phân tích"
             onPress={() => onAnalyze(repo.id)}
             style={styles.actionBtnFill}
             icon={<Play size={14} color={theme.colors.textPrimary} />}

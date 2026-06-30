@@ -46,6 +46,18 @@ export const normalizeAnalysis = (payload: unknown): AnalysisResult => {
       portfolioReadinessScore: asNumber(scores.portfolioReadinessScore ?? scores.portfolioReadiness),
       overallScore: asNumber(scores.overallScore ?? scores.overall ?? source.overallScore),
     },
+    skillVector: asArray(source.skillVector).map((item) => {
+      const record = asRecord(item);
+      return {
+        canonicalSkillName: firstString(record.canonicalSkillName, record.name),
+        normalizedSkillName: firstString(record.normalizedSkillName),
+        category: firstString(record.category, 'Tổng quát'),
+        score: asNumber(record.score),
+        level: firstString(record.level, 'missing') as 'missing' | 'weak' | 'developing' | 'strong',
+        evidence: asArray(record.evidence).map(String),
+        sources: asArray(record.sources).map(String),
+      };
+    }),
     strengths: asArray(source.strengths).map(cleanAnalysisText),
     weaknesses: asArray(source.weaknesses).map(cleanAnalysisText),
     recommendations: asArray(source.recommendations).map((item, index) => {

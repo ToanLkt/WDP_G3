@@ -32,7 +32,13 @@ export interface LearningNode {
   dependencies: string[];
   status: LearningNodeStatus;
   skills: string[];
-  resources: LearningResource[];
+  resources?: LearningResource[];
+  skillTags?: string[];
+  skillName?: string;
+  canonicalSkillName?: string;
+  targetRole?: string;
+  category?: string;
+  priority?: number;
   project?: string;
   bookmarked?: boolean;
   xp: number;
@@ -92,6 +98,21 @@ export interface Roadmap {
     skills: string[];
     suggestedTasks: string[];
   }[];
+  roadmapSource?: string;
+  roleMatch?: {
+    roleId: string;
+    roleName: string;
+    matchScore: number;
+    matchLevel: string;
+    matchLevelLabel: string;
+  };
+  skillGapSummary?: {
+    totalGaps: number;
+    missingRequiredCount: number;
+    weakSkillCount: number;
+    recommendedNextSkills: string[];
+    prioritySkills: string[];
+  };
 }
 
 export interface SkillGapAnalysis {
@@ -125,3 +146,49 @@ export type RoadmapListParams = {
   status?: 'active' | 'archived';
   targetRole?: string;
 };
+
+export interface LearningExample {
+  title: string;
+  code: string;
+  explanation: string;
+}
+
+export interface LearningExercise {
+  title: string;
+  description: string;
+}
+
+export interface LearningContent {
+  skillName: string;
+  targetRole: string;
+  level: string;
+  language: string;
+  title: string;
+  overview: string;
+  whyLearn: string;
+  useCases: string[];
+  howToApply: string;
+  examples: LearningExample[];
+  checklist: string[];
+  exercises: LearningExercise[];
+  commonMistakes: string[];
+  nextSkills: string[];
+}
+
+export interface AILearningResource {
+  id?: string;
+  _id?: string;
+  skillName?: string;
+  targetRole: string;
+  level: string;
+  language: string;
+  type: string;
+  title: string;
+  url: string;
+  provider: string;
+  thumbnailUrl?: string;
+  channelTitle?: string;
+  source?: string;
+  score?: number;
+  tags?: string[];
+}

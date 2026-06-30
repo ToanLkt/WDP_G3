@@ -82,6 +82,7 @@ export interface AnalysisResult {
     portfolioReadinessScore?: number;
     overallScore?: number;
   };
+  skillVector?: SkillVectorItem[];
   strengths: string[];
   weaknesses: string[];
   recommendations: Recommendation[];
@@ -125,8 +126,18 @@ export interface Skill {
   id: string;
   name: string;
   category: string;
-  level: 'beginner' | 'intermediate' | 'advanced';
+  level: 'beginner' | 'intermediate' | 'advanced' | 'missing' | 'weak' | 'developing' | 'strong';
   importance: 'high' | 'medium' | 'low';
+}
+
+export interface SkillVectorItem {
+  canonicalSkillName: string;
+  normalizedSkillName: string;
+  category: string;
+  score: number;
+  level: 'missing' | 'weak' | 'developing' | 'strong';
+  evidence?: string[];
+  sources?: string[];
 }
 
 export interface CareerDirection {
@@ -218,5 +229,96 @@ export interface ProgressData {
     architecture: number;
     documentation: number;
     overall: number;
+  };
+}
+
+export type RoleMatchLevel = 'high' | 'medium' | 'low' | 'very_low' | 'excellent' | 'good' | 'moderate' | string;
+
+export interface RoleMatch {
+  roleId: string;
+  roleName: string;
+  description?: string;
+  category?: string;
+  matchScore: number;
+  matchLevel: RoleMatchLevel;
+  matchLevelLabel: string;
+  requiredScore?: number;
+  optionalScore?: number;
+  coverageScore?: number;
+  matchedSkillCount?: number;
+  weakSkillCount?: number;
+  missingRequiredSkillCount?: number;
+  recommendedNextSkills?: string[];
+  topMatchedSkills?: string[];
+  topMissingSkills?: string[];
+  summary?: string;
+}
+
+export interface RepositoryRoleMatches {
+  repositoryId?: string;
+  repoName?: string;
+  fullName?: string;
+  analyzedAt?: string;
+  topRole?: RoleMatch;
+  matches: RoleMatch[];
+}
+
+export interface RoleCatalogItem {
+  roleId: string;
+  roleName: string;
+  description: string;
+  category: string;
+  level: string;
+  requiredSkillCount: number;
+  optionalSkillCount: number;
+}
+
+export interface SkillCatalogItem {
+  name: string;
+  category: string;
+  aliases: string[];
+  defaultLevel: string;
+  tags: string[];
+}
+
+export interface SkillComparisonItem {
+  skill: string;
+  canonicalSkillName?: string;
+  category?: string;
+  beforePercent?: number;
+  afterPercent?: number;
+  changePercent?: number;
+  status: string;
+}
+
+export interface SnapshotScoreChange {
+  key: string;
+  label: string;
+  before: number;
+  after: number;
+  change: number;
+  status: 'improved' | 'regressed' | 'unchanged' | string;
+}
+
+export interface SnapshotComparison {
+  overallChange: number;
+  scoreChanges: SnapshotScoreChange[];
+  summary: string;
+  topImprovedSkills?: SkillComparisonItem[];
+  skillVectorComparison?: {
+    skillSummary?: {
+      totalComparedSkills: number;
+      improvedCount: number;
+      regressedCount: number;
+      resolvedMissingCount: number;
+      remainingMissingCount: number;
+    };
+    topImprovedSkills?: SkillComparisonItem[];
+    topRegressedSkills?: SkillComparisonItem[];
+    newSkills?: string[];
+    resolvedMissingSkills?: string[];
+    remainingMissingSkills?: string[];
+    newMissingSkills?: string[];
+    summary?: string;
   };
 }

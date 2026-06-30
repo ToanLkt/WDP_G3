@@ -9,6 +9,8 @@ import type {
   RoadmapDifficulty,
   SkillGapAnalysis,
   RoadmapListParams,
+  LearningContent,
+  AILearningResource,
 } from './types';
 
 export { roadmapTargetRoles }
@@ -28,6 +30,11 @@ type RoadmapTask = {
     provider?: string
     estimatedMinutes?: number
   }>
+  canonicalSkillName?: string
+  skillName?: string
+  targetRole?: string
+  category?: string
+  priority?: number
 }
 
 type RoadmapPhase = {
@@ -63,6 +70,21 @@ export type BackendRoadmap = {
     detectedSkills?: string[]
     missingSkills?: string[]
     latestAnalysisSnapshotId?: string
+  }
+  roadmapSource?: string
+  roleMatch?: {
+    roleId: string
+    roleName: string
+    matchScore: number
+    matchLevel: string
+    matchLevelLabel: string
+  }
+  skillGapSummary?: {
+    totalGaps: number
+    missingRequiredCount: number
+    weakSkillCount: number
+    recommendedNextSkills: string[]
+    prioritySkills: string[]
   }
   status?: 'active' | 'archived'
   createdAt?: string
@@ -308,6 +330,12 @@ export const normalizeBackendRoadmap = (backend: BackendRoadmap): Roadmap => {
           provider: resource.provider ?? 'AI Mentor',
           estimatedMinutes: asNumber(resource.estimatedMinutes, 30)
         })),
+        skillTags: task.skillTags,
+        canonicalSkillName: task.canonicalSkillName,
+        skillName: task.skillName,
+        targetRole: task.targetRole,
+        category: task.category,
+        priority: task.priority,
         project: toUserText(task.description),
         bookmarked: false,
         xp: Math.max(80, asNumber(task.estimatedHours, 4) * 30)
@@ -360,7 +388,10 @@ export const normalizeBackendRoadmap = (backend: BackendRoadmap): Roadmap => {
       reason: toUserText(path.reason),
       skills: unique(path.skills ?? []),
       suggestedTasks: (path.suggestedTasks ?? []).map((task) => toUserText(task)).filter(Boolean)
-    }))
+    })),
+    roadmapSource: backend.roadmapSource,
+    roleMatch: backend.roleMatch,
+    skillGapSummary: backend.skillGapSummary
   }
 }
 
@@ -424,8 +455,28 @@ export const roadmapService = {
   },
 
   async archiveRoadmap(roadmapId: string): Promise<Roadmap> {
-    const response = await apiClient.patch(`/roadmaps/${roadmapId}/archive`)
-    const roadmap = extractApiResource<BackendRoadmap>(response.data, ['roadmap'])
-    return normalizeBackendRoadmap(roadmap)
+    const response = await apiClient.patch(`/roadmaps/${roadmapId}/archive`);
+    const roadmap = extractApiResource<BackendRoadmap>(response.data, ['roadmap']);
+    return normalizeBackendRoadmap(roadmap);
+  },
+
+  async generateLearningContent(data: {
+    skillName: string;
+    targetRole: string;
+    level: string;
+    language?: string;
+    forceRegenerate?: boolean;
+  }): Promise<LearningContent> {
+    const response = await apiClient.post('/learning/skills/generate', data);
+    return extractApiResource<LearningContent>(response.data);
+  },
+
+  async searchLearningResources(
+    skillName: string,
+    data: { targetRole: string; level: string; language?: string }
+  ): Promise<AILearningResource[]> {
+    const response = await apiClient.post(`/learning/skills/${encodeURIComponent(skillName)}/resources/search`, data);
+    const resources = extractApiResource<AILearningResource[]>(response.data, ['resources']);
+    return Array.isArray(resources) ? resources : [];
   }
-}
+};

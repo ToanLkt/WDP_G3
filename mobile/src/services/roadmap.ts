@@ -36,7 +36,7 @@ const webRoadmapToMobile = (roadmap: WebRoadmap): Roadmap => {
       description: node.description,
       duration: `${node.estimatedHours}h`,
       status: mapNodeStatus(node.status),
-      resources: node.resources.map((resource) => resource.title),
+      resources: (node.resources || []).map((resource) => resource.title),
       studentFocus: roadmap.description,
     }))
   );

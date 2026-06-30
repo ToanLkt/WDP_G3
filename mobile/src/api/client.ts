@@ -104,11 +104,11 @@ export const unwrapResponse = <T>(payload: unknown): T => {
   return payload as T;
 };
 
-export const extractApiResource = <T>(payload: unknown, keys: string[]): T => {
+export const extractApiResource = <T>(payload: unknown, keys?: string[]): T => {
   const unwrapped = unwrapResponse<unknown>(payload);
   const record = unwrapped && typeof unwrapped === 'object' ? (unwrapped as Record<string, unknown>) : null;
 
-  if (record) {
+  if (record && keys) {
     for (const key of keys) {
       if (record[key] !== undefined) return record[key] as T;
     }

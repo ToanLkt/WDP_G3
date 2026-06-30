@@ -26,6 +26,40 @@ export const loginUser = async (email: string, password: string): Promise<AuthRe
   return { token, user };
 };
 
+export const getGithubAuthUrl = async (redirectUrl: string): Promise<string> => {
+  return await authApi.getGithubAuthUrl(redirectUrl);
+};
+
+export const loginWithGoogle = async (idToken: string): Promise<AuthResponse> => {
+  const payload = await authApi.loginWithGoogle({ idToken });
+  const token = getToken();
+
+  if (!token) {
+    throw new Error('Authentication token not found in server response.');
+  }
+
+  const userPayload = extractApiResource<Record<string, unknown>>(payload, ['user', 'account', 'profile']);
+  const user = normalizeUser(userPayload || {});
+  await setStoredUser(user);
+
+  return { token, user };
+};
+
+export const loginWithGithub = async (accessToken: string): Promise<AuthResponse> => {
+  const payload = await authApi.loginWithGithub({ accessToken });
+  const token = getToken();
+
+  if (!token) {
+    throw new Error('Authentication token not found in server response.');
+  }
+
+  const userPayload = extractApiResource<Record<string, unknown>>(payload, ['user', 'account', 'profile']);
+  const user = normalizeUser({ ...(userPayload || {}), githubConnected: true });
+  await setStoredUser(user);
+
+  return { token, user };
+};
+
 export const registerUser = async (email: string, password: string, name: string): Promise<AuthResponse> => {
   const payload = await authApi.register({ email, password, fullName: name });
   const token = getToken();

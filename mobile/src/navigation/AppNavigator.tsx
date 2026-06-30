@@ -21,6 +21,7 @@ import { SettingsScreen } from '../screens/settings/SettingsScreen';
 import { ConnectGitHubScreen } from '../screens/github/ConnectGitHubScreen';
 import { RoadmapListScreen } from '../screens/roadmap/RoadmapListScreen';
 import { RoadmapDetailScreen } from '../screens/roadmap/RoadmapDetailScreen';
+import { SkillLearningDetailScreen } from '../screens/roadmap/SkillLearningDetailScreen';
 
 import type {
   AuthStackParamList,
@@ -28,7 +29,7 @@ import type {
   RepositoriesStackParamList,
   RoadmapStackParamList,
   RootStackParamList,
-} from '@/navigation/types';
+} from './types';
 
 export type {
   AuthStackParamList,
@@ -36,7 +37,7 @@ export type {
   RepositoriesStackParamList,
   RoadmapStackParamList,
   RootStackParamList,
-} from '@/navigation/types';
+} from './types';
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const RepoStack = createNativeStackNavigator<RepositoriesStackParamList>();
@@ -105,7 +106,7 @@ const RepositoriesStackNavigator = () => {
       <RepoStack.Screen 
         name="RepoAnalysis" 
         component={AnalysisResultScreen} 
-        options={({ route }) => ({ title: route.params.repoName })} 
+        options={({ route }) => ({ title: route.params?.repoName || 'Phân tích' })} 
       />
       <RepoStack.Screen 
         name="ConnectGitHub" 
@@ -135,13 +136,21 @@ const RoadmapStackNavigator = () => {
       <RoadmapStack.Screen
         name="RoadmapList"
         component={RoadmapListScreen}
-        options={{ title: 'Learning Roadmap' }}
+        options={{ title: 'Lộ trình học tập' }}
       />
       <RoadmapStack.Screen
         name="RoadmapDetail"
         component={RoadmapDetailScreen}
         options={({ route }) => ({
-          title: route.params.title,
+          title: route.params?.title || 'Chi tiết Lộ trình',
+          headerBackTitle: 'Quay lại',
+        })}
+      />
+      <RoadmapStack.Screen
+        name="SkillLearningDetail"
+        component={SkillLearningDetailScreen}
+        options={({ route }) => ({
+          title: 'Chi tiết Kỹ năng',
           headerBackTitle: 'Quay lại',
         })}
       />
@@ -196,7 +205,7 @@ const MainTabsNavigator = () => {
         component={HomeScreen}
         options={{
           headerShown: false,
-          tabBarLabel: 'Home',
+          tabBarLabel: 'Trang chủ',
           tabBarIcon: ({ color, size }) => <Home color={color} size={size - 2} />,
         }}
       />
@@ -204,9 +213,9 @@ const MainTabsNavigator = () => {
         name="RepositoriesTab"
         component={RepositoriesStackNavigator}
         options={{
-          title: 'Repositories',
+          title: 'Kho lưu trữ',
           headerShown: false, // Stack navigator has its own headers
-          tabBarLabel: 'Repos',
+          tabBarLabel: 'Kho lưu trữ',
           tabBarIcon: ({ color, size }) => <FolderCode color={color} size={size - 2} />,
         }}
       />
@@ -214,9 +223,9 @@ const MainTabsNavigator = () => {
         name="RoadmapTab"
         component={RoadmapStackNavigator}
         options={{
-          title: 'Learning Roadmap',
+          title: 'Lộ trình học tập',
           headerShown: false,
-          tabBarLabel: 'Roadmap',
+          tabBarLabel: 'Lộ trình',
           tabBarButton: (props) => <CustomTabBarButton {...props} />,
         }}
       />
@@ -234,7 +243,7 @@ const MainTabsNavigator = () => {
         component={SettingsScreen}
         options={{
           headerShown: false,
-          tabBarLabel: 'Profile',
+          tabBarLabel: 'Hồ sơ',
           tabBarIcon: ({ color, size }) => <Settings color={color} size={size - 2} />,
         }}
       />
