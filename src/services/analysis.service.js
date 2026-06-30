@@ -1,13 +1,19 @@
 const AnalysisResult = require('../models/AnalysisResult');
 const RepositoryPackage = require('../models/RepositoryPackage');
 const RepositoryCommit = require('../models/RepositoryCommit');
+const GithubAccount = require('../models/GithubAccount');
 
 const { findRepositoryForUser } = require('./github/github.repository.service');
-const { buildAnalysisPayload, sanitizeAnalysisSnapshot } = require('./analysis/analysis.engine');
+const {
+  buildAnalysisPayload,
+  filterUserContributionCommits,
+  sanitizeAnalysisSnapshot,
+} = require('./analysis/analysis.engine');
 const { createSnapshotFromAnalysisResult } = require('./snapshot.service');
 const { matchSkillVectorToRoles } = require('./roleMatching.service');
 
-const shouldIncludeEvidence = (query = {}) => query.includeEvidence === 'true';
+const shouldIncludeEvidence = (query = {}) => query.includeEvidence === true || query.includeEvidence === 'true';
+const getView = (query = {}) => (query.view === 'detail' ? 'detail' : 'summary');
 
 const validateAuthUser = (authUser) => {
   if (!authUser || !authUser.userId) {
@@ -43,16 +49,26 @@ const analyzeRepository = async ({ user, params, query }) => {
   validateAuthUser(user);
 
   const repository = await findRepositoryForUser(user, params.repoId);
-  const [packageRecord, commits] = await Promise.all([
+  const [githubAccount, packageRecord, commits] = await Promise.all([
+    GithubAccount.findOne({ userId: user.userId }).lean(),
     RepositoryPackage.findOne({ userId: user.userId, repositoryId: repository._id }).lean(),
     RepositoryCommit.find({ userId: user.userId, repositoryId: repository._id }).sort({ authorDate: -1 }).lean(),
   ]);
+
+  if (!githubAccount) {
+    const error = new Error('GitHub account is not connected');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const contributionScope = filterUserContributionCommits(commits, githubAccount);
   const rules = loadAnalysisRules();
   const analysisPayload = buildAnalysisPayload({
     repository,
     packageRecord,
-    commits,
+    commits: contributionScope.userCommits,
     rules,
+    contributionScope,
   });
 
   const analysisResult = await AnalysisResult.create({
@@ -64,13 +80,11 @@ const analyzeRepository = async ({ user, params, query }) => {
 
   return {
     message: 'Repository analyzed successfully',
-    data: {
-      analysis: sanitizeAnalysisSnapshot(analysisResult, {
-        excludeRawAnalysis: true,
-        includeEvidence: shouldIncludeEvidence(query),
-      }),
+    data: sanitizeAnalysisSnapshot(analysisResult, {
+      view: getView(query),
+      includeEvidence: shouldIncludeEvidence(query),
       snapshotId: repoSnapshot?._id || null,
-    },
+    }),
     statusCode: 200,
   };
 };
@@ -90,8 +104,9 @@ const getAnalysisResults = async ({ user, params, query }) => {
     message: 'Analysis result fetched successfully',
     data: {
       analysis: sanitizeAnalysisSnapshot(analysis, {
-        excludeRawAnalysis: true,
+        view: getView(query),
         includeEvidence: shouldIncludeEvidence(query),
+        snapshotId: null,
       }),
     },
     statusCode: 200,
@@ -118,8 +133,10 @@ const getMyAnalysisResults = async ({ user, query }) => {
     seenRepositoryIds.add(repositoryId);
     analyses.push(
       sanitizeAnalysisSnapshot(snapshot, {
-        excludeRawAnalysis: true,
+        view: getView(query),
         includeEvidence: shouldIncludeEvidence(query),
+        snapshotId: null,
+        listItem: true,
       })
     );
   }

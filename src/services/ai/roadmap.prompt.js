@@ -16,6 +16,8 @@ Generate a personalized learning roadmap for a Software Engineering student.
 Important rules:
 - The student selected this target role: ${targetRole}.
 - The roadmap must prioritize the selected target role.
+- This roadmap is based on the current user's own GitHub commits/contribution, not the whole repository.
+- Use effectiveLevel from Roadmap Skill Gap Context as the student's actual level band. request level is only a fallback.
 - Do not force the student to learn every missing skill.
 - Build a main path that helps the student reach MVP competency for the selected target role.
 - Use the student's GitHub analysis context as evidence.
@@ -28,8 +30,11 @@ Important rules:
 - If Roadmap Skill Gap Context is available, prioritize its prioritySkills in order.
 - Do not make alreadyStrongSkills the main learning content.
 - Every skill name must use the canonical name from Roadmap Skill Gap Context.
+- Do not duplicate canonical skills across priority gap items. Alternative paths must use different skills or clearly different objectives.
+- Generate concise, actionable tasks.
 - Do not include learning resource links, books, courses, videos, or documentation URLs.
 - Set every task resources field to an empty array. Learning resources are handled by a separate Learning API.
+- Each task should include itemId or taskId, skillName, canonicalSkillName, targetRole, level, priority, week, estimatedHours, and status when possible.
 - Answer as valid JSON only.
 - Do not wrap JSON in markdown.
 - Use Vietnamese text for user-facing fields.
@@ -51,7 +56,15 @@ Return JSON with exactly this structure:
           {
             "title": "",
             "description": "",
+            "itemId": "",
+            "skillName": "",
+            "canonicalSkillName": "",
+            "targetRole": "",
+            "level": "",
+            "priority": "medium",
+            "week": 1,
             "skillTags": [],
+            "status": "not_started",
             "estimatedHours": 0,
             "resources": [
               {
@@ -86,7 +99,11 @@ Constraints:
 - Each phase should have 2 to 4 tasks.
 - supportingPaths must contain exactly 2 items.
 - Resources can be empty array if no reliable resource URL is available.
+- Do not generate resource URLs inside roadmap tasks.
 - Keep the roadmap practical for a student MVP.
+- beginner: focus on fundamentals, clear explanations, and small projects.
+- intermediate: focus on deeper practice, testing, refactor, basic CI/CD, and clean code.
+- advanced: focus on architecture, security, performance, production, and monitoring.
 - Use clear Vietnamese.
 
 Student GitHub Context:

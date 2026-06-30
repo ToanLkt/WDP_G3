@@ -75,8 +75,8 @@ try {
             title: 'Backend quality',
             skills: [],
             tasks: [
-              { title: 'Add tests', skillTags: [] },
-              { title: 'Improve quality', skillTags: [] },
+              { itemId: 'main-1-1-testing', title: 'Add tests', canonicalSkillName: 'Testing', skillTags: [] },
+              { itemId: 'main-1-2-clean-code', title: 'Improve quality', canonicalSkillName: 'Clean Code', skillTags: [] },
             ],
           },
         ],
@@ -84,14 +84,18 @@ try {
     },
     result
   );
-  const progressSkills = extractRoadmapSkills(roadmap).map((item) => item.skillName);
-  for (const name of ['Testing', 'Clean Code']) {
-    if (!progressSkills.includes(name)) fail(`Progress extraction missing ${name}`);
+  const progressItems = extractRoadmapSkills(roadmap);
+  const progressItemIds = progressItems.map((item) => item.itemId);
+  if (progressItems.some((item) => !item.itemId)) {
+    fail('Progress extraction contains empty itemId');
   }
-  if (new Set(progressSkills).size !== progressSkills.length) {
-    fail('Progress extraction contains duplicate skills');
+  if (progressItemIds.some((itemId) => !/^main-\d+-\d+-[a-z0-9-]+$/.test(itemId))) {
+    fail(`Progress extraction contains invalid main itemId: ${JSON.stringify(progressItemIds)}`);
   }
-  pass('new roadmap tasks remain compatible with progress extraction');
+  if (new Set(progressItemIds).size !== progressItemIds.length) {
+    fail('Progress extraction contains duplicate itemId');
+  }
+  pass('new roadmap tasks remain compatible with task-level progress extraction');
 
   const normalizedPayload = normalizeRoadmapPayload({
     userId: '507f1f77bcf86cd799439011',

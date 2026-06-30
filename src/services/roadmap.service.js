@@ -12,8 +12,10 @@ const { generateRoadmapResponse } = require('./ai.service');
 const { buildRoadmapPrompt } = require('./ai/roadmap.prompt');
 const { createStatusError } = require('./github/github.utils');
 const { findRepositoryForUser } = require('./github/github.repository.service');
+const { createAutomaticNotification } = require('./notification.service');
 const { canonicalizeSkillName, getCanonicalSkillCategory } = require('../utils/skillCanonicalizer');
 const { buildRoadmapSkillGapFromAnalysis } = require('./roadmapSkillGap.service');
+const { ROLE_SKILL_VECTORS } = require('../constants/roleSkillVectors');
 
 let LearningRecommendation = null;
 
@@ -44,6 +46,480 @@ const getUserId = (authUserOrId) => {
 
 const uniqueStrings = (values, limit = 20) =>
   [...new Set((values || []).map((value) => String(value || '').trim()).filter(Boolean))].slice(0, limit);
+
+const normalizeKey = (value) => String(value || '').trim().toLowerCase();
+const roundScore = (value) => Number((Number(value || 0)).toFixed(3));
+const slugifySkill = (value) =>
+  normalizeKey(canonicalizeSkillName(value))
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') || 'skill';
+
+const priorityLabel = (priority) => {
+  if (['high', 'medium', 'low'].includes(priority)) return priority;
+  const value = Number(priority || 0);
+  if (value <= 1) return 'high';
+  if (value <= 3) return 'medium';
+  return 'low';
+};
+
+const findRoleCatalogEntry = ({ roleId, targetRole }) => {
+  const roleIdKey = normalizeKey(roleId);
+  const targetKey = normalizeKey(targetRole);
+  return (
+    (roleIdKey && ROLE_SKILL_VECTORS.find((role) => normalizeKey(role.roleId) === roleIdKey)) ||
+    (targetKey &&
+      ROLE_SKILL_VECTORS.find(
+        (role) => normalizeKey(role.roleName) === targetKey || normalizeKey(role.roleId) === targetKey
+      )) ||
+    null
+  );
+};
+
+const toObjectId = (value) =>
+  mongoose.Types.ObjectId.isValid(String(value || '')) ? new mongoose.Types.ObjectId(String(value)) : null;
+
+const getAnalysisRepositoryKey = (analysis = {}) =>
+  String(analysis.repositoryId || analysis.githubRepoId || analysis.fullName || analysis.repoName || '').trim();
+
+const findLatestUserContributionAnalysis = async ({ userId, repository, repoId }) => {
+  const repositoryId = repository?._id || toObjectId(repoId);
+  const query = {
+    userId,
+    analysisScope: { $type: 'object' },
+    'analysisScope.type': 'user_contribution',
+    $or: [],
+  };
+  if (repositoryId) {
+    query.$or.push({ repositoryId });
+  }
+  if (repository?.githubRepoId) {
+    query.$or.push({ githubRepoId: repository.githubRepoId });
+  }
+  if (!query.$or.length) return null;
+
+  return AnalysisResult.findOne(query).sort({ analyzedAt: -1, createdAt: -1 }).lean();
+};
+
+const findLatestUserContributionAnalysesForUser = async (userId) => {
+  const analyses = await AnalysisResult.find({
+    userId,
+    analysisScope: { $type: 'object' },
+    'analysisScope.type': 'user_contribution',
+  })
+    .sort({ analyzedAt: -1, createdAt: -1 })
+    .lean();
+  const latestByRepository = new Map();
+  for (const analysis of analyses) {
+    const key = getAnalysisRepositoryKey(analysis);
+    if (key && !latestByRepository.has(key)) {
+      latestByRepository.set(key, analysis);
+    }
+  }
+  return [...latestByRepository.values()];
+};
+
+const findLatestUserContributionAnalysesByRepoIds = async (userId, repoIds = []) => {
+  const analyses = [];
+  const missingRepoIds = [];
+  for (const repoId of repoIds) {
+    let repository = null;
+    try {
+      repository = await findRepositoryForUser({ userId }, repoId);
+    } catch (error) {
+      missingRepoIds.push(String(repoId));
+      continue;
+    }
+    const analysis = await findLatestUserContributionAnalysis({ userId, repository, repoId });
+    if (analysis) {
+      analyses.push({ analysis, repository });
+    } else {
+      missingRepoIds.push(String(repoId));
+    }
+  }
+  return { analyses, missingRepoIds };
+};
+
+const buildRoadmapSource = ({ analysis, repository, sourceMode = 'single_repo' }) => {
+  const summary = analysis?.summary || {};
+  const scope = analysis?.analysisScope || {};
+  return {
+    type: 'user_contribution_analysis',
+    sourceMode,
+    analysisId: analysis?._id || null,
+    snapshotId: analysis?.snapshotId || null,
+    repositoryId: analysis?.repositoryId || repository?._id || null,
+    repoName: analysis?.repoName || repository?.name || '',
+    fullName: analysis?.fullName || repository?.fullName || '',
+    githubUsername: scope.githubUsername || '',
+    totalRepoCommits: Number(scope.totalRepoCommits || 0),
+    userCommits: Number(scope.userCommits || analysis?.commitSummary?.totalCommits || 0),
+    activeDays: Number(scope.activeDays || analysis?.commitSummary?.activeDays || 0),
+    firstCommitDate: scope.firstCommitDate || analysis?.commitSummary?.firstCommitDate || null,
+    lastCommitDate: scope.lastCommitDate || analysis?.commitSummary?.lastCommitDate || null,
+    userLevel: summary.userLevel || scope.userLevel || '',
+    userReadinessScore: Number(summary.userReadinessScore || 0),
+    careerDirection: summary.careerDirection || analysis?.careerDirection || '',
+    projectType: summary.projectType || analysis?.projectType || '',
+  };
+};
+
+const getWeightedAverageReadinessScore = (analyses) => {
+  const validScores = analyses
+    .map((analysis) => ({
+      score: Number(analysis.summary?.userReadinessScore ?? analysis.analysisScope?.userReadinessScore),
+      weight: Math.max(1, Number(analysis.analysisScope?.userCommits || analysis.commitSummary?.totalCommits || 0)),
+    }))
+    .filter((item) => Number.isFinite(item.score));
+  if (!validScores.length) return 0;
+  const totalWeight = validScores.reduce((sum, item) => sum + item.weight, 0);
+  return Math.round(validScores.reduce((sum, item) => sum + item.score * item.weight, 0) / totalWeight);
+};
+
+const getUserLevelFromScore = (score) => {
+  if (score >= 80) return 'advanced';
+  if (score >= 45) return 'intermediate';
+  return 'beginner';
+};
+
+const mergeSkillVector = (analyses) => {
+  const grouped = new Map();
+  for (const analysis of analyses) {
+    for (const skill of analysis.skillVector || []) {
+      const canonicalSkillName = canonicalizeSkillName(skill.canonicalSkillName || skill.skill);
+      if (!canonicalSkillName) continue;
+      const key = normalizeKey(canonicalSkillName);
+      const score = Number(skill.score || 0);
+      const group = grouped.get(key) || {
+        skill: canonicalSkillName,
+        canonicalSkillName,
+        normalizedSkillName: key,
+        category: getCanonicalSkillCategory(canonicalSkillName),
+        scores: [],
+        levels: [],
+        sources: [],
+        evidence: [],
+      };
+      group.scores.push(score);
+      group.levels.push(skill.level || 'missing');
+      group.sources.push({
+        repoName: analysis.repoName || '',
+        analysisId: analysis._id,
+        score,
+        level: skill.level || 'missing',
+      });
+      grouped.set(key, group);
+    }
+  }
+
+  const levelRank = { missing: 0, weak: 1, developing: 2, strong: 3 };
+  return [...grouped.values()]
+    .map((group) => {
+      const maxScore = Math.max(...group.scores);
+      const averageScore = group.scores.reduce((sum, score) => sum + score, 0) / group.scores.length;
+      const level = [...group.levels].sort((a, b) => (levelRank[b] || 0) - (levelRank[a] || 0))[0] || 'missing';
+      return {
+        skill: group.skill,
+        canonicalSkillName: group.canonicalSkillName,
+        normalizedSkillName: group.normalizedSkillName,
+        category: group.category,
+        score: roundScore(maxScore * 0.6 + averageScore * 0.4),
+        level,
+        evidence: group.sources.slice(0, 5),
+        sources: group.sources.slice(0, 5).map((source) => source.repoName).filter(Boolean),
+      };
+    })
+    .sort((a, b) => b.score - a.score);
+};
+
+const dedupeText = (values, limit = 12) => {
+  const seen = new Set();
+  const result = [];
+  for (const value of values || []) {
+    const text = typeof value === 'string' ? value.trim() : String(value || '').trim();
+    const key = normalizeKey(text);
+    if (text && !seen.has(key)) {
+      seen.add(key);
+      result.push(text);
+    }
+    if (result.length >= limit) break;
+  }
+  return result;
+};
+
+const mergeMultiRepoAnalysisContext = ({ analyses, targetRole }) => {
+  const sources = analyses.map((item) => (item.analysis ? item.analysis : item));
+  const firstCommitDates = sources.map((analysis) => analysis.analysisScope?.firstCommitDate).filter(Boolean);
+  const lastCommitDates = sources.map((analysis) => analysis.analysisScope?.lastCommitDate).filter(Boolean);
+  const userReadinessScore = getWeightedAverageReadinessScore(sources);
+  const userLevel = getUserLevelFromScore(userReadinessScore);
+  const careerDirection = targetRole || sources[0]?.summary?.careerDirection || sources[0]?.careerDirection || '';
+  const repositories = analyses.map((item) => {
+    const analysis = item.analysis || item;
+    const repository = item.repository || null;
+    const source = buildRoadmapSource({ analysis, repository, sourceMode: 'single_repo' });
+    return {
+      repositoryId: source.repositoryId,
+      repoName: source.repoName,
+      fullName: source.fullName,
+      analysisId: source.analysisId,
+      githubUsername: source.githubUsername,
+      totalRepoCommits: source.totalRepoCommits,
+      userCommits: source.userCommits,
+      activeDays: source.activeDays,
+      userLevel: source.userLevel,
+      userReadinessScore: source.userReadinessScore,
+      careerDirection: source.careerDirection,
+      projectType: source.projectType,
+    };
+  });
+  const roadmapSource = {
+    type: 'multi_repo_user_contribution_analysis',
+    sourceMode: 'all_analyzed_repos',
+    analysisIds: sources.map((analysis) => analysis._id),
+    repositoryIds: sources.map((analysis) => analysis.repositoryId).filter(Boolean),
+    repositories,
+    githubUsername: repositories.find((repo) => repo.githubUsername)?.githubUsername || '',
+    totalRepositories: sources.length,
+    totalRepoCommits: sources.reduce((sum, analysis) => sum + Number(analysis.analysisScope?.totalRepoCommits || 0), 0),
+    totalUserCommits: sources.reduce(
+      (sum, analysis) => sum + Number(analysis.analysisScope?.userCommits || analysis.commitSummary?.totalCommits || 0),
+      0
+    ),
+    activeDays: sources.reduce(
+      (sum, analysis) => sum + Number(analysis.analysisScope?.activeDays || analysis.commitSummary?.activeDays || 0),
+      0
+    ),
+    firstCommitDate: firstCommitDates.length ? firstCommitDates.sort()[0] : null,
+    lastCommitDate: lastCommitDates.length ? lastCommitDates.sort().slice(-1)[0] : null,
+    userLevel,
+    userReadinessScore,
+    careerDirection,
+    projectType: 'Multi-repo portfolio',
+  };
+  const mergedAnalysis = {
+    _id: null,
+    userId: sources[0]?.userId,
+    repoName: 'Multi-repo portfolio',
+    fullName: 'Multi-repo portfolio',
+    projectType: 'Multi-repo portfolio',
+    careerDirection,
+    summary: {
+      careerDirection,
+      userLevel,
+      userReadinessScore,
+      projectType: 'Multi-repo portfolio',
+    },
+    analysisScope: roadmapSource,
+    skillVector: mergeSkillVector(sources),
+    strengths: dedupeText(sources.flatMap((analysis) => analysis.strengths || []), 12),
+    weaknesses: dedupeText(sources.flatMap((analysis) => analysis.weaknesses || []), 12),
+    missingSkills: uniqueStrings(
+      sources.flatMap((analysis) => analysis.missingSkills || []).map(canonicalizeSkillName),
+      20
+    ),
+    recommendations: dedupeText(sources.flatMap((analysis) => analysis.recommendations || []), 12),
+  };
+  return { mergedAnalysis, roadmapSource };
+};
+
+const formatSkillGapSummary = (skillGaps = []) => {
+  const seen = new Set();
+  return (Array.isArray(skillGaps) ? skillGaps : [])
+    .map((gap) => {
+      const canonicalSkillName = canonicalizeSkillName(gap.canonicalSkillName || gap.skillName || gap.skill);
+      const currentScore = roundScore(gap.currentScore || 0);
+      const fallbackRequiredScore = (gap.currentLevel || 'missing') === 'missing' ? 0.4 : 0.4;
+      const requiredScore = roundScore(Number(gap.requiredScore ?? gap.targetMinScore ?? fallbackRequiredScore) || fallbackRequiredScore);
+      const rawGap = gap.gap ?? Math.max(0, requiredScore - currentScore);
+      const calculatedGap = roundScore(rawGap <= 0 && (gap.currentLevel || 'missing') === 'missing' ? Math.max(0.001, requiredScore - currentScore) : rawGap);
+      return {
+        skillName: canonicalSkillName,
+        canonicalSkillName,
+        category: getCanonicalSkillCategory(canonicalSkillName),
+        currentLevel: gap.currentLevel || 'missing',
+        targetLevel: gap.targetLevel || 'strong',
+        currentScore,
+        requiredScore,
+        gap: calculatedGap,
+        priority: priorityLabel(gap.priority),
+        reason: gap.reason || gap.reasonVi || '',
+      };
+    })
+    .filter((gap) => {
+      const key = normalizeKey(gap.canonicalSkillName);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 12);
+};
+
+const sanitizePriority = (value) => {
+  if (['high', 'medium', 'low'].includes(value)) return value;
+  return priorityLabel(value || 3);
+};
+
+const sanitizeRoadmapTask = (task = {}, fallback = {}) => {
+  const canonicalSkillName = canonicalizeSkillName(
+    task.canonicalSkillName || task.skillName || task.skill || fallback.skillName || ''
+  );
+  const title = String(task.title || task.name || 'Roadmap task').trim();
+  const itemId = buildTaskItemId({
+    scope: fallback.scope || 'main',
+    phaseIndex: Number(fallback.phaseIndex || 0),
+    taskIndex: Number(fallback.taskIndex || 0),
+    canonicalSkillName,
+  });
+  return {
+    itemId,
+    title,
+    description: String(task.description || task.goal || '').trim(),
+    skillName: canonicalSkillName,
+    canonicalSkillName,
+    category: getCanonicalSkillCategory(canonicalSkillName),
+    targetRole: String(task.targetRole || fallback.targetRole || '').trim(),
+    level: String(task.level || fallback.level || '').trim(),
+    priority: sanitizePriority(task.priority),
+    week: Number.isFinite(Number(task.week)) ? Number(task.week) : Number(fallback.week || 1),
+    estimatedHours: Number.isFinite(Number(task.estimatedHours)) ? Number(task.estimatedHours) : 0,
+    status: ['not_started', 'in_progress', 'completed'].includes(task.status) ? task.status : 'not_started',
+  };
+};
+
+const sanitizeRoadmapPhases = (phases = [], context = {}) =>
+  (Array.isArray(phases) ? phases : []).map((phase, phaseIndex) => ({
+    title: String(phase.title || `Phase ${phaseIndex + 1}`).trim(),
+    goal: String(phase.goal || phase.reason || '').trim(),
+    skills: Array.isArray(phase.skills) ? uniqueStrings(phase.skills.map(canonicalizeSkillName), 12) : [],
+    tasks: (Array.isArray(phase.tasks) ? phase.tasks : []).map((task, taskIndex) =>
+      sanitizeRoadmapTask(task, {
+        targetRole: context.targetRole,
+        level: context.effectiveLevel,
+        phaseIndex,
+        taskIndex,
+        week: phaseIndex + 1,
+        scope: 'main',
+      })
+    ),
+    status: ['not_started', 'in_progress', 'completed'].includes(phase.status) ? phase.status : 'not_started',
+  }));
+
+const formatLegacySuggestedTask = (task) => {
+  if (typeof task === 'string' || typeof task === 'number') return String(task).trim();
+  if (!task || typeof task !== 'object') return '';
+  return [task.title || task.name, task.description || task.goal].map((value) => String(value || '').trim()).filter(Boolean).join(': ');
+};
+
+const parseSuggestedTaskText = (text, fallbackTitle = 'Roadmap task') => {
+  const value = String(text || '').trim();
+  if (!value) {
+    return { title: fallbackTitle, description: '' };
+  }
+
+  const separatorIndex = value.indexOf(':');
+  if (separatorIndex > 0) {
+    const title = value.slice(0, separatorIndex).trim();
+    const description = value.slice(separatorIndex + 1).trim();
+    if (title.length >= 4 && description) {
+      return { title, description };
+    }
+  }
+
+  return { title: value, description: value };
+};
+
+const sanitizeAlternativeRoadmaps = (roadmap = {}, context = {}) => {
+  if (Array.isArray(roadmap.alternativeRoadmaps) && roadmap.alternativeRoadmaps.length > 0) {
+    return roadmap.alternativeRoadmaps.slice(0, 2).map((item, roadmapIndex) => ({
+      title: String(item.title || `Alternative Roadmap ${roadmapIndex + 1}`).trim(),
+      targetRole: String(context.targetRole || item.targetRole || '').trim(),
+      pathType: item.pathType || 'supporting',
+      reason: String(item.reason || '').trim(),
+      skills: Array.isArray(item.skills) ? uniqueStrings(item.skills.map(canonicalizeSkillName), 12) : [],
+      tasks: (Array.isArray(item.tasks) ? item.tasks : []).map((task, taskIndex) =>
+        sanitizeRoadmapTask(task, {
+          targetRole: context.targetRole || item.targetRole,
+          level: context.effectiveLevel,
+          phaseIndex: roadmapIndex,
+          taskIndex,
+          week: taskIndex + 1,
+          scope: 'alt',
+        })
+      ),
+    }));
+  }
+
+  return (Array.isArray(roadmap.supportingPaths) ? roadmap.supportingPaths : []).slice(0, 2).map((path, roadmapIndex) => {
+    const skills = Array.isArray(path.skills) ? uniqueStrings(path.skills.map(canonicalizeSkillName), 12) : [];
+    const tasks = (Array.isArray(path.suggestedTasks) ? path.suggestedTasks : [])
+      .map(formatLegacySuggestedTask)
+      .filter(Boolean)
+      .map((text, taskIndex) => {
+        const parsedTask = parseSuggestedTaskText(text, `Alternative task ${taskIndex + 1}`);
+        return sanitizeRoadmapTask(
+          {
+            title: parsedTask.title,
+            description: parsedTask.description,
+            canonicalSkillName: skills[taskIndex % Math.max(1, skills.length)] || skills[0] || 'Clean Code',
+            priority: taskIndex === 0 ? 'medium' : 'low',
+            estimatedHours: 4,
+          },
+          {
+            targetRole: context.targetRole,
+            level: context.effectiveLevel,
+            phaseIndex: roadmapIndex,
+            taskIndex,
+            week: taskIndex + 1,
+            scope: 'alt',
+          }
+        );
+      });
+    return {
+      title: String(path.title || `Alternative Roadmap ${roadmapIndex + 1}`).trim(),
+      targetRole: String(context.targetRole || '').trim(),
+      pathType: 'supporting',
+      reason: String(path.reason || '').trim(),
+      skills,
+      tasks,
+    };
+  });
+};
+
+const normalizeRoadmapSourceForResponse = (roadmapSource) => {
+  if (
+    !roadmapSource ||
+    typeof roadmapSource !== 'object' ||
+    !['user_contribution_analysis', 'multi_repo_user_contribution_analysis'].includes(roadmapSource.type)
+  ) {
+    return null;
+  }
+  return roadmapSource;
+};
+
+const formatLegacyGapItems = (skillGapSummary = {}) =>
+  uniqueStrings([
+    ...(skillGapSummary.recommendedNextSkills || []),
+    ...(skillGapSummary.prioritySkills || []),
+  ].map(canonicalizeSkillName), 12).map((skillName) => ({
+    skillName,
+    canonicalSkillName: skillName,
+    category: getCanonicalSkillCategory(skillName),
+    currentLevel: 'missing',
+    targetLevel: 'strong',
+    currentScore: 0,
+    requiredScore: 0.4,
+    gap: 0.4,
+    priority: 'medium',
+    reason: 'Legacy roadmap gap converted for compact response.',
+  }));
+
+const safeCreateRoadmapNotification = async (payload) => {
+  try {
+    await createAutomaticNotification(payload);
+  } catch (error) {
+    console.warn('Create roadmap notification failed:', error.message);
+  }
+};
 
 const mapRecommendations = (items) =>
   (items || [])
@@ -440,7 +916,15 @@ const inferPrimarySkillForTask = (task, skillGaps = [], phase = {}) => {
   );
 };
 
-const normalizeTask = (task, index, skillGaps = [], phase = {}, targetRole = '') => {
+const buildTaskItemId = ({ scope = 'main', phaseIndex, taskIndex, canonicalSkillName }) => {
+  const skillSlug = slugifySkill(canonicalSkillName);
+  if (scope === 'alt') {
+    return `alt-${Number(phaseIndex || 0) + 1}-task-${Number(taskIndex || 0) + 1}-${skillSlug}`;
+  }
+  return `main-${Number(phaseIndex || 0) + 1}-${Number(taskIndex || 0) + 1}-${skillSlug}`;
+};
+
+const normalizeTask = (task, index, skillGaps = [], phase = {}, targetRole = '', context = {}) => {
   const skillTags = Array.isArray(task?.skillTags)
     ? uniqueStrings(task.skillTags.map(canonicalizeSkillName), 10)
     : [];
@@ -449,15 +933,26 @@ const normalizeTask = (task, index, skillGaps = [], phase = {}, targetRole = '')
     [canonicalSkillName, ...skillTags].filter(Boolean).map(canonicalizeSkillName),
     10
   );
+  const title = String(task?.title || `Task ${index + 1}`).trim();
+  const phaseIndex = Number(context.phaseIndex || 0);
+  const level = context.effectiveLevel || task?.level || '';
   return {
-    title: String(task?.title || `Task ${index + 1}`).trim(),
+    itemId: buildTaskItemId({
+      scope: context.scope || 'main',
+      phaseIndex,
+      taskIndex: index,
+      canonicalSkillName,
+    }),
+    title,
     description: String(task?.description || '').trim(),
     skillTags: normalizedSkillTags,
     skillName: canonicalSkillName,
     canonicalSkillName,
-    category: task?.category || getCanonicalSkillCategory(canonicalSkillName),
-    priority: Number(task?.priority || 0),
+    category: getCanonicalSkillCategory(canonicalSkillName),
+    priority: task?.priority || priorityLabel(skillGaps.find((gap) => gap.canonicalSkillName === canonicalSkillName)?.priority || 3),
     targetRole: String(targetRole || '').trim(),
+    level,
+    week: Number.isFinite(Number(task?.week)) ? Number(task.week) : phaseIndex + 1,
     status: ['not_started', 'in_progress', 'completed'].includes(task?.status) ? task.status : 'not_started',
     estimatedHours: Number.isFinite(Number(task?.estimatedHours)) ? Number(task.estimatedHours) : 0,
     resources: [],
@@ -494,7 +989,7 @@ function normalizeResources(resources) {
   });
 }
 
-const normalizePhase = (phase, index, skillGaps = [], targetRole = '') => {
+const normalizePhase = (phase, index, skillGaps = [], targetRole = '', context = {}) => {
   const normalizedPhase = {
     ...phase,
     skills: Array.isArray(phase?.skills)
@@ -509,7 +1004,11 @@ const normalizePhase = (phase, index, skillGaps = [], targetRole = '') => {
       ? phase.tasks
           .slice(0, 4)
           .map((task, taskIndex) =>
-            normalizeTask(task, taskIndex, skillGaps, normalizedPhase, targetRole)
+            normalizeTask(task, taskIndex, skillGaps, normalizedPhase, targetRole, {
+              ...context,
+              phaseIndex: index,
+              scope: 'main',
+            })
           )
       : [],
     status: ['not_started', 'in_progress', 'completed'].includes(phase?.status)
@@ -529,13 +1028,42 @@ const normalizeSuggestedTaskText = (task) => {
 const normalizeSupportingPath = (path, index) => ({
   title: String(path?.title || `Supporting Path ${index + 1}`).trim(),
   reason: String(path?.reason || '').trim(),
-  skills: Array.isArray(path?.skills)
-    ? uniqueStrings(path.skills.map(canonicalizeSkillName), 12)
-    : [],
-  suggestedTasks: Array.isArray(path?.suggestedTasks)
-    ? uniqueStrings(path.suggestedTasks.map(normalizeSuggestedTaskText), 10)
-    : [],
+  skills: Array.isArray(path?.skills) ? uniqueStrings(path.skills.map(canonicalizeSkillName), 12) : [],
+  suggestedTasks: Array.isArray(path?.suggestedTasks) ? uniqueStrings(path.suggestedTasks.map(normalizeSuggestedTaskText), 10) : [],
 });
+
+const buildAlternativeRoadmaps = (supportingPaths, { targetRole, effectiveLevel, durationWeeks }) =>
+  (Array.isArray(supportingPaths) ? supportingPaths : []).slice(0, 2).map((path, pathIndex) => {
+    const skills = uniqueStrings((path.skills || []).map(canonicalizeSkillName), 6);
+    const tasks = (path.suggestedTasks || []).slice(0, 4).map((text, taskIndex) => {
+      const skillName = skills[taskIndex % Math.max(1, skills.length)] || skills[0] || 'Clean Code';
+      const parsedTask = parseSuggestedTaskText(text, `Alternative task ${taskIndex + 1}`);
+      return normalizeTask(
+        {
+          title: parsedTask.title,
+          description: parsedTask.description,
+          skillName,
+          canonicalSkillName: skillName,
+          priority: taskIndex === 0 ? 'medium' : 'low',
+          estimatedHours: 4,
+          week: Math.min(Number(durationWeeks || 6), taskIndex + 1),
+        },
+        taskIndex,
+        [],
+        { skills },
+        targetRole,
+        { effectiveLevel, phaseIndex: pathIndex, scope: 'alt' }
+      );
+    });
+    return {
+      title: path.title,
+      targetRole,
+      pathType: 'supporting',
+      reason: path.reason,
+      skills,
+      tasks,
+    };
+  });
 
 const applyRoadmapSkillGapPriorities = (roadmapData, roadmapGapContext) => {
   if (!roadmapGapContext?.prioritySkills?.length || !roadmapData?.mainPath?.phases?.length) {
@@ -573,16 +1101,24 @@ const applyRoadmapSkillGapPriorities = (roadmapData, roadmapGapContext) => {
 const normalizeRoadmapPayload = ({
   userId,
   repositoryId,
+  roleId,
+  requestedLevel,
+  effectiveLevel,
+  durationWeeks,
+  language,
   targetRole,
   roadmapData,
   sourceContextSummary,
   roadmapGapContext,
+  roadmapSource,
+  roleMatch,
+  skillGapSummary,
 }) => {
   const phases = Array.isArray(roadmapData.mainPath?.phases)
     ? roadmapData.mainPath.phases
         .slice(0, 5)
         .map((phase, index) =>
-          normalizePhase(phase, index, roadmapGapContext?.skillGaps || [], targetRole)
+          normalizePhase(phase, index, roadmapGapContext?.skillGaps || [], targetRole, { effectiveLevel })
         )
     : [];
   const supportingPaths = Array.isArray(roadmapData.supportingPaths)
@@ -603,18 +1139,42 @@ const normalizeRoadmapPayload = ({
     );
   }
 
+  const alternativeRoadmaps = buildAlternativeRoadmaps(supportingPaths, {
+    targetRole,
+    effectiveLevel,
+    durationWeeks,
+  });
+  const mainRoadmap = {
+    title: roadmapData.mainPath?.title || `${targetRole} MVP Path`,
+    targetRole,
+    reason: roadmapData.mainPath?.reason || '',
+    phases,
+  };
+  const allTasks = [
+    ...phases.flatMap((phase) => phase.tasks || []),
+    ...alternativeRoadmaps.flatMap((roadmap) => roadmap.tasks || []),
+  ];
+  const gapItems = skillGapSummary || formatSkillGapSummary(roadmapGapContext?.skillGaps || []);
+
   return {
     userId,
     repositoryId: repositoryId || null,
     targetRole,
+    roleId: roleId || roleMatch?.roleId || '',
+    requestedLevel: requestedLevel || '',
+    effectiveLevel: effectiveLevel || requestedLevel || '',
+    durationWeeks: Number(durationWeeks || 6),
+    language: language || 'vi',
     currentGithubDirection: roadmapData.currentGithubDirection || '',
     summary: roadmapData.summary || '',
     mainPath: {
-      title: roadmapData.mainPath?.title || `${targetRole} MVP Path`,
-      reason: roadmapData.mainPath?.reason || '',
+      title: mainRoadmap.title,
+      reason: mainRoadmap.reason,
       phases,
     },
     supportingPaths,
+    mainRoadmap,
+    alternativeRoadmaps,
     sourceContextSummary: {
       ...sourceContextSummary,
       detectedSkills: uniqueStrings(
@@ -624,20 +1184,74 @@ const normalizeRoadmapPayload = ({
         (sourceContextSummary?.missingSkills || []).map(canonicalizeSkillName)
       ),
     },
-    roadmapSource: roadmapGapContext?.source || 'legacy',
-    roleMatch: roadmapGapContext?.selectedRoleMatch || {},
+    roadmapSource: roadmapSource || roadmapGapContext?.source || 'legacy',
+    roleMatch: roleMatch || roadmapGapContext?.selectedRoleMatch || {},
     skillGapSummary: {
-      totalGaps: roadmapGapContext?.skillGaps?.length || 0,
-      missingRequiredCount: roadmapGapContext?.missingSkills?.length || 0,
-      weakSkillCount: roadmapGapContext?.weakSkills?.length || 0,
-      recommendedNextSkills: uniqueStrings(
-        (roadmapGapContext?.recommendedNextSkills || []).map(canonicalizeSkillName)
-      ),
-      prioritySkills: uniqueStrings(
-        (roadmapGapContext?.prioritySkills || []).map(canonicalizeSkillName)
-      ),
+      items: gapItems,
+      totalGaps: gapItems.length,
+      missingRequiredCount: Array.isArray(roadmapGapContext?.missingSkills) ? roadmapGapContext.missingSkills.length : 0,
+      weakSkillCount: Array.isArray(roadmapGapContext?.weakSkills) ? roadmapGapContext.weakSkills.length : 0,
+      recommendedNextSkills: uniqueStrings((roadmapGapContext?.recommendedNextSkills || []).map(canonicalizeSkillName)),
+      prioritySkills: uniqueStrings((roadmapGapContext?.prioritySkills || []).map(canonicalizeSkillName)),
+    },
+    progressSummary: {
+      totalItems: allTasks.length,
+      completedItems: 0,
+      inProgressItems: 0,
+      overallProgress: 0,
     },
     status: 'active',
+  };
+};
+
+const formatGeneratedRoadmapResponse = (roadmapInput) => {
+  const roadmap = roadmapInput?.toObject ? roadmapInput.toObject() : roadmapInput;
+  if (!roadmap) return null;
+  const effectiveLevel = roadmap.effectiveLevel || roadmap.requestedLevel || '';
+  const targetRole = roadmap.targetRole || '';
+  const mainRoadmapSource =
+    roadmap.mainRoadmap && Object.keys(roadmap.mainRoadmap).length
+      ? roadmap.mainRoadmap
+      : {
+          title: roadmap.mainPath?.title || targetRole,
+          targetRole,
+          reason: roadmap.mainPath?.reason || '',
+          phases: roadmap.mainPath?.phases || [],
+        };
+  const skillGapSummary = Array.isArray(roadmap.skillGapSummary)
+    ? roadmap.skillGapSummary
+    : Array.isArray(roadmap.skillGapSummary?.items)
+      ? roadmap.skillGapSummary.items
+      : formatLegacyGapItems(roadmap.skillGapSummary || {});
+
+  return {
+    roadmapId: roadmap._id,
+    title: mainRoadmapSource.title || targetRole,
+    targetRole,
+    roleId: roadmap.roleId || roadmap.roleMatch?.roleId || '',
+    requestedLevel: roadmap.requestedLevel || null,
+    effectiveLevel,
+    durationWeeks: roadmap.durationWeeks || 6,
+    language: roadmap.language || 'vi',
+    roadmapSource: normalizeRoadmapSourceForResponse(roadmap.roadmapSource),
+    roleMatch: roadmap.roleMatch || {},
+    skillGapSummary: formatSkillGapSummary(skillGapSummary),
+    mainRoadmap: {
+      title: mainRoadmapSource.title || targetRole,
+      targetRole: mainRoadmapSource.targetRole || targetRole,
+      reason: mainRoadmapSource.reason || '',
+      phases: sanitizeRoadmapPhases(mainRoadmapSource.phases || [], { targetRole, effectiveLevel }),
+    },
+    alternativeRoadmaps: sanitizeAlternativeRoadmaps(roadmap, { targetRole, effectiveLevel }),
+    progressSummary:
+      roadmap.progressSummary || {
+        totalItems: 0,
+        completedItems: 0,
+        inProgressItems: 0,
+        overallProgress: roadmap.progress || 0,
+      },
+    createdAt: roadmap.createdAt,
+    updatedAt: roadmap.updatedAt,
   };
 };
 
@@ -647,6 +1261,8 @@ const generateRoadmap = async (
     targetRole,
     forceRegenerate,
     repoId,
+    repoIds,
+    sourceMode,
     roleId,
     level,
     durationWeeks,
@@ -656,57 +1272,152 @@ const generateRoadmap = async (
 ) => {
   const userId = getUserId(userIdOrAuthUser);
   const normalizedTargetRole = String(targetRole || '').trim();
+  const requestedLevel = level || null;
   let repository = null;
   let latestAnalysis = null;
   let roadmapGapContext = null;
+  let roadmapSource = null;
+  let roleCatalogEntry = findRoleCatalogEntry({ roleId, targetRole: normalizedTargetRole });
+  let roleMatch = null;
+  let skillGapSummary = [];
+  let effectiveLevel = requestedLevel || 'beginner';
+  const normalizedSourceMode =
+    sourceMode || (repoId ? 'single_repo' : 'all_analyzed_repos');
+  let analysisForGap = null;
+  let selectedAnalysisIds = [];
+  let selectedRepositoryIds = [];
 
-  if (repoId) {
-    repository = await findRepositoryForUser({ userId }, repoId);
-    latestAnalysis = await AnalysisResult.findOne({
-      userId,
-      repositoryId: repository._id,
-    })
-      .sort({ analyzedAt: -1, createdAt: -1 })
-      .lean();
-    if (
-      latestAnalysis &&
-      Array.isArray(latestAnalysis.skillVector) &&
-      latestAnalysis.skillVector.length > 0 &&
-      useRoleMatching !== false
-    ) {
-      roadmapGapContext = buildRoadmapSkillGapFromAnalysis(latestAnalysis, {
-        targetRole: normalizedTargetRole,
-        roleId,
-        level,
-        durationWeeks,
-        language,
-      });
+  if (normalizedSourceMode === 'single_repo') {
+    if (!repoId) {
+      throw createStatusError('repoId is required when sourceMode is single_repo.', 400);
     }
+    repository = await findRepositoryForUser({ userId }, repoId);
+    latestAnalysis = await findLatestUserContributionAnalysis({ userId, repository, repoId });
+    if (!latestAnalysis) {
+      throw createStatusError('Please analyze this repository first before generating roadmap.', 400);
+    }
+
+    roadmapSource = buildRoadmapSource({ analysis: latestAnalysis, repository });
+    effectiveLevel = latestAnalysis.summary?.userLevel || requestedLevel || 'beginner';
+    analysisForGap = latestAnalysis;
+    selectedAnalysisIds = [String(latestAnalysis._id)];
+    selectedRepositoryIds = [String(repository._id)];
+  } else if (normalizedSourceMode === 'all_analyzed_repos') {
+    const analyses = await findLatestUserContributionAnalysesForUser(userId);
+    if (!analyses.length) {
+      throw createStatusError('Please analyze at least one repository before generating a multi-repo roadmap.', 400);
+    }
+    const merged = mergeMultiRepoAnalysisContext({ analyses, targetRole: normalizedTargetRole });
+    roadmapSource = { ...merged.roadmapSource, sourceMode: 'all_analyzed_repos' };
+    analysisForGap = merged.mergedAnalysis;
+    effectiveLevel = analysisForGap.summary?.userLevel || requestedLevel || 'beginner';
+    selectedAnalysisIds = roadmapSource.analysisIds.map(String);
+    selectedRepositoryIds = roadmapSource.repositoryIds.map(String);
+  } else if (normalizedSourceMode === 'selected_repos') {
+    if (!Array.isArray(repoIds) || repoIds.length < 1) {
+      throw createStatusError('repoIds is required when sourceMode is selected_repos.', 400);
+    }
+    const selected = await findLatestUserContributionAnalysesByRepoIds(userId, repoIds);
+    if (selected.missingRepoIds.length) {
+      const error = createStatusError('Some selected repositories have not been analyzed yet.', 400);
+      error.errors = [{ missingRepoIds: selected.missingRepoIds }];
+      throw error;
+    }
+    const merged = mergeMultiRepoAnalysisContext({ analyses: selected.analyses, targetRole: normalizedTargetRole });
+    roadmapSource = { ...merged.roadmapSource, sourceMode: 'selected_repos' };
+    analysisForGap = merged.mergedAnalysis;
+    effectiveLevel = analysisForGap.summary?.userLevel || requestedLevel || 'beginner';
+    selectedAnalysisIds = roadmapSource.analysisIds.map(String);
+    selectedRepositoryIds = repoIds.map(String);
+    roadmapSource.repositoryIds = selectedRepositoryIds;
+  } else {
+    throw createStatusError('sourceMode must be one of: single_repo, all_analyzed_repos, selected_repos.', 400);
   }
 
+  if (Array.isArray(analysisForGap?.skillVector) && analysisForGap.skillVector.length > 0 && useRoleMatching !== false) {
+    roadmapGapContext = buildRoadmapSkillGapFromAnalysis(analysisForGap, {
+      targetRole: roleCatalogEntry?.roleName || normalizedTargetRole,
+      roleId: roleCatalogEntry?.roleId || roleId,
+      level: effectiveLevel,
+      durationWeeks,
+      language,
+    });
+    roleMatch = roadmapGapContext?.selectedRoleMatch || null;
+    skillGapSummary = formatSkillGapSummary(roadmapGapContext?.skillGaps || []);
+  }
+
+  const sameSet = (left = [], right = []) => {
+    const leftSet = new Set(left.map(String));
+    const rightSet = new Set(right.map(String));
+    if (leftSet.size !== rightSet.size) return false;
+    for (const item of leftSet) {
+      if (!rightSet.has(item)) return false;
+    }
+    return true;
+  };
+
   if (!forceRegenerate) {
-    const existingQuery = {
+    const baseExistingQuery = {
       userId,
       targetRole: normalizedTargetRole,
       status: 'active',
     };
-    if (repository) existingQuery.repositoryId = repository._id;
-    const existingRoadmap = await Roadmap.findOne(existingQuery)
+    if (repository) baseExistingQuery.repositoryId = repository._id;
+    if (roleCatalogEntry?.roleId || roleId) baseExistingQuery.roleId = roleCatalogEntry?.roleId || roleId;
+    const existingQuery = {
+      ...baseExistingQuery,
+      'roadmapSource.type':
+        normalizedSourceMode === 'single_repo'
+          ? 'user_contribution_analysis'
+          : 'multi_repo_user_contribution_analysis',
+      'roadmapSource.sourceMode': normalizedSourceMode,
+      effectiveLevel: { $nin: [null, ''] },
+    };
+    if (roadmapSource?.analysisId) existingQuery['roadmapSource.analysisId'] = roadmapSource.analysisId;
+    const existingRoadmaps = await Roadmap.find(existingQuery)
       .sort({ updatedAt: -1 })
       .lean();
+    const existingRoadmap = existingRoadmaps.find((candidate) => {
+      const source = candidate.roadmapSource || {};
+      if (normalizedSourceMode === 'single_repo') {
+        return String(source.analysisId || '') === String(roadmapSource.analysisId || '');
+      }
+      return (
+        sameSet(source.analysisIds || [], selectedAnalysisIds) &&
+        (normalizedSourceMode !== 'selected_repos' || sameSet(source.repositoryIds || [], selectedRepositoryIds))
+      );
+    });
 
-    if (existingRoadmap) {
+    if (
+      existingRoadmap &&
+      (existingRoadmap.mainRoadmap || existingRoadmap.mainPath) &&
+      normalizeRoadmapSourceForResponse(existingRoadmap.roadmapSource)
+    ) {
       return {
         message: 'Roadmap fetched successfully',
-        data: { roadmap: existingRoadmap },
+        data: formatGeneratedRoadmapResponse(existingRoadmap),
         statusCode: 200,
       };
     }
+
+    await Roadmap.updateMany(
+      {
+        ...baseExistingQuery,
+        'roadmapSource.sourceMode': normalizedSourceMode,
+        $or: [
+          { roadmapSource: { $type: 'string' } },
+          { 'roadmapSource.type': { $nin: ['user_contribution_analysis', 'multi_repo_user_contribution_analysis'] } },
+          { effectiveLevel: { $in: [null, ''] } },
+        ],
+      },
+      { $set: { status: 'archived' } }
+    );
   } else {
     const archiveQuery = {
       userId,
       targetRole: normalizedTargetRole,
       status: 'active',
+      'roadmapSource.sourceMode': normalizedSourceMode,
     };
     if (repository) archiveQuery.repositoryId = repository._id;
     await Roadmap.updateMany(archiveQuery, { $set: { status: 'archived' } });
@@ -716,7 +1427,15 @@ const generateRoadmap = async (
   const prompt = buildRoadmapPrompt({
     targetRole: normalizedTargetRole,
     githubContext,
-    roadmapGapContext,
+    roadmapGapContext: {
+      ...roadmapGapContext,
+      roadmapSource,
+      requestedLevel,
+      effectiveLevel,
+      userReadinessScore: roadmapSource?.userReadinessScore || 0,
+      roleCatalog: roleCatalogEntry,
+      skillGapSummary,
+    },
   });
   const aiText = await generateRoadmapResponse(prompt);
   const parsedRoadmap = parseRoadmapJson(aiText);
@@ -733,14 +1452,22 @@ const generateRoadmap = async (
   const roadmap = await Roadmap.create(
     normalizeRoadmapPayload({
       userId,
-      repositoryId: repository?._id,
+      repositoryId: repository?._id || null,
+      roleId: roleCatalogEntry?.roleId || roleId || '',
+      requestedLevel,
+      effectiveLevel,
+      durationWeeks,
+      language,
       targetRole: normalizedTargetRole,
       roadmapData,
       sourceContextSummary,
       roadmapGapContext,
+      roadmapSource,
+      roleMatch,
+      skillGapSummary,
     })
   );
-  await createAutomaticNotification({
+  await safeCreateRoadmapNotification({
     userId,
     title: 'Lộ trình học đã sẵn sàng',
     message: `Lộ trình học cho mục tiêu ${normalizedTargetRole} đã được tạo thành công.`,
@@ -755,7 +1482,7 @@ const generateRoadmap = async (
 
   return {
     message: 'Roadmap generated successfully',
-    data: { roadmap: roadmap.toObject() },
+    data: formatGeneratedRoadmapResponse(roadmap),
     statusCode: 201,
   };
 };
@@ -776,7 +1503,7 @@ const getMyRoadmaps = async (userIdOrAuthUser, filters = {}) => {
 
   return {
     message: 'Roadmaps fetched successfully',
-    data: { roadmaps },
+    data: { roadmaps: roadmaps.map(formatGeneratedRoadmapResponse) },
     statusCode: 200,
   };
 };
@@ -795,7 +1522,7 @@ const getRoadmapById = async (userIdOrAuthUser, roadmapId) => {
 
   return {
     message: 'Roadmap fetched successfully',
-    data: { roadmap },
+    data: { roadmap: formatGeneratedRoadmapResponse(roadmap) },
     statusCode: 200,
   };
 };
@@ -819,7 +1546,10 @@ const archiveRoadmap = async (userIdOrAuthUser, roadmapId) => {
 
   return {
     message: 'Roadmap archived successfully',
-    data: { roadmap },
+    data: {
+      roadmapId: roadmap._id,
+      status: roadmap.status,
+    },
     statusCode: 200,
   };
 };
@@ -835,4 +1565,5 @@ module.exports = {
   applyRoadmapSkillGapPriorities,
   inferPrimarySkillForTask,
   normalizeRoadmapPayload,
+  formatGeneratedRoadmapResponse,
 };

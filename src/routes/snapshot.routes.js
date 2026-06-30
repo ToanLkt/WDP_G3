@@ -9,7 +9,7 @@ const router = express.Router();
  * @swagger
  * tags:
  *   - name: Snapshots
- *     description: Repository analysis snapshot history and deterministic progress comparison APIs
+ *     description: User-contribution analysis snapshot history and deterministic progress comparison APIs.
  */
 
 /**
@@ -17,22 +17,10 @@ const router = express.Router();
  * /api/snapshots/compare:
  *   post:
  *     tags: [Snapshots]
- *     summary: Compare two repository analysis snapshots
+ *     summary: Compare two user-contribution snapshots
+ *     description: Compare two user-contribution snapshots owned by the current user. snapshotAId/snapshotBId are deprecated aliases for backward compatibility.
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: includeSkillDetails
- *         schema:
- *           type: boolean
- *           default: false
- *         description: Include full per-skill comparison arrays
- *       - in: query
- *         name: includeEvidence
- *         schema:
- *           type: boolean
- *           default: false
- *         description: Include evidence and sources when includeSkillDetails=true
  *     requestBody:
  *       required: true
  *       content:
@@ -45,11 +33,16 @@ const router = express.Router();
  *             properties:
  *               fromSnapshotId:
  *                 type: string
+ *                 example: 665f1f000000000000000001
  *               toSnapshotId:
  *                 type: string
+ *                 example: 665f1f000000000000000002
+ *           example:
+ *             fromSnapshotId: 665f1f000000000000000001
+ *             toSnapshotId: 665f1f000000000000000002
  *     responses:
  *       200:
- *         description: Returns compact skillVectorComparison by default. Full skill changes require includeSkillDetails=true; evidence additionally requires includeEvidence=true.
+ *         description: Snapshots compared successfully with compact user-contribution comparison.
  *         content:
  *           application/json:
  *             example:
@@ -57,13 +50,13 @@ const router = express.Router();
  *               message: Snapshots compared successfully
  *               data:
  *                 repoName: WDP_G3
- *                 overallBefore: 45
- *                 overallAfter: 67
- *                 overallChange: 22
- *                 improvedChecklist: [Docker, Testing]
- *                 resolvedMissingSkills: [Testing]
- *                 remainingMissingSkills: [CI/CD]
- *                 summary: Repo da cai thien tong the +22 diem so voi lan phan tich truoc.
+ *                 analysisScopeType: user_contribution
+ *                 enoughData: true
+ *                 delta:
+ *                   userReadinessScore: 21
+ *                   levelChanged: true
+ *                   fromLevel: beginner
+ *                   toLevel: intermediate
  *       400:
  *         description: Invalid request or snapshots belong to different repositories
  *       401:
@@ -78,7 +71,8 @@ router.post('/compare', authMiddleware, snapshotController.compareSnapshots);
  * /api/snapshots/{snapshotId}:
  *   get:
  *     tags: [Snapshots]
- *     summary: Get one repository analysis snapshot
+ *     summary: Get one user-contribution analysis snapshot
+ *     description: Get one user-contribution analysis snapshot owned by the current user.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -92,10 +86,16 @@ router.post('/compare', authMiddleware, snapshotController.compareSnapshots);
  *         schema:
  *           type: boolean
  *           default: false
- *         description: Include raw skillEvidence together with the snapshot skillVector
+ *         description: Only works with view=detail. Includes debug skillVector evidence.
+ *       - in: query
+ *         name: view
+ *         schema:
+ *           type: string
+ *           enum: [summary, detail]
+ *           default: summary
  *     responses:
  *       200:
- *         description: Snapshot fetched successfully. skillVector represents skills at analysis time; skillEvidence is included only when includeEvidence=true.
+ *         description: Snapshot fetched successfully with compact response contract.
  *       401:
  *         description: Unauthorized
  *       404:

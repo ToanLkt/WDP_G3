@@ -9,7 +9,7 @@ const router = express.Router();
  * @swagger
  * tags:
  *   - name: Learning
- *     description: Shared learning APIs. skillName may be canonical or an alias; the backend canonicalizes it before query, generation, save, search, and cache.
+ *     description: Shared learning APIs. Roadmap clients should prefer /api/roadmaps/{roadmapId}/learning/items/{itemId}. skillName may be canonical or an alias; the backend canonicalizes it before query, generation, save, search, and cache.
  */
 
 /**
@@ -18,7 +18,7 @@ const router = express.Router();
  *   post:
  *     tags: [Learning]
  *     summary: Generate shared learning content for a skill
- *     description: Canonicalizes skillName before generation and persistence. New documents are stored only under the canonical skill key.
+ *     description: Shared learning API. Canonicalizes skillName before generation and persistence. New documents are stored only under the canonical skill key. Roadmap clients should prefer /api/roadmaps/{roadmapId}/learning/items/{itemId}.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -65,7 +65,7 @@ router.post('/skills/generate', authMiddleware, learningController.generateLearn
  *   get:
  *     tags: [Learning]
  *     summary: Get shared learning content for a skill
- *     description: Accepts a canonical skill or alias. Roadmap clients should prefer task.canonicalSkillName.
+ *     description: Shared learning API. Accepts a canonical skill or alias. Roadmap clients should prefer /api/roadmaps/{roadmapId}/learning/items/{itemId}.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -128,7 +128,7 @@ router.get('/skills/:skillName', authMiddleware, learningController.getLearningC
  *   get:
  *     tags: [Learning]
  *     summary: Get cached learning resources for a skill
- *     description: Canonicalizes skillName before reading the resource cache and returns canonical metadata with resources.
+ *     description: Shared learning API. Canonicalizes skillName before reading the resource cache and returns canonical metadata with resources. Roadmap clients should prefer /api/roadmaps/{roadmapId}/learning/items/{itemId}.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -187,7 +187,7 @@ router.get('/skills/:skillName', authMiddleware, learningController.getLearningC
  *   post:
  *     tags: [Learning]
  *     summary: Seed or update a learning resource manually
- *     description: Saves the resource under the canonical path skill; body.skillName cannot override it.
+ *     description: Shared learning API. Saves the resource under the canonical path skill; body.skillName cannot override it.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -259,7 +259,7 @@ router.post('/skills/:skillName/resources', authMiddleware, learningController.s
  *   post:
  *     tags: [Learning]
  *     summary: Load or search learning resources for a skill and cache them
- *     description: Canonicalizes skillName, checks the canonical cache, then loads curated resources or searches YouTube using the canonical skill name. Alias-specific cache documents are not created.
+ *     description: Shared learning API. Canonicalizes skillName, checks the canonical cache, then loads curated resources or searches YouTube using the canonical skill name. Alias-specific cache documents are not created. Roadmap clients should prefer /api/roadmaps/{roadmapId}/learning/items/{itemId}.
  *     security:
  *       - bearerAuth: []
  *     parameters:
