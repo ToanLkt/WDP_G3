@@ -65,11 +65,147 @@ router.post('/repositories/:repoId', authMiddleware, analysisController.analyzeR
 
 /**
  * @swagger
+ * /api/analysis/role-matches:
+ *   post:
+ *     tags: [Roles]
+ *     summary: Generate role matches from analyzed repository sources
+ *     description: |
+ *       Match the current user's skill vector against role catalog using one repository, all analyzed repositories, or selected repositories.
+ *       Default response is compact for FE role selection. Use view=detail or includeDetails=true for full skill breakdown.
+ *
+ *       FE flow:
+ *       1. POST /api/analysis/role-matches with chosen sourceMode.
+ *       2. User selects a role.
+ *       3. POST /api/roadmaps/generate with the same sourceMode and selected roleId/targetRole.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               sourceMode:
+ *                 type: string
+ *                 enum: [single_repo, all_analyzed_repos, selected_repos]
+ *                 default: all_analyzed_repos
+ *               repoId:
+ *                 type: string
+ *                 nullable: true
+ *                 description: Required when sourceMode is single_repo.
+ *               repoIds:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 default: []
+ *                 description: Required when sourceMode is selected_repos.
+ *               limit:
+ *                 type: number
+ *                 default: 5
+ *                 maximum: 20
+ *               view:
+ *                 type: string
+ *                 enum: [summary, detail]
+ *                 default: summary
+ *               includeDetails:
+ *                 type: boolean
+ *                 default: false
+ *           examples:
+ *             singleRepo:
+ *               summary: Single repo
+ *               value:
+ *                 sourceMode: single_repo
+ *                 repoId: 6a2556b67f43e4403f22d27c
+ *                 limit: 5
+ *             allAnalyzedRepos:
+ *               summary: All analyzed repos
+ *               value:
+ *                 sourceMode: all_analyzed_repos
+ *                 limit: 5
+ *             selectedRepos:
+ *               summary: Selected repos
+ *               value:
+ *                 sourceMode: selected_repos
+ *                 repoIds:
+ *                   - 6a2556b67f43e4403f22d27c
+ *                   - anotherRepoId
+ *                 limit: 5
+ *                 view: summary
+ *     parameters:
+ *       - in: query
+ *         name: view
+ *         schema:
+ *           type: string
+ *           enum: [summary, detail]
+ *           default: summary
+ *         description: summary returns compact FE role cards. detail returns full skill breakdown.
+ *       - in: query
+ *         name: includeDetails
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: When true, returns full skill breakdown and full analysisSource fields.
+ *     responses:
+ *       200:
+ *         description: Role matches generated successfully
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: Role matches generated successfully
+ *               data:
+ *                 sourceMode: selected_repos
+ *                 analysisSource:
+ *                   type: multi_repo_user_contribution_analysis
+ *                   sourceMode: selected_repos
+ *                   totalRepositories: 3
+ *                   totalUserCommits: 11
+ *                   userLevel: intermediate
+ *                   userReadinessScore: 61
+ *                   repositoryNames:
+ *                     - HCM-City-Rain-Map---Mua-Sai-Gon
+ *                     - marxist-ai-chronicles
+ *                     - WDP_G3
+ *                 matches:
+ *                   - roleId: backend-developer
+ *                     roleName: Backend Developer
+ *                     matchScore: 58.57
+ *                     matchLevel: moderate
+ *                     matchLevelLabel: Tạm phù hợp
+ *                     matchedSkillNames:
+ *                       - Express.js
+ *                       - REST API
+ *                       - Authentication
+ *                       - MongoDB
+ *                     weakSkillNames:
+ *                       - Node.js
+ *                     missingSkillNames:
+ *                       - API Security
+ *                       - Testing
+ *                       - API Testing
+ *                       - Clean Code
+ *                     recommendedNextSkills:
+ *                       - Testing
+ *                       - API Testing
+ *                       - Clean Code
+ *                       - API Security
+ *                       - CI/CD
+ *               errorCode: null
+ *       400:
+ *         description: Missing analysis source or invalid source selection
+ *       401:
+ *         description: Unauthorized
+ */
+router.post('/role-matches', authMiddleware, analysisController.generateRoleMatches);
+
+/**
+ * @swagger
  * /api/analysis/repositories/{repoId}/role-matches:
  *   get:
  *     tags: [Roles]
- *     summary: Match the latest repository skillVector to career role vectors
- *     description: Returns compact role matches by default. includeDetails=true adds full matched, weak, and missing skill arrays.
+ *     summary: Legacy single-repo role matching
+ *     description: Legacy single-repo role matching. FE should prefer POST /api/analysis/role-matches for single_repo, all_analyzed_repos, or selected_repos flows. Returns compact role matches by default. includeDetails=true adds full matched, weak, and missing skill arrays.
  *     security:
  *       - bearerAuth: []
  *     parameters:
