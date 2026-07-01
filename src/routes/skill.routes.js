@@ -18,7 +18,7 @@ const router = express.Router();
  *   get:
  *     tags: [Skills]
  *     summary: Get the canonical skill catalog
- *     description: Returns standardized skills for frontend suggestions and skill mapping diagnostics.
+ *     description: Returns standardized skills for canonical skill list, filters, admin, or debug. The main FE roadmap flow does not need to call this if backend responses already include canonicalSkillName and category.
  *     security:
  *       - bearerAuth: []
  *     responses:

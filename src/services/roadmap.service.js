@@ -1,7 +1,6 @@
 const mongoose = require('mongoose');
 
 const AiFeedback = require('../models/AiFeedback');
-const AnalysisResult = require('../models/AnalysisResult');
 const AnalysisSnapshot = require('../models/AnalysisSnapshot');
 const Repository = require('../models/Repository');
 const RepositoryPackage = require('../models/RepositoryPackage');
@@ -16,6 +15,7 @@ const { createAutomaticNotification } = require('./notification.service');
 const { canonicalizeSkillName, getCanonicalSkillCategory } = require('../utils/skillCanonicalizer');
 const { buildRoadmapSkillGapFromAnalysis } = require('./roadmapSkillGap.service');
 const { ROLE_SKILL_VECTORS } = require('../constants/roleSkillVectors');
+const analysisSourceService = require('./analysisSource.service');
 
 let LearningRecommendation = null;
 
@@ -73,253 +73,6 @@ const findRoleCatalogEntry = ({ roleId, targetRole }) => {
       )) ||
     null
   );
-};
-
-const toObjectId = (value) =>
-  mongoose.Types.ObjectId.isValid(String(value || '')) ? new mongoose.Types.ObjectId(String(value)) : null;
-
-const getAnalysisRepositoryKey = (analysis = {}) =>
-  String(analysis.repositoryId || analysis.githubRepoId || analysis.fullName || analysis.repoName || '').trim();
-
-const findLatestUserContributionAnalysis = async ({ userId, repository, repoId }) => {
-  const repositoryId = repository?._id || toObjectId(repoId);
-  const query = {
-    userId,
-    analysisScope: { $type: 'object' },
-    'analysisScope.type': 'user_contribution',
-    $or: [],
-  };
-  if (repositoryId) {
-    query.$or.push({ repositoryId });
-  }
-  if (repository?.githubRepoId) {
-    query.$or.push({ githubRepoId: repository.githubRepoId });
-  }
-  if (!query.$or.length) return null;
-
-  return AnalysisResult.findOne(query).sort({ analyzedAt: -1, createdAt: -1 }).lean();
-};
-
-const findLatestUserContributionAnalysesForUser = async (userId) => {
-  const analyses = await AnalysisResult.find({
-    userId,
-    analysisScope: { $type: 'object' },
-    'analysisScope.type': 'user_contribution',
-  })
-    .sort({ analyzedAt: -1, createdAt: -1 })
-    .lean();
-  const latestByRepository = new Map();
-  for (const analysis of analyses) {
-    const key = getAnalysisRepositoryKey(analysis);
-    if (key && !latestByRepository.has(key)) {
-      latestByRepository.set(key, analysis);
-    }
-  }
-  return [...latestByRepository.values()];
-};
-
-const findLatestUserContributionAnalysesByRepoIds = async (userId, repoIds = []) => {
-  const analyses = [];
-  const missingRepoIds = [];
-  for (const repoId of repoIds) {
-    let repository = null;
-    try {
-      repository = await findRepositoryForUser({ userId }, repoId);
-    } catch (error) {
-      missingRepoIds.push(String(repoId));
-      continue;
-    }
-    const analysis = await findLatestUserContributionAnalysis({ userId, repository, repoId });
-    if (analysis) {
-      analyses.push({ analysis, repository });
-    } else {
-      missingRepoIds.push(String(repoId));
-    }
-  }
-  return { analyses, missingRepoIds };
-};
-
-const buildRoadmapSource = ({ analysis, repository, sourceMode = 'single_repo' }) => {
-  const summary = analysis?.summary || {};
-  const scope = analysis?.analysisScope || {};
-  return {
-    type: 'user_contribution_analysis',
-    sourceMode,
-    analysisId: analysis?._id || null,
-    snapshotId: analysis?.snapshotId || null,
-    repositoryId: analysis?.repositoryId || repository?._id || null,
-    repoName: analysis?.repoName || repository?.name || '',
-    fullName: analysis?.fullName || repository?.fullName || '',
-    githubUsername: scope.githubUsername || '',
-    totalRepoCommits: Number(scope.totalRepoCommits || 0),
-    userCommits: Number(scope.userCommits || analysis?.commitSummary?.totalCommits || 0),
-    activeDays: Number(scope.activeDays || analysis?.commitSummary?.activeDays || 0),
-    firstCommitDate: scope.firstCommitDate || analysis?.commitSummary?.firstCommitDate || null,
-    lastCommitDate: scope.lastCommitDate || analysis?.commitSummary?.lastCommitDate || null,
-    userLevel: summary.userLevel || scope.userLevel || '',
-    userReadinessScore: Number(summary.userReadinessScore || 0),
-    careerDirection: summary.careerDirection || analysis?.careerDirection || '',
-    projectType: summary.projectType || analysis?.projectType || '',
-  };
-};
-
-const getWeightedAverageReadinessScore = (analyses) => {
-  const validScores = analyses
-    .map((analysis) => ({
-      score: Number(analysis.summary?.userReadinessScore ?? analysis.analysisScope?.userReadinessScore),
-      weight: Math.max(1, Number(analysis.analysisScope?.userCommits || analysis.commitSummary?.totalCommits || 0)),
-    }))
-    .filter((item) => Number.isFinite(item.score));
-  if (!validScores.length) return 0;
-  const totalWeight = validScores.reduce((sum, item) => sum + item.weight, 0);
-  return Math.round(validScores.reduce((sum, item) => sum + item.score * item.weight, 0) / totalWeight);
-};
-
-const getUserLevelFromScore = (score) => {
-  if (score >= 80) return 'advanced';
-  if (score >= 45) return 'intermediate';
-  return 'beginner';
-};
-
-const mergeSkillVector = (analyses) => {
-  const grouped = new Map();
-  for (const analysis of analyses) {
-    for (const skill of analysis.skillVector || []) {
-      const canonicalSkillName = canonicalizeSkillName(skill.canonicalSkillName || skill.skill);
-      if (!canonicalSkillName) continue;
-      const key = normalizeKey(canonicalSkillName);
-      const score = Number(skill.score || 0);
-      const group = grouped.get(key) || {
-        skill: canonicalSkillName,
-        canonicalSkillName,
-        normalizedSkillName: key,
-        category: getCanonicalSkillCategory(canonicalSkillName),
-        scores: [],
-        levels: [],
-        sources: [],
-        evidence: [],
-      };
-      group.scores.push(score);
-      group.levels.push(skill.level || 'missing');
-      group.sources.push({
-        repoName: analysis.repoName || '',
-        analysisId: analysis._id,
-        score,
-        level: skill.level || 'missing',
-      });
-      grouped.set(key, group);
-    }
-  }
-
-  const levelRank = { missing: 0, weak: 1, developing: 2, strong: 3 };
-  return [...grouped.values()]
-    .map((group) => {
-      const maxScore = Math.max(...group.scores);
-      const averageScore = group.scores.reduce((sum, score) => sum + score, 0) / group.scores.length;
-      const level = [...group.levels].sort((a, b) => (levelRank[b] || 0) - (levelRank[a] || 0))[0] || 'missing';
-      return {
-        skill: group.skill,
-        canonicalSkillName: group.canonicalSkillName,
-        normalizedSkillName: group.normalizedSkillName,
-        category: group.category,
-        score: roundScore(maxScore * 0.6 + averageScore * 0.4),
-        level,
-        evidence: group.sources.slice(0, 5),
-        sources: group.sources.slice(0, 5).map((source) => source.repoName).filter(Boolean),
-      };
-    })
-    .sort((a, b) => b.score - a.score);
-};
-
-const dedupeText = (values, limit = 12) => {
-  const seen = new Set();
-  const result = [];
-  for (const value of values || []) {
-    const text = typeof value === 'string' ? value.trim() : String(value || '').trim();
-    const key = normalizeKey(text);
-    if (text && !seen.has(key)) {
-      seen.add(key);
-      result.push(text);
-    }
-    if (result.length >= limit) break;
-  }
-  return result;
-};
-
-const mergeMultiRepoAnalysisContext = ({ analyses, targetRole }) => {
-  const sources = analyses.map((item) => (item.analysis ? item.analysis : item));
-  const firstCommitDates = sources.map((analysis) => analysis.analysisScope?.firstCommitDate).filter(Boolean);
-  const lastCommitDates = sources.map((analysis) => analysis.analysisScope?.lastCommitDate).filter(Boolean);
-  const userReadinessScore = getWeightedAverageReadinessScore(sources);
-  const userLevel = getUserLevelFromScore(userReadinessScore);
-  const careerDirection = targetRole || sources[0]?.summary?.careerDirection || sources[0]?.careerDirection || '';
-  const repositories = analyses.map((item) => {
-    const analysis = item.analysis || item;
-    const repository = item.repository || null;
-    const source = buildRoadmapSource({ analysis, repository, sourceMode: 'single_repo' });
-    return {
-      repositoryId: source.repositoryId,
-      repoName: source.repoName,
-      fullName: source.fullName,
-      analysisId: source.analysisId,
-      githubUsername: source.githubUsername,
-      totalRepoCommits: source.totalRepoCommits,
-      userCommits: source.userCommits,
-      activeDays: source.activeDays,
-      userLevel: source.userLevel,
-      userReadinessScore: source.userReadinessScore,
-      careerDirection: source.careerDirection,
-      projectType: source.projectType,
-    };
-  });
-  const roadmapSource = {
-    type: 'multi_repo_user_contribution_analysis',
-    sourceMode: 'all_analyzed_repos',
-    analysisIds: sources.map((analysis) => analysis._id),
-    repositoryIds: sources.map((analysis) => analysis.repositoryId).filter(Boolean),
-    repositories,
-    githubUsername: repositories.find((repo) => repo.githubUsername)?.githubUsername || '',
-    totalRepositories: sources.length,
-    totalRepoCommits: sources.reduce((sum, analysis) => sum + Number(analysis.analysisScope?.totalRepoCommits || 0), 0),
-    totalUserCommits: sources.reduce(
-      (sum, analysis) => sum + Number(analysis.analysisScope?.userCommits || analysis.commitSummary?.totalCommits || 0),
-      0
-    ),
-    activeDays: sources.reduce(
-      (sum, analysis) => sum + Number(analysis.analysisScope?.activeDays || analysis.commitSummary?.activeDays || 0),
-      0
-    ),
-    firstCommitDate: firstCommitDates.length ? firstCommitDates.sort()[0] : null,
-    lastCommitDate: lastCommitDates.length ? lastCommitDates.sort().slice(-1)[0] : null,
-    userLevel,
-    userReadinessScore,
-    careerDirection,
-    projectType: 'Multi-repo portfolio',
-  };
-  const mergedAnalysis = {
-    _id: null,
-    userId: sources[0]?.userId,
-    repoName: 'Multi-repo portfolio',
-    fullName: 'Multi-repo portfolio',
-    projectType: 'Multi-repo portfolio',
-    careerDirection,
-    summary: {
-      careerDirection,
-      userLevel,
-      userReadinessScore,
-      projectType: 'Multi-repo portfolio',
-    },
-    analysisScope: roadmapSource,
-    skillVector: mergeSkillVector(sources),
-    strengths: dedupeText(sources.flatMap((analysis) => analysis.strengths || []), 12),
-    weaknesses: dedupeText(sources.flatMap((analysis) => analysis.weaknesses || []), 12),
-    missingSkills: uniqueStrings(
-      sources.flatMap((analysis) => analysis.missingSkills || []).map(canonicalizeSkillName),
-      20
-    ),
-    recommendations: dedupeText(sources.flatMap((analysis) => analysis.recommendations || []), 12),
-  };
-  return { mergedAnalysis, roadmapSource };
 };
 
 const formatSkillGapSummary = (skillGaps = []) => {
@@ -1292,22 +1045,22 @@ const generateRoadmap = async (
       throw createStatusError('repoId is required when sourceMode is single_repo.', 400);
     }
     repository = await findRepositoryForUser({ userId }, repoId);
-    latestAnalysis = await findLatestUserContributionAnalysis({ userId, repository, repoId });
+    latestAnalysis = await analysisSourceService.findLatestUserContributionAnalysis({ userId, repository, repoId });
     if (!latestAnalysis) {
       throw createStatusError('Please analyze this repository first before generating roadmap.', 400);
     }
 
-    roadmapSource = buildRoadmapSource({ analysis: latestAnalysis, repository });
+    roadmapSource = analysisSourceService.buildAnalysisSourceSummary({ analysis: latestAnalysis, repository });
     effectiveLevel = latestAnalysis.summary?.userLevel || requestedLevel || 'beginner';
     analysisForGap = latestAnalysis;
     selectedAnalysisIds = [String(latestAnalysis._id)];
     selectedRepositoryIds = [String(repository._id)];
   } else if (normalizedSourceMode === 'all_analyzed_repos') {
-    const analyses = await findLatestUserContributionAnalysesForUser(userId);
+    const analyses = await analysisSourceService.findLatestUserContributionAnalysesForUser(userId);
     if (!analyses.length) {
       throw createStatusError('Please analyze at least one repository before generating a multi-repo roadmap.', 400);
     }
-    const merged = mergeMultiRepoAnalysisContext({ analyses, targetRole: normalizedTargetRole });
+    const merged = analysisSourceService.mergeMultiRepoAnalysisContext({ analyses, targetRole: normalizedTargetRole });
     roadmapSource = { ...merged.roadmapSource, sourceMode: 'all_analyzed_repos' };
     analysisForGap = merged.mergedAnalysis;
     effectiveLevel = analysisForGap.summary?.userLevel || requestedLevel || 'beginner';
@@ -1317,13 +1070,13 @@ const generateRoadmap = async (
     if (!Array.isArray(repoIds) || repoIds.length < 1) {
       throw createStatusError('repoIds is required when sourceMode is selected_repos.', 400);
     }
-    const selected = await findLatestUserContributionAnalysesByRepoIds(userId, repoIds);
+    const selected = await analysisSourceService.findLatestUserContributionAnalysesByRepoIds(userId, repoIds);
     if (selected.missingRepoIds.length) {
       const error = createStatusError('Some selected repositories have not been analyzed yet.', 400);
       error.errors = [{ missingRepoIds: selected.missingRepoIds }];
       throw error;
     }
-    const merged = mergeMultiRepoAnalysisContext({ analyses: selected.analyses, targetRole: normalizedTargetRole });
+    const merged = analysisSourceService.mergeMultiRepoAnalysisContext({ analyses: selected.analyses, targetRole: normalizedTargetRole });
     roadmapSource = { ...merged.roadmapSource, sourceMode: 'selected_repos' };
     analysisForGap = merged.mergedAnalysis;
     effectiveLevel = analysisForGap.summary?.userLevel || requestedLevel || 'beginner';

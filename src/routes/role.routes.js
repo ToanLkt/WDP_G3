@@ -18,7 +18,7 @@ const router = express.Router();
  *   get:
  *     tags: [Roles]
  *     summary: Get the role vector catalog
- *     description: Returns compact metadata for roles used by dev2vec-inspired role matching.
+ *     description: Returns compact metadata for roles used by dev2vec-inspired role matching. Use this for dropdown/manual role selection, admin, or debug. The main FE roadmap flow can call POST /api/analysis/role-matches first to suggest suitable roles.
  *     security:
  *       - bearerAuth: []
  *     responses:

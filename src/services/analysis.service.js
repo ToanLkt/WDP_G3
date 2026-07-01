@@ -11,6 +11,8 @@ const {
 } = require('./analysis/analysis.engine');
 const { createSnapshotFromAnalysisResult } = require('./snapshot.service');
 const { matchSkillVectorToRoles } = require('./roleMatching.service');
+const { createStatusError } = require('./github/github.utils');
+const { resolveUserContributionSource } = require('./analysisSource.service');
 
 const shouldIncludeEvidence = (query = {}) => query.includeEvidence === true || query.includeEvidence === 'true';
 const getView = (query = {}) => (query.view === 'detail' ? 'detail' : 'summary');
@@ -86,6 +88,102 @@ const analyzeRepository = async ({ user, params, query }) => {
       snapshotId: repoSnapshot?._id || null,
     }),
     statusCode: 200,
+  };
+};
+
+const normalizeLimit = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) return 5;
+  return Math.min(20, Math.floor(parsed));
+};
+
+const isTrue = (value) => value === true || value === 'true';
+
+const getUsableSkillVector = ({ analysis, sourceMode }) => {
+  if (Array.isArray(analysis?.skillVector) && analysis.skillVector.length > 0) {
+    return analysis.skillVector;
+  }
+  const message =
+    sourceMode === 'single_repo'
+      ? 'This repository analysis does not have a usable skill vector. Please analyze this repository again.'
+      : 'No analyzed repositories have a usable skill vector. Please analyze at least one repository again.';
+  throw createStatusError(message, 400);
+};
+
+const formatDetailedRoleMatch = (match) => ({
+  roleId: match.roleId,
+  roleName: match.roleName,
+  matchScore: match.matchScore,
+  matchLevel: match.matchLevel,
+  matchLevelLabel: match.matchLevelLabel,
+  matchedSkills: match.matchedSkills || [],
+  weakSkills: match.weakSkills || [],
+  missingRequiredSkills: match.missingRequiredSkills || [],
+  missingOptionalSkills: match.missingOptionalSkills || [],
+  recommendedNextSkills: match.recommendedNextSkills || [],
+});
+
+const getSkillName = (item) => {
+  if (!item || typeof item !== 'object') return String(item || '').trim();
+  return String(item.canonicalSkillName || item.skill || item.skillName || '').trim();
+};
+
+const uniqueSkillNames = (items = [], limit = 5) => {
+  const seen = new Set();
+  const names = [];
+  for (const item of items || []) {
+    const name = getSkillName(item);
+    const key = name.toLowerCase();
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+    if (names.length >= limit) break;
+  }
+  return names;
+};
+
+const formatCompactRoleMatch = (match) => ({
+  roleId: match.roleId,
+  roleName: match.roleName,
+  matchScore: Number(Number(match.matchScore || 0).toFixed(2)),
+  matchLevel: match.matchLevel,
+  matchLevelLabel: match.matchLevelLabel,
+  matchedSkillNames: uniqueSkillNames(match.matchedSkills, 5),
+  weakSkillNames: uniqueSkillNames(match.weakSkills, 5),
+  missingSkillNames: uniqueSkillNames(
+    [...(match.missingRequiredSkills || []), ...(match.missingOptionalSkills || [])],
+    5
+  ),
+  recommendedNextSkills: uniqueSkillNames(match.recommendedNextSkills || [], 5),
+});
+
+const formatAnalysisSourceForRoleMatches = (analysisSource, includeDetails = false) => {
+  if (!analysisSource || typeof analysisSource !== 'object') return null;
+  if (includeDetails) return analysisSource;
+
+  if (analysisSource.type === 'user_contribution_analysis') {
+    return {
+      type: analysisSource.type,
+      sourceMode: analysisSource.sourceMode,
+      repositoryId: analysisSource.repositoryId,
+      repoName: analysisSource.repoName,
+      fullName: analysisSource.fullName,
+      userCommits: analysisSource.userCommits,
+      userLevel: analysisSource.userLevel,
+      userReadinessScore: analysisSource.userReadinessScore,
+    };
+  }
+
+  return {
+    type: analysisSource.type,
+    sourceMode: analysisSource.sourceMode,
+    totalRepositories: analysisSource.totalRepositories,
+    totalUserCommits: analysisSource.totalUserCommits,
+    userLevel: analysisSource.userLevel,
+    userReadinessScore: analysisSource.userReadinessScore,
+    repositoryNames: (analysisSource.repositories || [])
+      .map((repository) => repository.repoName || repository.fullName)
+      .filter(Boolean),
   };
 };
 
@@ -196,9 +294,49 @@ const getRepositoryRoleMatches = async ({ user, params, query = {} }) => {
   };
 };
 
+const generateRoleMatches = async ({ user, body = {}, query = {} }) => {
+  validateAuthUser(user);
+
+  const limit = normalizeLimit(body.limit);
+  const includeDetails = isTrue(body.includeDetails) || isTrue(query.includeDetails) || body.view === 'detail' || query.view === 'detail';
+  const source = await resolveUserContributionSource({
+    userId: user.userId,
+    sourceMode: body.sourceMode,
+    repoId: body.repoId,
+    repoIds: body.repoIds,
+  });
+
+  if (source.sourceMode === 'single_repo' && !source.analysisForGap) {
+    throw createStatusError('Please analyze this repository first before matching roles.', 400);
+  }
+  if (source.sourceMode === 'all_analyzed_repos' && !source.analyses.length) {
+    throw createStatusError('Please analyze at least one repository before matching roles.', 400);
+  }
+
+  const skillVector = getUsableSkillVector({
+    analysis: source.analysisForGap,
+    sourceMode: source.sourceMode,
+  });
+  const matches = matchSkillVectorToRoles(skillVector, {
+    limit,
+    includeDetails: true,
+  }).map((match) => (includeDetails ? formatDetailedRoleMatch(match) : formatCompactRoleMatch(match)));
+
+  return {
+    message: 'Role matches generated successfully',
+    data: {
+      sourceMode: source.sourceMode,
+      analysisSource: formatAnalysisSourceForRoleMatches(source.analysisSource, includeDetails),
+      matches,
+    },
+    statusCode: 200,
+  };
+};
+
 module.exports = {
   analyzeRepository,
   getAnalysisResults,
   getMyAnalysisResults,
   getRepositoryRoleMatches,
+  generateRoleMatches,
 };
