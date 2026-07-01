@@ -111,7 +111,50 @@ router.get('/sessions/:sessionId', authMiddleware, chatController.getChatSession
  *                 example: Dua tren GitHub cua toi, toi phu hop Backend hay Fullstack hon?
  *     responses:
  *       200:
- *         description: Message sent successfully
+ *         description: Message sent successfully. In AI_AUTO, the response may include intent, contextSource, and skillScoreSummary outside production for debugging.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     mode:
+ *                       type: string
+ *                       enum: [AI_AUTO, MANUAL]
+ *                     effectiveMode:
+ *                       type: string
+ *                       enum: [AI_AUTO, MANUAL]
+ *                     modeSource:
+ *                       type: string
+ *                       enum: [GLOBAL, SESSION]
+ *                     status:
+ *                       type: string
+ *                       enum: [active, waiting_admin, answered, closed]
+ *                     userMessage:
+ *                       type: object
+ *                     aiMessage:
+ *                       type: object
+ *                       nullable: true
+ *                     adminMessage:
+ *                       type: object
+ *                       nullable: true
+ *                     intent:
+ *                       type: string
+ *                       enum: [WEAK_SKILLS, STRONG_SKILLS, NEXT_SKILLS, ROLE_FIT, REPO_REVIEW, GENERAL, DETAIL_REQUEST]
+ *                       description: Present only when NODE_ENV is not production.
+ *                     contextSource:
+ *                       type: string
+ *                       example: skillVector
+ *                       description: Present only when NODE_ENV is not production.
+ *                     skillScoreSummary:
+ *                       type: object
+ *                       description: Present only when NODE_ENV is not production.
  *       400:
  *         description: Invalid request body
  *       401:
