@@ -17,6 +17,189 @@ router.use(authMiddleware, adminMiddleware);
 
 /**
  * @swagger
+ * /api/admin/chat/settings:
+ *   get:
+ *     tags: [Admin]
+ *     summary: Get global chat mode settings
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Chat settings fetched successfully
+ *   patch:
+ *     tags: [Admin]
+ *     summary: Update global chat mode settings
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [mode]
+ *             properties:
+ *               mode:
+ *                 type: string
+ *                 enum: [AI_AUTO, MANUAL]
+ *     responses:
+ *       200:
+ *         description: Chat settings updated successfully
+ */
+router.get("/chat/settings", adminController.getChatSettings);
+router.patch("/chat/settings", adminController.updateChatSettings);
+
+/**
+ * @swagger
+ * /api/admin/chat/sessions:
+ *   get:
+ *     tags: [Admin]
+ *     summary: Get chat sessions for admin
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [active, waiting_admin, answered, closed]
+ *       - in: query
+ *         name: userId
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: mode
+ *         schema:
+ *           type: string
+ *           enum: [AI_AUTO, MANUAL]
+ *       - in: query
+ *         name: modeSource
+ *         schema:
+ *           type: string
+ *           enum: [GLOBAL, SESSION]
+ *       - in: query
+ *         name: assignedAdminId
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Chat sessions fetched successfully
+ */
+router.get("/chat/sessions", adminController.getChatSessions);
+
+/**
+ * @swagger
+ * /api/admin/chat/sessions/{sessionId}:
+ *   get:
+ *     tags: [Admin]
+ *     summary: Get chat session detail for admin
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Chat session fetched successfully
+ */
+router.get("/chat/sessions/:sessionId", adminController.getChatSessionDetail);
+
+/**
+ * @swagger
+ * /api/admin/chat/sessions/{sessionId}/messages:
+ *   post:
+ *     tags: [Admin]
+ *     summary: Reply manually to a chat session
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [content]
+ *             properties:
+ *               content:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Admin message sent successfully
+ */
+router.post("/chat/sessions/:sessionId/messages", adminController.sendChatSessionMessage);
+
+/**
+ * @swagger
+ * /api/admin/chat/sessions/{sessionId}/mode:
+ *   patch:
+ *     tags: [Admin]
+ *     summary: Override mode for one chat session
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [mode]
+ *             properties:
+ *               mode:
+ *                 type: string
+ *                 enum: [AI_AUTO, MANUAL]
+ *               reason:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Chat session mode updated successfully
+ */
+router.patch("/chat/sessions/:sessionId/mode", adminController.updateChatSessionMode);
+
+/**
+ * @swagger
+ * /api/admin/chat/sessions/{sessionId}/use-global-mode:
+ *   patch:
+ *     tags: [Admin]
+ *     summary: Make one chat session follow the global chat mode
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Chat session switched to global mode
+ */
+router.patch("/chat/sessions/:sessionId/use-global-mode", adminController.useGlobalChatSessionMode);
+
+/**
+ * @swagger
  * /api/admin/dashboard:
  *   get:
  *     tags: [Admin]

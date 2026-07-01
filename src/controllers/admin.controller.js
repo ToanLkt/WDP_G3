@@ -1,4 +1,5 @@
 const adminService = require('../services/admin.service');
+const chatService = require('../services/chat.service');
 const { successResponse } = require('../utils/response');
 
 const handle = (serviceCall) => async (req, res, next) => {
@@ -35,4 +36,15 @@ module.exports = {
       adminUser: req.user,
     })
   ),
+  getChatSettings: handle(() => chatService.getChatSettings()),
+  updateChatSettings: handle((req) => chatService.updateChatSettings({ user: req.user, body: req.body })),
+  getChatSessions: handle((req) => chatService.getAdminChatSessions({ query: req.query })),
+  getChatSessionDetail: handle((req) => chatService.getAdminChatSessionDetail({ params: req.params })),
+  sendChatSessionMessage: handle((req) =>
+    chatService.sendAdminChatMessage({ user: req.user, params: req.params, body: req.body })
+  ),
+  updateChatSessionMode: handle((req) =>
+    chatService.updateAdminChatSessionMode({ user: req.user, params: req.params, body: req.body })
+  ),
+  useGlobalChatSessionMode: handle((req) => chatService.useGlobalChatSessionMode({ params: req.params })),
 };
