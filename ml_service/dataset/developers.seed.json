@@ -1,0 +1,754 @@
+[
+{
+  "developerId": "backend_001",
+  "label": "Backend",
+  "githubUsername": "davellanedam",
+  "repositories": [
+    "https://github.com/davellanedam/node-express-mongodb-jwt-rest-api-skeleton",
+    "https://github.com/davellanedam/phalcon-micro-rest-api-skeleton"
+  ]
+},
+
+{
+ "developerId": "backend_002",
+ "label": "Backend",
+ "githubUsername": "zachgoll",
+ "repositories": [
+   "https://github.com/zachgoll/express-jwt-authentication-starter",
+   "https://github.com/zachgoll/express-session-authentication-starter",
+   "https://github.com/zachgoll/sinon-unit-testing-example"
+ ]
+},
+
+{
+  "developerId": "backend_003",
+  "label": "Backend",
+  "githubUsername": "hasan-py",
+  "repositories": [
+    "https://github.com/hasan-py/Grocery-Booking-Nestjs-PostgreSQL",
+    "https://github.com/hasan-py/Password-Manager-Nodejs-MongoDB",
+    "https://github.com/hasan-py/CMS-Django-MySQL",
+    "https://github.com/hasan-py/E-commerce-Django",
+    "https://github.com/hasan-py/CMS-PHP-MySQL"
+  ]
+},
+
+{
+  "developerId": "backend_004",
+  "label": "Backend",
+  "githubUsername": "merikbest",
+  "repositories": [
+    "https://github.com/merikbest/twitter-spring-reactjs",
+    "https://github.com/merikbest/ecommerce-spring-reactjs",
+    "https://github.com/merikbest/OnlineShop",
+    "https://github.com/merikbest/spring-boot-reactjs-crud-app"
+  ]
+},
+
+{
+  "developerId": "backend_005",
+  "label": "Backend",
+  "githubUsername": "hoangtien2k3",
+  "repositories": [
+    "https://github.com/hoangtien2k3/shopapp-backend",
+    "https://github.com/hoangtien2k3/ezbuy",
+    "https://github.com/hoangtien2k3/ecommerce-microservices"
+  ]
+},
+
+{
+  "developerId": "backend_006",
+  "label": "Backend",
+  "githubUsername": "callicoder",
+  "repositories": [
+    "https://github.com/callicoder/spring-boot-postgresql-jpa-hibernate-rest-api-demo",
+    "https://github.com/callicoder/spring-boot-mysql-rest-api-tutorial",
+    "https://github.com/callicoder/spring-boot-file-upload-download-rest-api-example",
+    "https://github.com/callicoder/spring-boot-flyway-example",
+    "https://github.com/callicoder/spring-boot-websocket-chat-demo"
+  ]
+},
+
+ {
+  "developerId": "backend_007",
+  "label": "Backend",
+  "githubUsername": "bezkoder",
+  "repositories": [
+    "https://github.com/bezkoder/spring-boot-spring-security-jwt-authentication",
+    "https://github.com/bezkoder/spring-boot-security-jwt-auth-mongodb",
+    "https://github.com/bezkoder/node-js-jwt-auth-mongodb",
+    "https://github.com/bezkoder/spring-boot-data-jpa-mysql",
+    "https://github.com/bezkoder/spring-boot-data-jpa-postgresql",
+    "https://github.com/bezkoder/spring-boot-mongodb-crud",
+    "https://github.com/bezkoder/node-js-express-sequelize-mysql",
+    "https://github.com/bezkoder/node-js-express-sequelize-postgresql"
+    ]
+},
+
+{
+  "developerId": "backend_008",
+  "label": "Backend",
+  "githubUsername": "tiangolo",
+  "repositories": [
+    "https://github.com/fastapi/full-stack-fastapi-template",
+    "https://github.com/tiangolo/full-stack"
+  ]
+},
+
+{
+  "developerId": "backend_009",
+  "label": "Backend",
+  "githubUsername": "jasontaylordev",
+  "repositories": [
+    "https://github.com/jasontaylordev/CleanArchitecture",
+    "https://github.com/jasontaylordev/NorthwindTraders"
+  ]
+},
+
+{
+  "developerId": "backend_010",
+  "label": "Backend",
+  "githubUsername": "ardalis",
+  "repositories": [
+    "https://github.com/ardalis/CleanArchitecture",
+    "https://github.com/ardalis/Specification",
+    "https://github.com/ardalis/ApiEndpoints"
+  ]
+},
+
+
+{
+  "developerId": "backend_011",
+  "label": "Backend",
+  "githubUsername": "guillaumebriday",
+  "repositories": [
+    "https://github.com/guillaumebriday/todolist-backend-laravel"
+  ]
+},
+
+{
+  "developerId": "backend_012",
+  "label": "Backend",
+  "githubUsername": "kamilmysliwiec",
+  "repositories": [
+    "https://github.com/nestjs/nest",
+    "https://github.com/nestjs/typescript-starter",
+    "https://github.com/nestjs/swagger",
+    "https://github.com/nestjs/graphql",
+    "https://github.com/nestjs/nest-cli"
+  ]
+},
+
+
+{
+  "developerId": "backend_013",
+  "label": "Backend",
+  "githubUsername": "mcollina",
+  "repositories": [
+    "https://github.com/fastify/fastify",
+    "https://github.com/fastify/fastify-static",
+    "https://github.com/mcollina/type-safe-fastify",
+    "https://github.com/mcollina/skills"
+  ]
+},
+
+{
+  "developerId": "backend_014",
+  "label": "Backend",
+  "githubUsername": "yusukebe",
+  "repositories": [
+    "https://github.com/honojs/hono",
+    "https://github.com/honojs/middleware",
+    "https://github.com/honojs/node-server",
+    "https://github.com/yusukebe/hono-vite-react-stack"
+  ]
+},
+
+
+{
+  "developerId": "backend_015",
+  "label": "Backend",
+  "githubUsername": "thetutlage",
+  "repositories": [
+    "https://github.com/adonisjs/core",
+    "https://github.com/adonisjs/lucid",
+    "https://github.com/adonisjs/auth",
+    "https://github.com/adonisjs/session",
+    "https://github.com/adonisjs/create-adonisjs"
+  ]
+},
+
+  {
+    "developerId": "frontend_001",
+    "label": "Frontend",
+    "githubUsername": "yyx990803",
+    "repositories": [
+      "https://github.com/vuejs/core",
+      "https://github.com/vitejs/vite",
+      "https://github.com/vuejs/vitepress",
+      "https://github.com/vuejs/petite-vue"
+    ]
+  },
+  {
+    "developerId": "frontend_002",
+    "label": "Frontend",
+    "githubUsername": "antfu",
+    "repositories": [
+      "https://github.com/antfu/vitesse",
+      "https://github.com/unocss/unocss",
+      "https://github.com/vite-pwa/vite-plugin-pwa",
+      "https://github.com/antfu/ni"
+    ]
+  },
+  {
+    "developerId": "frontend_003",
+    "label": "Frontend",
+    "githubUsername": "rich-harris",
+    "repositories": [
+      "https://github.com/sveltejs/svelte",
+      "https://github.com/sveltejs/kit",
+      "https://github.com/rollup/rollup"
+    ]
+  },
+  {
+    "developerId": "frontend_004",
+    "label": "Frontend",
+    "githubUsername": "evanw",
+    "repositories": [
+      "https://github.com/evanw/esbuild"
+    ]
+  },
+  {
+    "developerId": "frontend_005",
+    "label": "Frontend",
+    "githubUsername": "developit",
+    "repositories": [
+      "https://github.com/preactjs/preact",
+      "https://github.com/preactjs/signals",
+      "https://github.com/developit/htm",
+      "https://github.com/developit/mitt"
+    ]
+  },
+  {
+    "developerId": "frontend_006",
+    "label": "Frontend",
+    "githubUsername": "tannerlinsley",
+    "repositories": [
+      "https://github.com/TanStack/query",
+      "https://github.com/TanStack/table",
+      "https://github.com/TanStack/router",
+      "https://github.com/TanStack/virtual"
+    ]
+  },
+  {
+    "developerId": "frontend_007",
+    "label": "Frontend",
+    "githubUsername": "drcmda",
+    "repositories": [
+      "https://github.com/pmndrs/react-three-fiber",
+      "https://github.com/pmndrs/zustand",
+      "https://github.com/pmndrs/drei",
+      "https://github.com/pmndrs/jotai"
+    ]
+  },
+  {
+    "developerId": "frontend_008",
+    "label": "Frontend",
+    "githubUsername": "segunadebayo",
+    "repositories": [
+      "https://github.com/chakra-ui/chakra-ui",
+      "https://github.com/chakra-ui/ark",
+      "https://github.com/chakra-ui/zag"
+    ]
+  },
+  {
+    "developerId": "frontend_009",
+    "label": "Frontend",
+    "githubUsername": "adamwathan",
+    "repositories": [
+      "https://github.com/tailwindlabs/tailwindcss",
+      "https://github.com/tailwindlabs/headlessui",
+      "https://github.com/tailwindlabs/heroicons"
+    ]
+  },
+  {
+    "developerId": "frontend_010",
+    "label": "Frontend",
+    "githubUsername": "ryansolid",
+    "repositories": [
+      "https://github.com/solidjs/solid",
+      "https://github.com/solidjs/solid-start",
+      "https://github.com/solidjs-community/solid-primitives"
+    ]
+  },
+  {
+    "developerId": "frontend_011",
+    "label": "Frontend",
+    "githubUsername": "FredKSchott",
+    "repositories": [
+      "https://github.com/withastro/astro",
+      "https://github.com/withastro/starlight",
+      "https://github.com/FredKSchott/snowpack"
+    ]
+  },
+  {
+    "developerId": "frontend_012",
+    "label": "Frontend",
+    "githubUsername": "pi0",
+    "repositories": [
+      "https://github.com/nuxt/nuxt",
+      "https://github.com/unjs/nitro",
+      "https://github.com/unjs/unbuild",
+      "https://github.com/unjs/ofetch"
+    ]
+  },
+  {
+    "developerId": "frontend_013",
+    "label": "Frontend",
+    "githubUsername": "mgechev",
+    "repositories": [
+      "https://github.com/angular/angular",
+      "https://github.com/guess-js/guess"
+    ]
+  },
+  {
+    "developerId": "frontend_014",
+    "label": "Frontend",
+    "githubUsername": "jaredpalmer",
+    "repositories": [
+      "https://github.com/jaredpalmer/formik",
+      "https://github.com/jaredpalmer/tsdx",
+      "https://github.com/jaredpalmer/razzle"
+    ]
+  },
+  {
+    "developerId": "frontend_015",
+    "label": "Frontend",
+    "githubUsername": "kentcdodds",
+    "repositories": [
+      "https://github.com/testing-library/react-testing-library",
+      "https://github.com/testing-library/dom-testing-library",
+      "https://github.com/kentcdodds/react-fundamentals"
+    ]
+  },
+  
+  {
+    "developerId": "mobile_001",
+    "label": "Mobile",
+    "githubUsername": "felangel",
+    "repositories": [
+      "https://github.com/felangel/bloc"
+    ]
+  },
+  {
+    "developerId": "mobile_002",
+    "label": "Mobile",
+    "githubUsername": "rrousselGit",
+    "repositories": [
+      "https://github.com/rrousselGit/riverpod",
+      "https://github.com/rrousselGit/provider",
+      "https://github.com/rrousselGit/flutter_hooks"
+    ]
+  },
+  {
+    "developerId": "mobile_003",
+    "label": "Mobile",
+    "githubUsername": "jonataslaw",
+    "repositories": [
+      "https://github.com/jonataslaw/getx"
+    ]
+  },
+  {
+    "developerId": "mobile_004",
+    "label": "Mobile",
+    "githubUsername": "mrousavy",
+    "repositories": [
+      "https://github.com/mrousavy/react-native-vision-camera",
+      "https://github.com/mrousavy/react-native-mmkv",
+      "https://github.com/mrousavy/react-native-nitro-modules"
+    ]
+  },
+  {
+    "developerId": "mobile_005",
+    "label": "Mobile",
+    "githubUsername": "satya164",
+    "repositories": [
+      "https://github.com/react-navigation/react-navigation",
+      "https://github.com/satya164/react-native-tab-view",
+      "https://github.com/satya164/react-navigation-native-modal"
+    ]
+  },
+  {
+    "developerId": "mobile_006",
+    "label": "Mobile",
+    "githubUsername": "brentvatne",
+    "repositories": [
+      "https://github.com/expo/expo",
+      "https://github.com/expo/router"
+    ]
+  },
+  {
+    "developerId": "mobile_007",
+    "label": "Mobile",
+    "githubUsername": "oblador",
+    "repositories": [
+      "https://github.com/oblador/react-native-vector-icons",
+      "https://github.com/oblador/react-native-animatable",
+      "https://github.com/oblador/react-native-lightbox"
+    ]
+  },
+  {
+    "developerId": "mobile_008",
+    "label": "Mobile",
+    "githubUsername": "kmagiera",
+    "repositories": [
+      "https://github.com/software-mansion/react-native-screens",
+      "https://github.com/software-mansion/react-native-gesture-handler",
+      "https://github.com/software-mansion/react-native-reanimated"
+    ]
+  },
+  {
+    "developerId": "mobile_009",
+    "label": "Mobile",
+    "githubUsername": "JakeWharton",
+    "repositories": [
+      "https://github.com/JakeWharton/timber",
+      "https://github.com/JakeWharton/butterknife",
+      "https://github.com/JakeWharton/mosaic",
+      "https://github.com/square/okio"
+    ]
+  },
+  {
+    "developerId": "mobile_010",
+    "label": "Mobile",
+    "githubUsername": "chrisbanes",
+    "repositories": [
+      "https://github.com/chrisbanes/tivi",
+      "https://github.com/chrisbanes/haze",
+      "https://github.com/chrisbanes/snapper"
+    ]
+  },
+  {
+    "developerId": "mobile_011",
+    "label": "Mobile",
+    "githubUsername": "android10",
+    "repositories": [
+      "https://github.com/android10/Android-CleanArchitecture"
+    ]
+  },
+  {
+    "developerId": "mobile_012",
+    "label": "Mobile",
+    "githubUsername": "onevcat",
+    "repositories": [
+      "https://github.com/onevcat/Kingfisher",
+      "https://github.com/onevcat/Rainbow",
+      "https://github.com/onevcat/Hedwig"
+    ]
+  },
+  {
+    "developerId": "mobile_013",
+    "label": "Mobile",
+    "githubUsername": "nicklockwood",
+    "repositories": [
+      "https://github.com/nicklockwood/SwiftFormat",
+      "https://github.com/nicklockwood/iCarousel",
+      "https://github.com/nicklockwood/SwiftFormatForXcode"
+    ]
+  },
+  {
+    "developerId": "mobile_014",
+    "label": "Mobile",
+    "githubUsername": "ReactiveCocoa",
+    "repositories": [
+      "https://github.com/ReactiveCocoa/ReactiveSwift",
+      "https://github.com/ReactiveCocoa/ReactiveCocoa",
+      "https://github.com/ReactiveCocoa/ReactiveObjC"
+    ]
+  },
+  {
+    "developerId": "mobile_015",
+    "label": "Mobile",
+    "githubUsername": "android",
+    "repositories": [
+      "https://github.com/android/nowinandroid",
+      "https://github.com/android/compose-samples",
+      "https://github.com/android/architecture-samples"
+    ]
+  },
+  {
+    "developerId": "devops_001",
+    "label": "DevOps",
+    "githubUsername": "geerlingguy",
+    "repositories": [
+      "https://github.com/geerlingguy/ansible-for-devops",
+      "https://github.com/geerlingguy/ansible-role-docker",
+      "https://github.com/geerlingguy/ansible-role-kubernetes"
+    ]
+  },
+  {
+    "developerId": "devops_002",
+    "label": "DevOps",
+    "githubUsername": "alexellis",
+    "repositories": [
+      "https://github.com/openfaas/faas",
+      "https://github.com/openfaas/faas-cli",
+      "https://github.com/openfaas/templates",
+      "https://github.com/alexellis/k3sup"
+    ]
+  },
+  {
+    "developerId": "devops_003",
+    "label": "DevOps",
+    "githubUsername": "stefanprodan",
+    "repositories": [
+      "https://github.com/fluxcd/flux2",
+      "https://github.com/fluxcd/source-controller",
+      "https://github.com/fluxcd/kustomize-controller",
+      "https://github.com/fluxcd/helm-controller"
+    ]
+  },
+  {
+    "developerId": "devops_004",
+    "label": "DevOps",
+    "githubUsername": "mumoshu",
+    "repositories": [
+      "https://github.com/helmfile/helmfile",
+      "https://github.com/mumoshu/helm-x",
+      "https://github.com/mumoshu/variant"
+    ]
+  },
+  {
+    "developerId": "devops_005",
+    "label": "DevOps",
+    "githubUsername": "mattfarina",
+    "repositories": [
+      "https://github.com/helm/helm",
+      "https://github.com/helm/chart-testing",
+      "https://github.com/helm/helm-www"
+    ]
+  },
+  {
+    "developerId": "devops_006",
+    "label": "DevOps",
+    "githubUsername": "mitchellh",
+    "repositories": [
+      "https://github.com/hashicorp/terraform",
+      "https://github.com/hashicorp/vagrant",
+      "https://github.com/hashicorp/packer"
+    ]
+  },
+  {
+    "developerId": "devops_007",
+    "label": "DevOps",
+    "githubUsername": "lukehoban",
+    "repositories": [
+      "https://github.com/pulumi/pulumi",
+      "https://github.com/pulumi/examples",
+      "https://github.com/pulumi/actions"
+    ]
+  },
+  {
+    "developerId": "devops_008",
+    "label": "DevOps",
+    "githubUsername": "ibuildthecloud",
+    "repositories": [
+      "https://github.com/k3s-io/k3s",
+      "https://github.com/rancher/rancher",
+      "https://github.com/rancher/system-agent"
+    ]
+  },
+  {
+    "developerId": "devops_009",
+    "label": "DevOps",
+    "githubUsername": "thockin",
+    "repositories": [
+      "https://github.com/kubernetes/kubernetes",
+      "https://github.com/kubernetes/enhancements",
+      "https://github.com/kubernetes/community"
+    ]
+  },
+  {
+    "developerId": "devops_010",
+    "label": "DevOps",
+    "githubUsername": "kelseyhightower",
+    "repositories": [
+      "https://github.com/kelseyhightower/kubernetes-the-hard-way",
+      "https://github.com/kelseyhightower/envconfig"
+    ]
+  },
+  {
+    "developerId": "devops_011",
+    "label": "DevOps",
+    "githubUsername": "brendandburns",
+    "repositories": [
+      "https://github.com/kubernetes/kubernetes",
+      "https://github.com/kubernetes/examples",
+      "https://github.com/kubernetes/website"
+    ]
+  },
+  {
+    "developerId": "devops_012",
+    "label": "DevOps",
+    "githubUsername": "jessesuen",
+    "repositories": [
+      "https://github.com/argoproj/argo-cd",
+      "https://github.com/argoproj/argo-workflows",
+      "https://github.com/argoproj/argo-rollouts"
+    ]
+  },
+  {
+    "developerId": "devops_013",
+    "label": "DevOps",
+    "githubUsername": "SuperQ",
+    "repositories": [
+      "https://github.com/prometheus/node_exporter",
+      "https://github.com/prometheus/prometheus",
+      "https://github.com/prometheus/blackbox_exporter"
+    ]
+  },
+  {
+    "developerId": "devops_014",
+    "label": "DevOps",
+    "githubUsername": "torkelo",
+    "repositories": [
+      "https://github.com/grafana/grafana",
+      "https://github.com/grafana/loki",
+      "https://github.com/grafana/tempo"
+    ]
+  },
+  {
+    "developerId": "devops_015",
+    "label": "DevOps",
+    "githubUsername": "thomasgraf",
+    "repositories": [
+      "https://github.com/cilium/cilium",
+      "https://github.com/cilium/hubble",
+      "https://github.com/cilium/cilium-cli"
+    ]
+  },
+   {
+    "developerId": "data_scientist_001",
+    "label": "Data Scientist",
+    "githubUsername": "wesm",
+    "repositories": [
+      "https://github.com/pandas-dev/pandas"
+    ]
+  },
+  {
+    "developerId": "data_scientist_002",
+    "label": "Data Scientist",
+    "githubUsername": "amueller",
+    "repositories": [
+      "https://github.com/amueller/introduction_to_ml_with_python",
+      "https://github.com/scikit-learn/scikit-learn"
+    ]
+  },
+  {
+    "developerId": "data_scientist_003",
+    "label": "Data Scientist",
+    "githubUsername": "GaelVaroquaux",
+    "repositories": [
+      "https://github.com/scikit-learn/scikit-learn",
+      "https://github.com/nilearn/nilearn"
+    ]
+  },
+  {
+    "developerId": "data_scientist_004",
+    "label": "Data Scientist",
+    "githubUsername": "ogrisel",
+    "repositories": [
+      "https://github.com/scikit-learn/scikit-learn"
+    ]
+  },
+  {
+    "developerId": "data_scientist_005",
+    "label": "Data Scientist",
+    "githubUsername": "soumith",
+    "repositories": [
+      "https://github.com/pytorch/pytorch"
+    ]
+  },
+  {
+    "developerId": "data_scientist_006",
+    "label": "Data Scientist",
+    "githubUsername": "thomwolf",
+    "repositories": [
+      "https://github.com/huggingface/transformers"
+    ]
+  },
+  {
+    "developerId": "data_scientist_007",
+    "label": "Data Scientist",
+    "githubUsername": "lhoestq",
+    "repositories": [
+      "https://github.com/huggingface/datasets"
+    ]
+  },
+  {
+    "developerId": "data_scientist_008",
+    "label": "Data Scientist",
+    "githubUsername": "jeremyhoward",
+    "repositories": [
+      "https://github.com/fastai/fastai",
+      "https://github.com/fastai/fastbook"
+    ]
+  },
+  {
+    "developerId": "data_scientist_009",
+    "label": "Data Scientist",
+    "githubUsername": "rasbt",
+    "repositories": [
+      "https://github.com/rasbt/mlxtend",
+      "https://github.com/rasbt/machine-learning-book"
+    ]
+  },
+  {
+    "developerId": "data_scientist_010",
+    "label": "Data Scientist",
+    "githubUsername": "ageron",
+    "repositories": [
+      "https://github.com/ageron/handson-ml3"
+    ]
+  },
+  {
+    "developerId": "data_scientist_011",
+    "label": "Data Scientist",
+    "githubUsername": "slundberg",
+    "repositories": [
+      "https://github.com/shap/shap"
+    ]
+  },
+  {
+    "developerId": "data_scientist_012",
+    "label": "Data Scientist",
+    "githubUsername": "tqchen",
+    "repositories": [
+      "https://github.com/dmlc/xgboost"
+    ]
+  },
+  {
+    "developerId": "data_scientist_013",
+    "label": "Data Scientist",
+    "githubUsername": "crcrpar",
+    "repositories": [
+      "https://github.com/optuna/optuna"
+    ]
+  },
+  {
+    "developerId": "data_scientist_014",
+    "label": "Data Scientist",
+    "githubUsername": "bletham",
+    "repositories": [
+      "https://github.com/facebook/prophet"
+    ]
+  },
+  {
+    "developerId": "data_scientist_015",
+    "label": "Data Scientist",
+    "githubUsername": "ines",
+    "repositories": [
+      "https://github.com/explosion/spaCy"
+    ]
+  }
+]

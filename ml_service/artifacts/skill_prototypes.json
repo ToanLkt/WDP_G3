@@ -1,0 +1,384 @@
+[
+  {
+    "skillName": "REST API",
+    "canonicalSkillName": "REST API",
+    "roleIds": [
+      "backend"
+    ],
+    "repoSkillDocument": "backend server rest api controller route endpoint request response validation",
+    "issueSkillDocument": "fix api endpoint request response validation status error",
+    "apiSkillTokens": [
+      "router",
+      "controller",
+      "request",
+      "response",
+      "express"
+    ]
+  },
+  {
+    "skillName": "Database",
+    "canonicalSkillName": "Database",
+    "roleIds": [
+      "backend"
+    ],
+    "repoSkillDocument": "database schema query migration transaction repository persistence",
+    "issueSkillDocument": "fix query migration database connection transaction performance",
+    "apiSkillTokens": [
+      "postgresql",
+      "mysql",
+      "mongodb",
+      "mongoose",
+      "sequelize"
+    ]
+  },
+  {
+    "skillName": "Authentication",
+    "canonicalSkillName": "Authentication",
+    "roleIds": [
+      "backend"
+    ],
+    "repoSkillDocument": "authentication authorization user session token password security",
+    "issueSkillDocument": "fix login permission token expiry access security",
+    "apiSkillTokens": [
+      "jsonwebtoken",
+      "passport",
+      "oauth",
+      "bcrypt",
+      "session"
+    ]
+  },
+  {
+    "skillName": "API Testing",
+    "canonicalSkillName": "API Testing",
+    "roleIds": [
+      "backend"
+    ],
+    "repoSkillDocument": "api integration unit test endpoint mock assertion coverage",
+    "issueSkillDocument": "test endpoint regression mock failure expected response",
+    "apiSkillTokens": [
+      "jest",
+      "pytest",
+      "supertest",
+      "junit",
+      "mockito"
+    ]
+  },
+  {
+    "skillName": "Docker Basics",
+    "canonicalSkillName": "Docker Basics",
+    "roleIds": [
+      "backend"
+    ],
+    "repoSkillDocument": "docker container backend service image compose deployment",
+    "issueSkillDocument": "container build image environment service startup",
+    "apiSkillTokens": [
+      "docker",
+      "docker-compose",
+      "container",
+      "image"
+    ]
+  },
+  {
+    "skillName": "React UI",
+    "canonicalSkillName": "React UI",
+    "roleIds": [
+      "frontend"
+    ],
+    "repoSkillDocument": "react frontend user interface jsx component hook rendering",
+    "issueSkillDocument": "fix ui render component hook browser interaction",
+    "apiSkillTokens": [
+      "react",
+      "react-dom",
+      "jsx",
+      "vite"
+    ]
+  },
+  {
+    "skillName": "Component Design",
+    "canonicalSkillName": "Component Design",
+    "roleIds": [
+      "frontend"
+    ],
+    "repoSkillDocument": "reusable component design system props composition storybook",
+    "issueSkillDocument": "component behavior props styling accessibility reuse",
+    "apiSkillTokens": [
+      "storybook",
+      "styled-components",
+      "tailwindcss",
+      "sass"
+    ]
+  },
+  {
+    "skillName": "State Management",
+    "canonicalSkillName": "State Management",
+    "roleIds": [
+      "frontend"
+    ],
+    "repoSkillDocument": "frontend state store action reducer reactive data flow",
+    "issueSkillDocument": "state update stale data store synchronization render",
+    "apiSkillTokens": [
+      "redux",
+      "zustand",
+      "pinia",
+      "mobx",
+      "rxjs"
+    ]
+  },
+  {
+    "skillName": "Frontend Testing",
+    "canonicalSkillName": "Frontend Testing",
+    "roleIds": [
+      "frontend"
+    ],
+    "repoSkillDocument": "frontend component browser unit integration end to end testing",
+    "issueSkillDocument": "ui regression test browser assertion interaction failure",
+    "apiSkillTokens": [
+      "vitest",
+      "jest",
+      "playwright",
+      "cypress",
+      "testing-library"
+    ]
+  },
+  {
+    "skillName": "Responsive Design",
+    "canonicalSkillName": "Responsive Design",
+    "roleIds": [
+      "frontend"
+    ],
+    "repoSkillDocument": "responsive web design mobile layout css grid flexbox accessibility",
+    "issueSkillDocument": "layout breakpoint viewport mobile style accessibility",
+    "apiSkillTokens": [
+      "css",
+      "tailwindcss",
+      "bootstrap",
+      "sass"
+    ]
+  },
+  {
+    "skillName": "Mobile UI",
+    "canonicalSkillName": "Mobile UI",
+    "roleIds": [
+      "mobile"
+    ],
+    "repoSkillDocument": "mobile app user interface screen widget layout animation",
+    "issueSkillDocument": "mobile screen layout gesture rendering device",
+    "apiSkillTokens": [
+      "flutter",
+      "react-native",
+      "swiftui",
+      "jetpack-compose"
+    ]
+  },
+  {
+    "skillName": "Navigation",
+    "canonicalSkillName": "Navigation",
+    "roleIds": [
+      "mobile"
+    ],
+    "repoSkillDocument": "mobile navigation route screen stack tab deep link",
+    "issueSkillDocument": "navigation back stack route screen deep link",
+    "apiSkillTokens": [
+      "react-navigation",
+      "go-router",
+      "navigation-compose"
+    ]
+  },
+  {
+    "skillName": "Local Storage",
+    "canonicalSkillName": "Local Storage",
+    "roleIds": [
+      "mobile"
+    ],
+    "repoSkillDocument": "mobile local storage database cache preferences offline persistence",
+    "issueSkillDocument": "offline data cache migration storage synchronization",
+    "apiSkillTokens": [
+      "sqlite",
+      "room",
+      "realm",
+      "shared_preferences",
+      "async-storage"
+    ]
+  },
+  {
+    "skillName": "API Integration",
+    "canonicalSkillName": "API Integration",
+    "roleIds": [
+      "mobile"
+    ],
+    "repoSkillDocument": "mobile api client network request response serialization",
+    "issueSkillDocument": "network request timeout response parsing api error",
+    "apiSkillTokens": [
+      "retrofit",
+      "dio",
+      "axios",
+      "urlsession",
+      "http"
+    ]
+  },
+  {
+    "skillName": "App State Management",
+    "canonicalSkillName": "App State Management",
+    "roleIds": [
+      "mobile"
+    ],
+    "repoSkillDocument": "mobile application state store event reactive lifecycle",
+    "issueSkillDocument": "state lifecycle update background foreground synchronization",
+    "apiSkillTokens": [
+      "bloc",
+      "provider",
+      "riverpod",
+      "redux",
+      "mobx"
+    ]
+  },
+  {
+    "skillName": "Docker",
+    "canonicalSkillName": "Docker",
+    "roleIds": [
+      "devops"
+    ],
+    "repoSkillDocument": "docker container image registry compose build deployment",
+    "issueSkillDocument": "container image build runtime registry deployment",
+    "apiSkillTokens": [
+      "docker",
+      "docker-compose",
+      "build-push-action"
+    ]
+  },
+  {
+    "skillName": "Kubernetes",
+    "canonicalSkillName": "Kubernetes",
+    "roleIds": [
+      "devops"
+    ],
+    "repoSkillDocument": "kubernetes cluster pod service deployment ingress helm",
+    "issueSkillDocument": "cluster pod scheduling rollout service ingress failure",
+    "apiSkillTokens": [
+      "kubernetes",
+      "kubectl",
+      "helm",
+      "kustomize"
+    ]
+  },
+  {
+    "skillName": "CI/CD",
+    "canonicalSkillName": "CI/CD",
+    "roleIds": [
+      "devops"
+    ],
+    "repoSkillDocument": "continuous integration delivery pipeline build test release deploy",
+    "issueSkillDocument": "pipeline build failure release deployment automation",
+    "apiSkillTokens": [
+      "actions/checkout",
+      "github-actions",
+      "jenkins",
+      "gitlab-ci"
+    ]
+  },
+  {
+    "skillName": "Infrastructure as Code",
+    "canonicalSkillName": "Infrastructure as Code",
+    "roleIds": [
+      "devops"
+    ],
+    "repoSkillDocument": "infrastructure as code cloud provisioning configuration automation",
+    "issueSkillDocument": "infrastructure plan state provision resource configuration",
+    "apiSkillTokens": [
+      "terraform",
+      "ansible",
+      "pulumi",
+      "cloudformation"
+    ]
+  },
+  {
+    "skillName": "Monitoring",
+    "canonicalSkillName": "Monitoring",
+    "roleIds": [
+      "devops"
+    ],
+    "repoSkillDocument": "monitoring observability metrics logs traces alert dashboard",
+    "issueSkillDocument": "alert metric log incident latency availability",
+    "apiSkillTokens": [
+      "prometheus",
+      "grafana",
+      "opentelemetry",
+      "datadog"
+    ]
+  },
+  {
+    "skillName": "Data Analysis",
+    "canonicalSkillName": "Data Analysis",
+    "roleIds": [
+      "data_scientist"
+    ],
+    "repoSkillDocument": "data analysis dataframe statistics exploration cleaning feature",
+    "issueSkillDocument": "dataset quality missing value analysis metric",
+    "apiSkillTokens": [
+      "pandas",
+      "numpy",
+      "scipy",
+      "jupyter"
+    ]
+  },
+  {
+    "skillName": "Machine Learning",
+    "canonicalSkillName": "Machine Learning",
+    "roleIds": [
+      "data_scientist"
+    ],
+    "repoSkillDocument": "machine learning model feature prediction classification regression",
+    "issueSkillDocument": "model accuracy prediction feature evaluation dataset",
+    "apiSkillTokens": [
+      "scikit-learn",
+      "tensorflow",
+      "pytorch",
+      "xgboost"
+    ]
+  },
+  {
+    "skillName": "Model Training",
+    "canonicalSkillName": "Model Training",
+    "roleIds": [
+      "data_scientist"
+    ],
+    "repoSkillDocument": "model training validation optimization hyperparameter experiment pipeline",
+    "issueSkillDocument": "training loss convergence checkpoint validation performance",
+    "apiSkillTokens": [
+      "torch",
+      "keras",
+      "mlflow",
+      "optuna"
+    ]
+  },
+  {
+    "skillName": "Data Visualization",
+    "canonicalSkillName": "Data Visualization",
+    "roleIds": [
+      "data_scientist"
+    ],
+    "repoSkillDocument": "data visualization chart plot dashboard statistical graphics",
+    "issueSkillDocument": "chart axis plot legend dashboard visualization",
+    "apiSkillTokens": [
+      "matplotlib",
+      "seaborn",
+      "plotly",
+      "altair"
+    ]
+  },
+  {
+    "skillName": "NLP Basics",
+    "canonicalSkillName": "NLP Basics",
+    "roleIds": [
+      "data_scientist"
+    ],
+    "repoSkillDocument": "natural language processing text token embedding classification",
+    "issueSkillDocument": "text preprocessing token model language evaluation",
+    "apiSkillTokens": [
+      "transformers",
+      "nltk",
+      "spacy",
+      "gensim"
+    ]
+  }
+]
