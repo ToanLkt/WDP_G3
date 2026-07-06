@@ -1,0 +1,42 @@
+{
+  "status": "ready",
+  "modelVersion": "dev2vec-demo-v1",
+  "trainedAt": "2026-07-06T07:06:34.458Z",
+  "roles": [
+    "Backend",
+    "Frontend",
+    "Mobile",
+    "DevOps",
+    "Data Scientist"
+  ],
+  "roleIds": [
+    "backend",
+    "frontend",
+    "mobile",
+    "devops",
+    "data_scientist"
+  ],
+  "vectorDims": {
+    "repo": 230,
+    "issue": 150,
+    "api": 200,
+    "combined": 580
+  },
+  "dataset": {
+    "sampleCount": 75,
+    "samplesPerRole": {
+      "Backend": 15,
+      "Frontend": 15,
+      "Mobile": 15,
+      "DevOps": 15,
+      "Data Scientist": 15
+    }
+  },
+  "artifacts": {
+    "doc2vecRepo": true,
+    "doc2vecIssue": true,
+    "doc2vecApi": true,
+    "classifier": true,
+    "skillPrototypes": true
+  }
+}

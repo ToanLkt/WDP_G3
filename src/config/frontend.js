@@ -29,6 +29,33 @@ const getMobileAuthRedirectUrl = () =>
 const getGithubAuthRedirectUrlConfig = () =>
   normalizeUrl(process.env.GITHUB_AUTH_REDIRECT_URL);
 
+const isValidMobileRedirect = (candidateUrl) => {
+  try {
+    const url = new URL(candidateUrl);
+    if (['http:', 'https:'].includes(url.protocol)) {
+      return false;
+    }
+    
+    if (url.protocol === 'exp:') {
+      return true;
+    }
+
+    const authUrl = getMobileAuthRedirectUrl();
+    if (authUrl && url.protocol === new URL(authUrl).protocol) {
+      return true;
+    }
+    
+    const connectUrl = getMobileRedirectUrl();
+    if (connectUrl && url.protocol === new URL(connectUrl).protocol) {
+      return true;
+    }
+
+    return false;
+  } catch (err) {
+    return false;
+  }
+};
+
 const getAllowedFrontendOrigins = () => {
   const configuredUrls = [
     process.env.FRONTEND_URL,
@@ -51,8 +78,14 @@ const getFrontendPathUrl = (path, exactRedirectUrl, ...candidates) => {
 
   for (const candidate of candidates) {
     const normalizedCandidate = normalizeUrl(candidate);
+    if (!normalizedCandidate) continue;
+
     if (exactRedirectUrl && normalizedCandidate === exactRedirectUrl) {
       return exactRedirectUrl;
+    }
+
+    if (isValidMobileRedirect(normalizedCandidate)) {
+      return normalizedCandidate;
     }
 
     const url = parseHttpUrl(candidate);
@@ -77,12 +110,18 @@ const getGithubAuthRedirectUrl = (...candidates) => {
 
   for (const candidate of candidates) {
     const normalizedCandidate = normalizeUrl(candidate);
+    if (!normalizedCandidate) continue;
+
     if (mobileAuthRedirectUrl && normalizedCandidate === mobileAuthRedirectUrl) {
       return mobileAuthRedirectUrl;
     }
 
     if (webAuthRedirectUrl && normalizedCandidate === webAuthRedirectUrl) {
       return webAuthRedirectUrl;
+    }
+
+    if (isValidMobileRedirect(normalizedCandidate)) {
+      return normalizedCandidate;
     }
 
     const url = parseHttpUrl(candidate);
