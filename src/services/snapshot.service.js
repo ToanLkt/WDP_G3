@@ -70,6 +70,14 @@ const buildSnapshotPayload = (analysisResult) => {
     checklist: source.checklist || {},
     skillEvidence: objectArray(source.skillEvidence),
     skillVector: objectArray(source.skillVector),
+    dev2vec: {
+      modelVersion: source.dev2vec?.modelVersion || null,
+      vectorSources: source.dev2vec?.vectorSources || {},
+      sourceStats: source.dev2vec?.sourceStats || {},
+      rolePredictions: objectArray(source.dev2vec?.rolePredictions),
+      evidencePreview: source.dev2vec?.evidencePreview || {},
+      scoringMethod: source.dev2vec?.scoringMethod || '',
+    },
     analyzedAt: source.analyzedAt || source.createdAt || new Date(),
     snapshotType: 'after_analysis',
     source: 'github',
@@ -183,6 +191,16 @@ const formatSnapshotResponse = (snapshotInput, options = {}) => {
           };
         }),
       };
+      if (snapshot.dev2vec) {
+        response.debug.dev2vec = {
+          modelVersion: snapshot.dev2vec.modelVersion || null,
+          vectorSources: snapshot.dev2vec.vectorSources || {},
+          sourceStats: snapshot.dev2vec.sourceStats || {},
+          rolePredictions: snapshot.dev2vec.rolePredictions || [],
+          evidencePreview: snapshot.dev2vec.evidencePreview || {},
+          scoringMethod: snapshot.dev2vec.scoringMethod || '',
+        };
+      }
     }
   }
 

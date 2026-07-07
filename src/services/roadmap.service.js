@@ -13,8 +13,16 @@ const { createStatusError } = require('./github/github.utils');
 const { findRepositoryForUser } = require('./github/github.repository.service');
 const { createAutomaticNotification } = require('./notification.service');
 const { canonicalizeSkillName, getCanonicalSkillCategory } = require('../utils/skillCanonicalizer');
-const { buildRoadmapSkillGapFromAnalysis } = require('./roadmapSkillGap.service');
-const { ROLE_SKILL_VECTORS } = require('../constants/roleSkillVectors');
+const {
+  buildRoadmapSkillGapFromAnalysis,
+  getDev2VecRoleName,
+  normalizeDev2VecRoleId,
+} = require('./roadmapSkillGap.service');
+const {
+  buildDev2VecInputFromAnalysisSource,
+} = require('./dev2vec/dev2vecInputBuilder.service');
+const { runDev2VecInference } = require('./dev2vec/dev2vec.service');
+const { mapDev2VecOutputToRoleMatches } = require('./dev2vec/dev2vecRoleMapper.service');
 const analysisSourceService = require('./analysisSource.service');
 
 let LearningRecommendation = null;
@@ -63,16 +71,12 @@ const priorityLabel = (priority) => {
 };
 
 const findRoleCatalogEntry = ({ roleId, targetRole }) => {
-  const roleIdKey = normalizeKey(roleId);
-  const targetKey = normalizeKey(targetRole);
-  return (
-    (roleIdKey && ROLE_SKILL_VECTORS.find((role) => normalizeKey(role.roleId) === roleIdKey)) ||
-    (targetKey &&
-      ROLE_SKILL_VECTORS.find(
-        (role) => normalizeKey(role.roleName) === targetKey || normalizeKey(role.roleId) === targetKey
-      )) ||
-    null
-  );
+  const normalizedRoleId = normalizeDev2VecRoleId(roleId) || normalizeDev2VecRoleId(targetRole);
+  if (!normalizedRoleId) return null;
+  return {
+    roleId: normalizedRoleId,
+    roleName: getDev2VecRoleName(normalizedRoleId),
+  };
 };
 
 const formatSkillGapSummary = (skillGaps = []) => {
@@ -80,6 +84,23 @@ const formatSkillGapSummary = (skillGaps = []) => {
   return (Array.isArray(skillGaps) ? skillGaps : [])
     .map((gap) => {
       const canonicalSkillName = canonicalizeSkillName(gap.canonicalSkillName || gap.skillName || gap.skill);
+      if (gap.source === 'dev2vec') {
+        return {
+          skillName: canonicalSkillName,
+          canonicalSkillName,
+          category: gap.category || getCanonicalSkillCategory(canonicalSkillName),
+          gapType: gap.gapType || gap.currentLevel || 'missing',
+          priority: priorityLabel(gap.priority),
+          similarity: Number.isFinite(Number(gap.similarity)) ? Number(gap.similarity) : null,
+          source: 'dev2vec',
+          currentLevel: gap.currentLevel || (gap.gapType === 'weak' ? 'weak' : 'missing'),
+          targetLevel: gap.targetLevel || 'strong',
+          currentScore: roundScore(gap.currentScore || gap.similarity || 0),
+          requiredScore: roundScore(gap.requiredScore ?? 0.7),
+          gap: roundScore(gap.gap || Math.max(0, 0.7 - Number(gap.currentScore || gap.similarity || 0))),
+          reason: gap.reason || '',
+        };
+      }
       const currentScore = roundScore(gap.currentScore || 0);
       const fallbackRequiredScore = (gap.currentLevel || 'missing') === 'missing' ? 0.4 : 0.4;
       const requiredScore = roundScore(Number(gap.requiredScore ?? gap.targetMinScore ?? fallbackRequiredScore) || fallbackRequiredScore);
@@ -265,6 +286,66 @@ const formatLegacyGapItems = (skillGapSummary = {}) =>
     priority: 'medium',
     reason: 'Legacy roadmap gap converted for compact response.',
   }));
+
+const hasCachedDev2VecResult = (analysis = {}) => (
+  Array.isArray(analysis?.dev2vec?.rolePredictions)
+  && analysis.dev2vec.rolePredictions.length > 0
+  && analysis.dev2vec.skillGaps
+  && typeof analysis.dev2vec.skillGaps === 'object'
+);
+
+const buildDev2VecOutputFromAnalysis = (analysis = {}) => ({
+  success: true,
+  modelVersion: analysis.dev2vec?.modelVersion || null,
+  vectorDims: analysis.dev2vec?.vectorDims || {},
+  rolePredictions: analysis.dev2vec?.rolePredictions || [],
+  skillGaps: analysis.dev2vec?.skillGaps || {},
+  vectorSources: analysis.dev2vec?.vectorSources || {},
+  sourceStats: analysis.dev2vec?.sourceStats || {},
+  scoringMethod: analysis.dev2vec?.scoringMethod || 'dev2vec_doc2vec_classifier',
+});
+
+const buildRoadmapDev2VecInput = ({ analysisSource, analysisForGap, userId, topN = 3 }) => (
+  buildDev2VecInputFromAnalysisSource({
+    ...analysisSource,
+    analysis: analysisForGap,
+    topN,
+    requestId: `roadmap-${userId}-${analysisSource?.sourceMode || 'source'}-${Date.now()}`,
+  })
+);
+
+const getDev2VecOutputForRoadmap = async ({ analysisSource, analysisForGap, userId, useRoleMatching }) => {
+  if (useRoleMatching === false && hasCachedDev2VecResult(analysisForGap)) {
+    return buildDev2VecOutputFromAnalysis(analysisForGap);
+  }
+  if (hasCachedDev2VecResult(analysisForGap) && analysisSource?.sourceMode === 'single_repo') {
+    return buildDev2VecOutputFromAnalysis(analysisForGap);
+  }
+  if (useRoleMatching === false) return null;
+
+  const dev2vecInput = buildRoadmapDev2VecInput({
+    analysisSource,
+    analysisForGap,
+    userId,
+    topN: 3,
+  });
+  return runDev2VecInference(dev2vecInput);
+};
+
+const buildRoadmapSourceWithDev2Vec = ({
+  roadmapSource,
+  dev2vecOutput,
+  requestedRoleId,
+  resolvedRoleId,
+}) => ({
+  ...(roadmapSource || {}),
+  modelVersion: dev2vecOutput?.modelVersion || null,
+  scoringMethod: dev2vecOutput?.scoringMethod || 'dev2vec_doc2vec_classifier',
+  vectorSources: dev2vecOutput?.vectorSources || {},
+  sourceStats: dev2vecOutput?.sourceStats || {},
+  requestedRoleId: requestedRoleId || '',
+  resolvedRoleId: resolvedRoleId || '',
+});
 
 const safeCreateRoadmapNotification = async (payload) => {
   try {
@@ -629,6 +710,36 @@ const buildSourceContextSummary = (githubContext) => {
 
 const inferPrimarySkillForTask = (task, skillGaps = [], phase = {}) => {
   const text = `${task?.title || ''} ${task?.description || ''}`.toLowerCase();
+  const gaps = Array.isArray(skillGaps) ? skillGaps : [];
+  const allowedSkills = gaps
+    .map((gap) => canonicalizeSkillName(gap.canonicalSkillName || gap.skillName))
+    .filter(Boolean);
+  const allowedSet = new Set(allowedSkills.map((skill) => skill.toLowerCase()));
+  const findAllowedSkill = (skillName) => {
+    const canonicalSkillName = canonicalizeSkillName(skillName);
+    return allowedSkills.find((allowed) => allowed.toLowerCase() === canonicalSkillName.toLowerCase()) || '';
+  };
+  const explicitSkill = canonicalizeSkillName(task?.canonicalSkillName || task?.skillName || '');
+  if (explicitSkill && allowedSet.has(explicitSkill.toLowerCase())) return explicitSkill;
+
+  const textMatchedGap = gaps.find((gap) =>
+    text.includes(String(gap.canonicalSkillName || gap.skillName || '').toLowerCase())
+  );
+  if (textMatchedGap) {
+    return canonicalizeSkillName(textMatchedGap.canonicalSkillName || textMatchedGap.skillName);
+  }
+
+  const allowedRules = [
+    { pattern: /mongodb|mongoose|schema|query|queries|index|database|data model|model du lieu|truy van|co so du lieu/i, skill: 'Database' },
+    { pattern: /jwt|auth|authentication|authorization|rbac|token|refresh token|login|signin|sign in|xac thuc|phan quyen/i, skill: 'Authentication' },
+    { pattern: /docker|dockerfile|compose|docker compose|container|image|containerize/i, skill: 'Docker Basics' },
+    { pattern: /jest|supertest|test|testing|unit|integration|api test|integration test|kiem thu/i, skill: 'API Testing' },
+    { pattern: /rest|api|endpoint|route|router|controller|swagger|openapi|crud/i, skill: 'REST API' },
+  ];
+  const matchedAllowedRule = allowedRules.find((rule) => rule.pattern.test(text));
+  const allowedRuleSkill = matchedAllowedRule ? findAllowedSkill(matchedAllowedRule.skill) : '';
+  if (allowedRuleSkill) return allowedRuleSkill;
+
   const rules = [
     { pattern: /integration test|api test|test.*endpoint|endpoint.*test|supertest/, skill: 'API Testing' },
     { pattern: /owasp|api security|rate limit|input validation|bảo mật api|bao mat api/, skill: 'API Security' },
@@ -641,19 +752,10 @@ const inferPrimarySkillForTask = (task, skillGaps = [], phase = {}) => {
     { pattern: /docker image|dockerfile|container|docker/, skill: 'Docker' },
   ];
   const matchedRule = rules.find((rule) => rule.pattern.test(text));
-  if (matchedRule) return canonicalizeSkillName(matchedRule.skill);
-
-  const gaps = Array.isArray(skillGaps) ? skillGaps : [];
-  const textMatchedGap = gaps.find((gap) =>
-    text.includes(String(gap.canonicalSkillName || gap.skillName || '').toLowerCase())
-  );
-  if (textMatchedGap) {
-    return canonicalizeSkillName(textMatchedGap.canonicalSkillName || textMatchedGap.skillName);
-  }
+  if (matchedRule && !allowedSkills.length) return canonicalizeSkillName(matchedRule.skill);
 
   const phaseSkills = Array.isArray(phase.skills) ? phase.skills.map(canonicalizeSkillName) : [];
-  const explicitSkill = canonicalizeSkillName(task?.canonicalSkillName || task?.skillName || '');
-  if (explicitSkill && phaseSkills.includes(explicitSkill)) return explicitSkill;
+  if (explicitSkill && phaseSkills.includes(explicitSkill) && !allowedSkills.length) return explicitSkill;
 
   const phaseGap = gaps.find((gap) =>
     phaseSkills.includes(canonicalizeSkillName(gap.canonicalSkillName || gap.skillName))
@@ -663,8 +765,8 @@ const inferPrimarySkillForTask = (task, skillGaps = [], phase = {}) => {
       phaseGap?.skillName ||
       gaps[0]?.canonicalSkillName ||
       gaps[0]?.skillName ||
-      explicitSkill ||
-      phaseSkills[0] ||
+      (allowedSkills.length ? allowedSkills[0] : explicitSkill) ||
+      (allowedSkills.length ? '' : phaseSkills[0]) ||
       ''
   );
 };
@@ -689,6 +791,7 @@ const normalizeTask = (task, index, skillGaps = [], phase = {}, targetRole = '',
   const title = String(task?.title || `Task ${index + 1}`).trim();
   const phaseIndex = Number(context.phaseIndex || 0);
   const level = context.effectiveLevel || task?.level || '';
+  const gapForSkill = skillGaps.find((gap) => canonicalizeSkillName(gap.canonicalSkillName || gap.skillName) === canonicalSkillName);
   return {
     itemId: buildTaskItemId({
       scope: context.scope || 'main',
@@ -701,8 +804,8 @@ const normalizeTask = (task, index, skillGaps = [], phase = {}, targetRole = '',
     skillTags: normalizedSkillTags,
     skillName: canonicalSkillName,
     canonicalSkillName,
-    category: getCanonicalSkillCategory(canonicalSkillName),
-    priority: task?.priority || priorityLabel(skillGaps.find((gap) => gap.canonicalSkillName === canonicalSkillName)?.priority || 3),
+    category: gapForSkill?.category || getCanonicalSkillCategory(canonicalSkillName),
+    priority: task?.priority || priorityLabel(gapForSkill?.priority || 3),
     targetRole: String(targetRole || '').trim(),
     level,
     week: Number.isFinite(Number(task?.week)) ? Number(task.week) : phaseIndex + 1,
@@ -845,6 +948,58 @@ const applyRoadmapSkillGapPriorities = (roadmapData, roadmapGapContext) => {
       task.priority = gap?.priority || 3;
     }
   });
+  return {
+    ...roadmapData,
+    mainPath: { ...roadmapData.mainPath, phases },
+  };
+};
+
+const enforceMainRoadmapDev2VecSkills = (roadmapData, roadmapGapContext) => {
+  const skillGaps = Array.isArray(roadmapGapContext?.skillGaps) ? roadmapGapContext.skillGaps : [];
+  const allowedSkills = skillGaps
+    .map((gap) => canonicalizeSkillName(gap.canonicalSkillName || gap.skillName))
+    .filter(Boolean);
+  if (!allowedSkills.length || !roadmapData?.mainPath?.phases?.length) return roadmapData;
+
+  const allowedSet = new Set(allowedSkills.map((skill) => skill.toLowerCase()));
+  const gapMap = new Map(
+    skillGaps.map((gap) => [canonicalizeSkillName(gap.canonicalSkillName || gap.skillName).toLowerCase(), gap])
+  );
+  const phases = roadmapData.mainPath.phases.map((phase, phaseIndex) => ({
+    ...phase,
+    skills: uniqueStrings(
+      (phase.tasks || []).map((task, taskIndex) =>
+        inferPrimarySkillForTask(task, skillGaps, {
+          ...phase,
+          skills: allowedSkills,
+          phaseIndex,
+          taskIndex,
+        })
+      ),
+      12
+    ),
+    tasks: (phase.tasks || []).map((task, taskIndex) => {
+      let canonicalSkillName = inferPrimarySkillForTask(task, skillGaps, {
+        ...phase,
+        skills: allowedSkills,
+        phaseIndex,
+        taskIndex,
+      });
+      if (!allowedSet.has(canonicalSkillName.toLowerCase())) {
+        canonicalSkillName = allowedSkills[(phaseIndex + taskIndex) % allowedSkills.length];
+      }
+      const gap = gapMap.get(canonicalSkillName.toLowerCase());
+      return {
+        ...task,
+        skillName: canonicalSkillName,
+        canonicalSkillName,
+        category: gap?.category || getCanonicalSkillCategory(canonicalSkillName),
+        skillTags: uniqueStrings([canonicalSkillName], 10),
+        priority: gap?.priority || task.priority || 'medium',
+      };
+    }),
+  }));
+
   return {
     ...roadmapData,
     mainPath: { ...roadmapData.mainPath, phases },
@@ -1087,17 +1242,40 @@ const generateRoadmap = async (
     throw createStatusError('sourceMode must be one of: single_repo, all_analyzed_repos, selected_repos.', 400);
   }
 
-  if (Array.isArray(analysisForGap?.skillVector) && analysisForGap.skillVector.length > 0 && useRoleMatching !== false) {
-    roadmapGapContext = buildRoadmapSkillGapFromAnalysis(analysisForGap, {
-      targetRole: roleCatalogEntry?.roleName || normalizedTargetRole,
-      roleId: roleCatalogEntry?.roleId || roleId,
-      level: effectiveLevel,
-      durationWeeks,
-      language,
+  const requestedRoleId = normalizeDev2VecRoleId(roleId) || normalizeDev2VecRoleId(normalizedTargetRole);
+  let dev2vecOutput = null;
+  if (useRoleMatching !== false || hasCachedDev2VecResult(analysisForGap)) {
+    dev2vecOutput = await getDev2VecOutputForRoadmap({
+      analysisSource: roadmapSource,
+      analysisForGap,
+      userId,
+      useRoleMatching,
     });
-    roleMatch = roadmapGapContext?.selectedRoleMatch || null;
-    skillGapSummary = formatSkillGapSummary(roadmapGapContext?.skillGaps || []);
   }
+  const roleMatches = dev2vecOutput
+    ? mapDev2VecOutputToRoleMatches(dev2vecOutput, { includeDetails: true, limit: 3 }).matches
+    : [];
+  roadmapGapContext = buildRoadmapSkillGapFromAnalysis(analysisForGap, {
+    targetRole: roleCatalogEntry?.roleName || normalizedTargetRole,
+    roleId: requestedRoleId || roleCatalogEntry?.roleId || roleId,
+    level: effectiveLevel,
+    durationWeeks,
+    language,
+    useRoleMatching,
+    roleMatches,
+    dev2vecOutput,
+  });
+  roleMatch = roadmapGapContext?.selectedRoleMatch || null;
+  const resolvedRoleId = normalizeDev2VecRoleId(roleMatch?.roleId) || requestedRoleId || roleCatalogEntry?.roleId || '';
+  roleCatalogEntry = roleCatalogEntry || (resolvedRoleId ? findRoleCatalogEntry({ roleId: resolvedRoleId }) : null);
+  const resolvedTargetRole = roleMatch?.roleName || roleCatalogEntry?.roleName || normalizedTargetRole;
+  skillGapSummary = formatSkillGapSummary(roadmapGapContext?.skillGaps || []);
+  roadmapSource = buildRoadmapSourceWithDev2Vec({
+    roadmapSource,
+    dev2vecOutput,
+    requestedRoleId: requestedRoleId || roleId || '',
+    resolvedRoleId,
+  });
 
   const sameSet = (left = [], right = []) => {
     const leftSet = new Set(left.map(String));
@@ -1116,7 +1294,7 @@ const generateRoadmap = async (
       status: 'active',
     };
     if (repository) baseExistingQuery.repositoryId = repository._id;
-    if (roleCatalogEntry?.roleId || roleId) baseExistingQuery.roleId = roleCatalogEntry?.roleId || roleId;
+    if (resolvedRoleId || roleCatalogEntry?.roleId || roleId) baseExistingQuery.roleId = resolvedRoleId || roleCatalogEntry?.roleId || roleId;
     const existingQuery = {
       ...baseExistingQuery,
       'roadmapSource.type':
@@ -1178,7 +1356,7 @@ const generateRoadmap = async (
 
   const githubContext = await buildRoadmapGithubContext(userId);
   const prompt = buildRoadmapPrompt({
-    targetRole: normalizedTargetRole,
+    targetRole: resolvedTargetRole || normalizedTargetRole,
     githubContext,
     roadmapGapContext: {
       ...roadmapGapContext,
@@ -1187,6 +1365,12 @@ const generateRoadmap = async (
       effectiveLevel,
       userReadinessScore: roadmapSource?.userReadinessScore || 0,
       roleCatalog: roleCatalogEntry,
+      dev2vecOutput: dev2vecOutput
+        ? {
+            modelVersion: dev2vecOutput.modelVersion || null,
+            scoringMethod: dev2vecOutput.scoringMethod || 'dev2vec_doc2vec_classifier',
+          }
+        : null,
       skillGapSummary,
     },
   });
@@ -1195,23 +1379,26 @@ const generateRoadmap = async (
   const baseRoadmapData =
     parsedRoadmap ||
     buildFallbackRoadmap({
-      targetRole: normalizedTargetRole,
+      targetRole: resolvedTargetRole || normalizedTargetRole,
       githubContext,
       roadmapGapContext,
     });
-  const roadmapData = applyRoadmapSkillGapPriorities(baseRoadmapData, roadmapGapContext);
+  const roadmapData = enforceMainRoadmapDev2VecSkills(
+    applyRoadmapSkillGapPriorities(baseRoadmapData, roadmapGapContext),
+    roadmapGapContext
+  );
   const sourceContextSummary = buildSourceContextSummary(githubContext);
 
   const roadmap = await Roadmap.create(
     normalizeRoadmapPayload({
       userId,
       repositoryId: repository?._id || null,
-      roleId: roleCatalogEntry?.roleId || roleId || '',
+      roleId: resolvedRoleId || roleCatalogEntry?.roleId || roleId || '',
       requestedLevel,
       effectiveLevel,
       durationWeeks,
       language,
-      targetRole: normalizedTargetRole,
+      targetRole: resolvedTargetRole || normalizedTargetRole,
       roadmapData,
       sourceContextSummary,
       roadmapGapContext,

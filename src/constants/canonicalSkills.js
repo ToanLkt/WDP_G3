@@ -3,7 +3,9 @@
  * progress modules. Keep canonical names unique and add alternate spellings to
  * aliases instead of creating another skill entry.
  */
-const CANONICAL_SKILLS = [
+const { DEV2VEC_SKILLS } = require('./dev2vecCatalog');
+
+const LEGACY_CANONICAL_SKILLS = [
   // Frontend
   { name: 'HTML', category: 'Frontend', aliases: ['HTML5', 'HyperText Markup Language'], defaultLevel: 'beginner', tags: ['html', 'frontend', 'web', 'markup'] },
   { name: 'CSS', category: 'Frontend', aliases: ['CSS3', 'Cascading Style Sheets'], defaultLevel: 'beginner', tags: ['css', 'frontend', 'web', 'styling'] },
@@ -89,5 +91,9 @@ const CANONICAL_SKILLS = [
 ];
 
 module.exports = {
-  CANONICAL_SKILLS,
+  CANONICAL_SKILLS: [
+    ...DEV2VEC_SKILLS,
+    ...LEGACY_CANONICAL_SKILLS,
+  ],
+  LEGACY_CANONICAL_SKILLS,
 };

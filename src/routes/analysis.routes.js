@@ -70,7 +70,9 @@ router.post('/repositories/:repoId', authMiddleware, analysisController.analyzeR
  *     tags: [Roles]
  *     summary: Generate role matches from analyzed repository sources
  *     description: |
- *       Match the current user's skill vector against role catalog using one repository, all analyzed repositories, or selected repositories.
+ *       Match the current user's repository evidence with Dev2Vec classifier output using one repository, all analyzed repositories, or selected repositories.
+ *       matchScore is Dev2Vec classifier probability * 100. Skill arrays are derived from Dev2Vec skill prototype similarity gaps.
+ *       Single-repo mode reuses cached AnalysisResult.dev2vec when available; multi-repo mode builds one combined Dev2Vec input.
  *       Default response is compact for FE role selection. Use view=detail or includeDetails=true for full skill breakdown.
  *
  *       FE flow:
@@ -117,7 +119,7 @@ router.post('/repositories/:repoId', authMiddleware, analysisController.analyzeR
  *               value:
  *                 sourceMode: single_repo
  *                 repoId: 6a2556b67f43e4403f22d27c
- *                 limit: 5
+ *                 limit: 3
  *             allAnalyzedRepos:
  *               summary: All analyzed repos
  *               value:
@@ -130,7 +132,7 @@ router.post('/repositories/:repoId', authMiddleware, analysisController.analyzeR
  *                 repoIds:
  *                   - 6a2556b67f43e4403f22d27c
  *                   - anotherRepoId
- *                 limit: 5
+ *                 limit: 3
  *                 view: summary
  *     parameters:
  *       - in: query
@@ -168,10 +170,10 @@ router.post('/repositories/:repoId', authMiddleware, analysisController.analyzeR
  *                     - marxist-ai-chronicles
  *                     - WDP_G3
  *                 matches:
- *                   - roleId: backend-developer
+ *                   - roleId: backend
  *                     roleName: Backend Developer
- *                     matchScore: 58.57
- *                     matchLevel: moderate
+ *                     matchScore: 78.13
+ *                     matchLevel: strong
  *                     matchLevelLabel: Tạm phù hợp
  *                     matchedSkillNames:
  *                       - Express.js
@@ -191,6 +193,10 @@ router.post('/repositories/:repoId', authMiddleware, analysisController.analyzeR
  *                       - Clean Code
  *                       - API Security
  *                       - CI/CD
+ *                     probability: 0.781326
+ *                     rank: 1
+ *                     modelVersion: dev2vec-demo-v1
+ *                     scoringMethod: dev2vec_doc2vec_classifier
  *               errorCode: null
  *       400:
  *         description: Missing analysis source or invalid source selection
@@ -205,7 +211,7 @@ router.post('/role-matches', authMiddleware, analysisController.generateRoleMatc
  *   get:
  *     tags: [Roles]
  *     summary: Legacy single-repo role matching
- *     description: Legacy single-repo role matching. FE should prefer POST /api/analysis/role-matches for single_repo, all_analyzed_repos, or selected_repos flows. Returns compact role matches by default. includeDetails=true adds full matched, weak, and missing skill arrays.
+ *     description: Legacy single-repo role matching powered by Dev2Vec. Reuses cached AnalysisResult.dev2vec when available; otherwise runs Dev2Vec inference from repository package/commit evidence. matchScore is classifier probability * 100, and skill arrays come from Dev2Vec skill prototype similarity gaps. FE should prefer POST /api/analysis/role-matches for single_repo, all_analyzed_repos, or selected_repos flows. Returns compact role matches by default. includeDetails=true adds full matched, weak, and missing skill arrays plus optional Dev2Vec metadata.
  *     security:
  *       - bearerAuth: []
  *     parameters:

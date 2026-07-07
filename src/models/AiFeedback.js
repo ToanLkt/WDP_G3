@@ -14,7 +14,6 @@ const aiFeedbackSchema = new mongoose.Schema(
     },
     analysisSnapshotId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'AnalysisSnapshot',
       required: true,
     },
     githubRepoId: {
@@ -82,6 +81,10 @@ const aiFeedbackSchema = new mongoose.Schema(
       default: [],
     },
     rawAiResponse: {
+      type: Object,
+      default: {},
+    },
+    metadata: {
       type: Object,
       default: {},
     },

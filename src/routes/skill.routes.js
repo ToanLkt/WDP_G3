@@ -9,7 +9,7 @@ const router = express.Router();
  * @swagger
  * tags:
  *   - name: Skills
- *     description: Canonical skill catalog APIs
+ *     description: Dev2Vec skill prototype catalog APIs
  */
 
 /**
@@ -17,13 +17,37 @@ const router = express.Router();
  * /api/skills/catalog:
  *   get:
  *     tags: [Skills]
- *     summary: Get the canonical skill catalog
- *     description: Returns standardized skills for canonical skill list, filters, admin, or debug. The main FE roadmap flow does not need to call this if backend responses already include canonicalSkillName and category.
+ *     summary: Get the Dev2Vec skill catalog
+ *     description: Skill catalog is aligned with Dev2Vec skill prototypes. Legacy aliases are kept internally for canonicalization, but this endpoint returns the compact Dev2Vec prototype catalog.
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Canonical skill catalog fetched successfully
+ *         description: Dev2Vec skill catalog fetched successfully
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: Dev2Vec skill catalog fetched successfully
+ *               data:
+ *                 total: 25
+ *                 skills:
+ *                   - name: REST API
+ *                     category: backend
+ *                     aliases:
+ *                       - REST
+ *                       - RESTful API
+ *                       - API
+ *                       - Endpoint
+ *                       - Swagger
+ *                       - OpenAPI
+ *                     defaultLevel: intermediate
+ *                     tags:
+ *                       - backend
+ *                       - api
+ *                       - rest
+ *                       - dev2vec
+ *               errorCode: null
  *       401:
  *         description: Unauthorized
  */

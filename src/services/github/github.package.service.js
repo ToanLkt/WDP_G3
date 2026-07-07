@@ -6,6 +6,72 @@ const { parsePackageJson, parseRequirementsTxt } = require('./github.parser.serv
 const { findRepositoryForUser } = require('./github.repository.service');
 const { createStatusError } = require('./github.utils');
 
+const DOC_DIRECTORIES = ['docs', 'documentation', 'documentations'];
+
+const decodeContent = (fileData) => (
+  fileData?.content ? Buffer.from(fileData.content, 'base64').toString('utf-8') : ''
+);
+
+const createDetectedFile = ({ path, content = '', type = 'unknown' }) => ({
+  fileName: String(path || '').split('/').pop(),
+  path,
+  type,
+  contentPreview: content.slice(0, 200),
+  parsedData: null,
+  detectedPackages: [],
+  detectedScripts: [],
+  detectedFrameworks: [],
+});
+
+const addDetectedFile = (detectedFiles, entry) => {
+  const key = String(entry?.path || '').toLowerCase();
+  if (!key || detectedFiles.some((file) => String(file?.path || '').toLowerCase() === key)) {
+    return;
+  }
+  detectedFiles.push(entry);
+};
+
+const addMarkdownDocumentationFiles = async ({ owner, repo, accessToken, detectedFiles, packageFiles, rawData, configsSet }) => {
+  const rootContent = await fetchGithubContent(owner, repo, '', accessToken);
+  if (!Array.isArray(rootContent)) {
+    return;
+  }
+
+  rawData.__rootListing = rootContent.map((item) => ({
+    name: item.name,
+    path: item.path,
+    type: item.type,
+  }));
+
+  for (const item of rootContent) {
+    const itemPath = String(item.path || item.name || '').trim();
+    if (!itemPath) continue;
+
+    if (item.type === 'file' && /\.md$/i.test(item.name || itemPath)) {
+      addDetectedFile(detectedFiles, createDetectedFile({ path: itemPath, type: 'doc' }));
+      packageFiles.add(itemPath);
+    }
+
+    if (item.type === 'dir' && DOC_DIRECTORIES.includes(String(item.name || '').toLowerCase())) {
+      configsSet.add('Documentation');
+      const docsContent = await fetchGithubContent(owner, repo, itemPath, accessToken);
+      if (!Array.isArray(docsContent)) continue;
+
+      rawData[`__${itemPath}Listing`] = docsContent.map((docItem) => ({
+        name: docItem.name,
+        path: docItem.path,
+        type: docItem.type,
+      }));
+
+      for (const docItem of docsContent) {
+        if (docItem.type !== 'file' || !/\.md$/i.test(docItem.name || docItem.path || '')) continue;
+        addDetectedFile(detectedFiles, createDetectedFile({ path: docItem.path, type: 'doc' }));
+        packageFiles.add(docItem.path);
+      }
+    }
+  }
+};
+
 const fetchRepositoryPackages = async (authUser, repoId) => {
   const repository = await findRepositoryForUser(authUser, repoId);
 
@@ -36,7 +102,7 @@ const fetchRepositoryPackages = async (authUser, repoId) => {
   ];
 
   const detectedFiles = [];
-  const packageFiles = [];
+  const packageFiles = new Set();
   const packagesSet = new Set();
   const frameworksSet = new Set();
   const configsSet = new Set();
@@ -79,9 +145,9 @@ const fetchRepositoryPackages = async (authUser, repoId) => {
       continue;
     }
 
-    const content = data.content ? Buffer.from(data.content, 'base64').toString('utf-8') : '';
+    const content = decodeContent(data);
     rawData[path] = data;
-    packageFiles.push(path);
+    packageFiles.add(path);
 
     const fileEntry = {
       fileName: path.split('/').pop(),
@@ -140,10 +206,20 @@ const fetchRepositoryPackages = async (authUser, repoId) => {
       fileEntry.type = 'doc';
     }
 
-    detectedFiles.push(fileEntry);
+    addDetectedFile(detectedFiles, fileEntry);
   }
 
-  const packageFilesArr = Array.from(new Set(packageFiles));
+  await addMarkdownDocumentationFiles({
+    owner,
+    repo,
+    accessToken: githubAccount.accessToken,
+    detectedFiles,
+    packageFiles,
+    rawData,
+    configsSet,
+  });
+
+  const packageFilesArr = Array.from(packageFiles);
   const packagesArr = Array.from(packagesSet);
   const frameworksArr = Array.from(frameworksSet);
   const configsArr = Array.from(configsSet);

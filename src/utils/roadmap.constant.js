@@ -3,6 +3,8 @@ const TARGET_ROLES = [
   'Backend Developer',
   'Fullstack Developer',
   'Mobile Developer',
+  'DevOps Engineer',
+  'Data Scientist',
   'Tester / QA Engineer',
   'DevOps Beginner',
   'Data Analyst',

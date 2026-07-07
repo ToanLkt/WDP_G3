@@ -150,6 +150,7 @@ const repoAnalysisSnapshotSchema = new mongoose.Schema(
     },
     skillEvidence: { type: [skillEvidenceSchema], default: [] },
     skillVector: { type: [skillVectorSchema], default: [] },
+    dev2vec: { type: Object, default: {} },
     analyzedAt: {
       type: Date,
       default: Date.now,

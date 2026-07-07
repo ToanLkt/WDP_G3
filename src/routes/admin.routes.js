@@ -17,6 +17,111 @@ router.use(authMiddleware, adminMiddleware);
 
 /**
  * @swagger
+ * /api/admin/dev2vec/status:
+ *   get:
+ *     tags: [Admin]
+ *     summary: Get Dev2Vec model status
+ *     description: Returns the current Dev2Vec artifact and metadata status. This endpoint only reads model metadata and artifact files; it does not run training, extraction, validation, or inference.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Dev2Vec model status fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Dev2Vec model status fetched successfully
+ *                 errorCode:
+ *                   nullable: true
+ *                   example: null
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     status:
+ *                       type: string
+ *                       enum: [ready, partial, unavailable]
+ *                       example: ready
+ *                     modelVersion:
+ *                       type: string
+ *                       nullable: true
+ *                       example: dev2vec-demo-v1
+ *                     trainedAt:
+ *                       type: string
+ *                       nullable: true
+ *                       example: 2026-07-06T07:06:34.458Z
+ *                     roles:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       example: [Backend, Frontend, Mobile, DevOps, Data Scientist]
+ *                     roleIds:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       example: [backend, frontend, mobile, devops, data_scientist]
+ *                     vectorDims:
+ *                       type: object
+ *                       properties:
+ *                         repo:
+ *                           type: integer
+ *                           example: 230
+ *                         issue:
+ *                           type: integer
+ *                           example: 150
+ *                         api:
+ *                           type: integer
+ *                           example: 200
+ *                         combined:
+ *                           type: integer
+ *                           example: 580
+ *                     dataset:
+ *                       type: object
+ *                       properties:
+ *                         sampleCount:
+ *                           type: integer
+ *                           example: 75
+ *                         samplesPerRole:
+ *                           type: object
+ *                     artifacts:
+ *                       type: object
+ *                       properties:
+ *                         doc2vecRepo:
+ *                           type: boolean
+ *                           example: true
+ *                         doc2vecIssue:
+ *                           type: boolean
+ *                           example: true
+ *                         doc2vecApi:
+ *                           type: boolean
+ *                           example: true
+ *                         classifier:
+ *                           type: boolean
+ *                           example: true
+ *                         labelEncoder:
+ *                           type: boolean
+ *                           example: true
+ *                         skillVectors:
+ *                           type: boolean
+ *                           example: true
+ *                         metadata:
+ *                           type: boolean
+ *                           example: true
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin permission is required
+ */
+router.get("/dev2vec/status", adminController.getDev2VecStatus);
+
+/**
+ * @swagger
  * /api/admin/chat/settings:
  *   get:
  *     tags: [Admin]

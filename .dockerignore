@@ -6,3 +6,14 @@ npm-debug.log
 .git
 .gitignore
 README.md
+.venv
+venv
+__pycache__
+*.pyc
+tmp
+temp
+logs
+*.log
+coverage
+dist
+build

@@ -1,12 +1,12 @@
-const { listCanonicalSkills } = require('../utils/skillCanonicalizer');
+const { DEV2VEC_SKILLS } = require('../constants/dev2vecCatalog');
 const { successResponse } = require('../utils/response');
 
 const getCatalog = (req, res) => {
-  const skills = listCanonicalSkills();
+  const skills = DEV2VEC_SKILLS;
 
   return successResponse(
     res,
-    'Canonical skill catalog fetched successfully',
+    'Dev2Vec skill catalog fetched successfully',
     {
       total: skills.length,
       skills,

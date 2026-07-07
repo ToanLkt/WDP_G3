@@ -1,10 +1,46 @@
-const { matchSkillVectorToRoles } = require('./roleMatching.service');
 const {
   canonicalizeSkillName,
   getCanonicalSkillCategory,
 } = require('../utils/skillCanonicalizer');
 
+const DEV2VEC_ROLES = {
+  backend: 'Backend Developer',
+  frontend: 'Frontend Developer',
+  mobile: 'Mobile Developer',
+  devops: 'DevOps Engineer',
+  data_scientist: 'Data Scientist',
+};
+
+const ROLE_ALIASES = {
+  backend: 'backend',
+  'backend developer': 'backend',
+  'backend-developer': 'backend',
+  frontend: 'frontend',
+  'frontend developer': 'frontend',
+  'frontend-developer': 'frontend',
+  mobile: 'mobile',
+  'mobile developer': 'mobile',
+  'mobile-developer': 'mobile',
+  devops: 'devops',
+  'devops engineer': 'devops',
+  'devops-engineer': 'devops',
+  'devops beginner': 'devops',
+  data_scientist: 'data_scientist',
+  'data scientist': 'data_scientist',
+  'data-scientist': 'data_scientist',
+};
+
 const normalizeRoadmapSkillName = (skillName) => canonicalizeSkillName(skillName);
+
+const uniqueStrings = (values, limit = 20) =>
+  [...new Set((values || []).map((value) => String(value || '').trim()).filter(Boolean))].slice(0, limit);
+
+const normalizeDev2VecRoleId = (value) => {
+  const key = String(value || '').trim().toLowerCase().replace(/_/g, ' ');
+  return ROLE_ALIASES[key] || ROLE_ALIASES[key.replace(/\s+/g, '-')] || '';
+};
+
+const getDev2VecRoleName = (roleId) => DEV2VEC_ROLES[normalizeDev2VecRoleId(roleId) || roleId] || '';
 
 const dedupeRoadmapSkills = (skills) => {
   const seen = new Set();
@@ -22,24 +58,120 @@ const dedupeRoadmapSkills = (skills) => {
 const selectRoleMatchForRoadmap = (roleMatches, options = {}) => {
   const matches = Array.isArray(roleMatches) ? roleMatches : [];
   if (!matches.length) return null;
-  const roleId = String(options.roleId || '').trim().toLowerCase();
-  const targetRole = String(options.targetRole || '').trim().toLowerCase();
-  const roleAliases = {
-    'devops beginner': 'devops-engineer',
-    'ai / machine learning beginner': 'ai-engineer',
-  };
-  const targetRoleAlias = roleAliases[targetRole];
+  const roleId = normalizeDev2VecRoleId(options.roleId);
+  const targetRole = normalizeDev2VecRoleId(options.targetRole);
   return (
-    (roleId && matches.find((match) => String(match.roleId).toLowerCase() === roleId)) ||
-    (targetRole &&
-      matches.find(
-        (match) =>
-          String(match.roleName).toLowerCase() === targetRole ||
-          String(match.roleId).toLowerCase() === targetRole ||
-          String(match.roleId).toLowerCase() === targetRoleAlias
-      )) ||
+    (roleId && matches.find((match) => normalizeDev2VecRoleId(match.roleId || match.roleName) === roleId)) ||
+    (targetRole && matches.find((match) => normalizeDev2VecRoleId(match.roleId || match.roleName) === targetRole)) ||
     [...matches].sort((a, b) => b.matchScore - a.matchScore)[0]
   );
+};
+
+const getSkillGapDetail = (skillGap = {}, skillName, status) => {
+  const key = normalizeRoadmapSkillName(skillName).toLowerCase();
+  return (Array.isArray(skillGap.details) ? skillGap.details : []).find((detail) => {
+    const detailKey = normalizeRoadmapSkillName(detail?.canonicalSkillName || detail?.skillName || detail?.skill).toLowerCase();
+    return detailKey === key && (!status || detail?.status === status);
+  });
+};
+
+const priorityForGapType = (gapType) => {
+  if (gapType === 'missing') return 'high';
+  if (gapType === 'weak') return 'medium';
+  if (gapType === 'recommended') return 'medium';
+  return 'low';
+};
+
+const buildDev2VecGapItem = ({ skillName, roleId, gapType, skillGap = {}, reason = '' }) => {
+  const canonicalSkillName = normalizeRoadmapSkillName(skillName);
+  if (!canonicalSkillName) return null;
+  const detail = getSkillGapDetail(skillGap, canonicalSkillName, gapType === 'recommended' ? null : gapType);
+  const similarity = Number.isFinite(Number(detail?.similarity)) ? Number(detail.similarity) : null;
+  return {
+    skillName: canonicalSkillName,
+    canonicalSkillName,
+    category: roleId || getCanonicalSkillCategory(canonicalSkillName),
+    gapType,
+    priority: priorityForGapType(gapType),
+    similarity,
+    source: 'dev2vec',
+    currentLevel: gapType === 'matched' ? 'strong' : gapType === 'weak' ? 'weak' : 'missing',
+    targetLevel: 'strong',
+    currentScore: similarity === null ? 0 : similarity,
+    requiredScore: gapType === 'matched' ? similarity || 0.7 : 0.7,
+    gap: gapType === 'matched' ? 0 : Math.max(0, 0.7 - (similarity || 0)),
+    reason,
+  };
+};
+
+const buildDev2VecSkillGapContext = ({ roleMatch, skillGap = {}, requestedRoleId, requestedTargetRole } = {}) => {
+  if (!roleMatch) {
+    return {
+      source: 'dev2vec',
+      targetRole: getDev2VecRoleName(requestedRoleId) || requestedTargetRole || '',
+      selectedRoleMatch: null,
+      skillGaps: [],
+      prioritySkills: [],
+      alreadyStrongSkills: [],
+      weakSkills: [],
+      missingSkills: [],
+      recommendedNextSkills: [],
+    };
+  }
+
+  const roleId = normalizeDev2VecRoleId(roleMatch.roleId) || roleMatch.roleId;
+  const seen = new Set();
+  const addItems = (names, gapType, reason) => (Array.isArray(names) ? names : [])
+    .map((name) => buildDev2VecGapItem({ skillName: name, roleId, gapType, skillGap, reason }))
+    .filter((item) => {
+      const key = item?.canonicalSkillName?.toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+  const missing = addItems(
+    roleMatch.missingSkillNames || skillGap.missingSkillNames,
+    'missing',
+    `Kỹ năng còn thiếu theo Dev2Vec cho ${roleMatch.roleName}.`
+  );
+  const weak = addItems(
+    roleMatch.weakSkillNames || skillGap.weakSkillNames,
+    'weak',
+    `Kỹ năng đã có tín hiệu nhưng còn yếu theo Dev2Vec cho ${roleMatch.roleName}.`
+  );
+  const recommended = addItems(
+    roleMatch.recommendedNextSkills || skillGap.recommendedNextSkills,
+    'recommended',
+    `Kỹ năng Dev2Vec đề xuất học tiếp cho ${roleMatch.roleName}.`
+  );
+  const matched = addItems(
+    roleMatch.matchedSkillNames || skillGap.matchedSkillNames,
+    'matched',
+    `Kỹ năng đã có tín hiệu phù hợp theo Dev2Vec cho ${roleMatch.roleName}.`
+  );
+
+  const skillGaps = [...missing, ...weak, ...recommended, ...matched];
+  const prioritySkills = skillGaps
+    .filter((item) => item.gapType !== 'matched')
+    .map((item) => item.canonicalSkillName);
+
+  return {
+    source: 'dev2vec',
+    targetRole: roleMatch.roleName,
+    selectedRoleMatch: roleMatch,
+    skillGaps,
+    prioritySkills,
+    alreadyStrongSkills: matched.map((item) => item.canonicalSkillName),
+    weakSkills: weak.map((item) => item.canonicalSkillName),
+    missingSkills: missing.map((item) => item.canonicalSkillName),
+    recommendedNextSkills: uniqueStrings([
+      ...recommended.map((item) => item.canonicalSkillName),
+      ...(roleMatch.recommendedNextSkills || []),
+    ].map(normalizeRoadmapSkillName), 12),
+    requestedRoleId: normalizeDev2VecRoleId(requestedRoleId),
+    resolvedRoleId: roleId,
+  };
 };
 
 const buildRoadmapSkillPriorities = (roleMatch, analysis = {}) => {
@@ -130,47 +262,41 @@ const buildFallbackGap = (analysis = {}, options = {}) => {
 
 const buildRoadmapSkillGapFromAnalysis = (analysis, options = {}) => {
   const source = analysis && typeof analysis === 'object' ? analysis : {};
-  const skillVector = Array.isArray(source.skillVector) ? source.skillVector : [];
-  if (!skillVector.length || options.useRoleMatching === false) return buildFallbackGap(source, options);
-
-  try {
-    const roleMatches = matchSkillVectorToRoles(skillVector, {
-      limit: 6,
-      includeDetails: true,
+  if (options.useRoleMatching === false) {
+    return buildDev2VecSkillGapContext({
+      roleMatch: null,
+      requestedRoleId: options.roleId,
+      requestedTargetRole: options.targetRole || source.careerDirection,
     });
-    const selectedRole = selectRoleMatchForRoadmap(roleMatches, options);
-    if (!selectedRole) return buildFallbackGap(source, options);
-
-    const skillGaps = buildRoadmapSkillPriorities(selectedRole, source, options);
-    const prioritySkills = skillGaps.map((item) => item.canonicalSkillName);
-    return {
-      source: 'role_matching',
-      targetRole: selectedRole.roleName,
-      selectedRoleMatch: {
-        roleId: selectedRole.roleId,
-        roleName: selectedRole.roleName,
-        matchScore: selectedRole.matchScore,
-        matchLevel: selectedRole.matchLevel,
-        matchLevelLabel: selectedRole.matchLevelLabel,
-      },
-      skillGaps,
-      prioritySkills,
-      alreadyStrongSkills: selectedRole.matchedSkills
-        .filter((item) => item.userScore >= 0.7)
-        .map((item) => item.canonicalSkillName),
-      weakSkills: selectedRole.weakSkills.map((item) => item.canonicalSkillName),
-      missingSkills: selectedRole.missingRequiredSkills.map((item) => item.canonicalSkillName),
-      recommendedNextSkills: selectedRole.recommendedNextSkills,
-    };
-  } catch (error) {
-    return buildFallbackGap(source, options);
   }
+
+  const roleMatches = Array.isArray(options.roleMatches) ? options.roleMatches : [];
+  const selectedRole = options.selectedRoleMatch || selectRoleMatchForRoadmap(roleMatches, options);
+  if (!selectedRole) {
+    return buildDev2VecSkillGapContext({
+      roleMatch: null,
+      requestedRoleId: options.roleId,
+      requestedTargetRole: options.targetRole || source.careerDirection,
+    });
+  }
+
+  const roleId = normalizeDev2VecRoleId(selectedRole.roleId) || selectedRole.roleId;
+  const skillGap = options.dev2vecOutput?.skillGaps?.[roleId] || options.skillGaps?.[roleId] || {};
+  return buildDev2VecSkillGapContext({
+    roleMatch: selectedRole,
+    skillGap,
+    requestedRoleId: options.roleId,
+    requestedTargetRole: options.targetRole,
+  });
 };
 
 module.exports = {
   buildRoadmapSkillGapFromAnalysis,
   selectRoleMatchForRoadmap,
   buildRoadmapSkillPriorities,
+  buildDev2VecSkillGapContext,
+  normalizeDev2VecRoleId,
+  getDev2VecRoleName,
   normalizeRoadmapSkillName,
   dedupeRoadmapSkills,
 };

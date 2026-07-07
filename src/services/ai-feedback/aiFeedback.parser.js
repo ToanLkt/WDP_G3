@@ -1,4 +1,5 @@
 const DEFAULT_PARSE_RISK_NOTE = 'AI response could not be parsed as valid JSON, fallback feedback was used.';
+const { buildDocumentationRecommendation } = require('../../utils/documentationEvidence');
 
 const extractJsonString = (content) => {
   if (!content || typeof content !== 'string') {
@@ -35,23 +36,95 @@ const normalizeStringArray = (value) => {
     .filter(Boolean);
 };
 
-const buildFallbackFeedback = (snapshot, riskNotes = [DEFAULT_PARSE_RISK_NOTE]) => ({
-  summary: `Repository ${snapshot.repoName} đã được phân tích, nhưng phản hồi AI chưa đúng định dạng. Dưới đây là feedback tạm thời dựa trên kết quả phân tích rule-based.`,
-  strengthFeedback: Array.isArray(snapshot.strengths) ? snapshot.strengths : [],
-  weaknessFeedback: Array.isArray(snapshot.weaknesses) ? snapshot.weaknesses : [],
-  learningAdvice:
-    Array.isArray(snapshot.recommendations) && snapshot.recommendations.length > 0
-      ? snapshot.recommendations.join(' ')
-      : 'Nên cải thiện repository dựa trên các kỹ năng còn thiếu.',
-  nextSteps: Array.isArray(snapshot.recommendations) ? snapshot.recommendations : [],
-  recommendedTopics: Array.isArray(snapshot.missingSkills) ? snapshot.missingSkills : [],
-  careerSuggestion: `Tín hiệu hiện tại phù hợp với hướng ${snapshot.careerDirection || 'Generalist Software Engineer'}.`,
-  portfolioAdvice: 'Nên bổ sung README, hướng dẫn chạy project, testing và cấu hình triển khai để repo phù hợp hơn cho portfolio.',
-  riskNotes: normalizeStringArray(riskNotes),
-  usedFallback: true,
-});
+const hasDocumentationEvidence = (docs = {}) => (
+  docs.readmeRootExists === true
+  || Number(docs.markdownFileCount || 0) > 0
+  || docs.hasDocsDirectory === true
+);
 
-const normalizeFeedback = (parsed, snapshot) => {
+const conflictsWithDocsEvidence = (text, docs = {}) => {
+  const lower = String(text || '').toLowerCase();
+  if (!hasDocumentationEvidence(docs)) return false;
+  return (
+    lower.includes('thiếu readme')
+    || lower.includes('thieu readme')
+    || lower.includes('missing readme')
+    || lower.includes('thiếu tài liệu')
+    || lower.includes('thieu tai lieu')
+    || lower.includes('no documentation')
+    || lower.includes('không có tài liệu')
+    || lower.includes('khong co tai lieu')
+    || lower.includes('chưa có bất kỳ tài liệu')
+    || lower.includes('chua co bat ky tai lieu')
+  );
+};
+
+const sanitizeDocsWording = (value, docs = {}) => {
+  const replacement = buildDocumentationRecommendation(docs);
+  if (!replacement) return value;
+
+  if (Array.isArray(value)) {
+    const sanitized = value.filter((item) => !conflictsWithDocsEvidence(item, docs));
+    if (sanitized.length !== value.length && !sanitized.includes(replacement)) {
+      sanitized.push(replacement);
+    }
+    return sanitized;
+  }
+
+  return conflictsWithDocsEvidence(value, docs) ? replacement : value;
+};
+
+const buildFallbackFeedback = (context, riskNotes = [DEFAULT_PARSE_RISK_NOTE]) => {
+  const topRoleName = context.topRole?.roleName || context.rolePrediction?.roleName || 'software engineering role';
+  const matchScore = Number.isFinite(Number(context.topRole?.matchScore))
+    ? ` voi matchScore khoang ${context.topRole.matchScore}%`
+    : '';
+  const weakSkills = [
+    ...(Array.isArray(context.weakSkillNames) ? context.weakSkillNames : []),
+    ...(Array.isArray(context.missingSkillNames) ? context.missingSkillNames : []),
+  ];
+  const recommendedNextSkills = Array.isArray(context.recommendedNextSkills)
+    ? context.recommendedNextSkills
+    : [];
+  const matchedSkillNames = Array.isArray(context.matchedSkillNames)
+    ? context.matchedSkillNames
+    : [];
+  const normalizedRiskNotes = normalizeStringArray(riskNotes);
+  const docsEvidence = context.docsEvidence || context.evidencePreview?.docs || {};
+  const docsRecommendation = buildDocumentationRecommendation(docsEvidence);
+
+  if (context.issueDataMissing) {
+    normalizedRiskNotes.push('Phan tich hien chua co du lieu issue.');
+  }
+
+  return {
+    summary: `Dua tren Dev2Vec analysis tu repository evidence, repo ${context.repoName} dang co xu huong phu hop voi ${topRoleName}${matchScore}.`,
+    strengthFeedback:
+      matchedSkillNames.length > 0
+        ? matchedSkillNames.map((skill) => `Co tin hieu phu hop voi ${skill} trong Dev2Vec skill prototype.`)
+        : [`Tin hieu manh nhat hien tai nam o xu huong ${topRoleName}.`],
+    weaknessFeedback:
+      weakSkills.length > 0
+        ? weakSkills.map((skill) => `Can bo sung hoac lam ro them ky nang ${skill}.`)
+        : ['Dev2Vec chua ghi nhan skill gap noi bat cho role du doan dau tien.'],
+    learningAdvice:
+      recommendedNextSkills.length > 0
+        ? `Nen uu tien hoc va the hien ro hon: ${recommendedNextSkills.join(', ')}.`
+        : 'Nen tiep tuc bo sung evidence trong repository de lam ro skill gap va nang cao do tin cay cua feedback.',
+    nextSteps: recommendedNextSkills,
+    recommendedTopics: weakSkills,
+    careerSuggestion: `Khong nen xem day la ket luan tuyet doi; dua tren repository evidence hien co, huong ${topRoleName} la tin hieu noi bat nhat.`,
+    portfolioAdvice:
+      docsRecommendation && docsEvidence.documentationStatus !== 'no_markdown_docs'
+        ? docsRecommendation
+        : 'Nen bo sung README, cach chay project, test/API examples va deployment notes de repository thuyet phuc hon khi dung lam portfolio.',
+    riskNotes: [...new Set(normalizedRiskNotes)],
+    usedFallback: true,
+  };
+};
+
+const normalizeFeedback = (parsed, context) => {
+  const docsEvidence = context.docsEvidence || context.evidencePreview?.docs || {};
   const normalized = {
     summary: normalizeString(parsed.summary),
     strengthFeedback: normalizeStringArray(parsed.strengthFeedback),
@@ -65,6 +138,20 @@ const normalizeFeedback = (parsed, snapshot) => {
     usedFallback: false,
   };
 
+  normalized.summary = sanitizeDocsWording(normalized.summary, docsEvidence);
+  normalized.strengthFeedback = sanitizeDocsWording(normalized.strengthFeedback, docsEvidence);
+  normalized.weaknessFeedback = sanitizeDocsWording(normalized.weaknessFeedback, docsEvidence);
+  normalized.learningAdvice = sanitizeDocsWording(normalized.learningAdvice, docsEvidence);
+  normalized.nextSteps = sanitizeDocsWording(normalized.nextSteps, docsEvidence);
+  normalized.recommendedTopics = sanitizeDocsWording(normalized.recommendedTopics, docsEvidence);
+  normalized.careerSuggestion = sanitizeDocsWording(normalized.careerSuggestion, docsEvidence);
+  normalized.portfolioAdvice = sanitizeDocsWording(normalized.portfolioAdvice, docsEvidence);
+  normalized.riskNotes = sanitizeDocsWording(normalized.riskNotes, docsEvidence);
+
+  if (context.issueDataMissing && !normalized.riskNotes.some((note) => note.toLowerCase().includes('issue'))) {
+    normalized.riskNotes.push('Phan tich hien chua co du lieu issue.');
+  }
+
   if (
     !normalized.summary &&
     normalized.strengthFeedback.length === 0 &&
@@ -75,24 +162,24 @@ const normalizeFeedback = (parsed, snapshot) => {
     !normalized.careerSuggestion &&
     !normalized.portfolioAdvice
   ) {
-    return buildFallbackFeedback(snapshot);
+    return buildFallbackFeedback(context);
   }
 
   return normalized;
 };
 
-const parseAiFeedbackResponse = (content, snapshot) => {
+const parseAiFeedbackResponse = (content, context) => {
   const jsonString = extractJsonString(content);
 
   if (!jsonString) {
-    return buildFallbackFeedback(snapshot);
+    return buildFallbackFeedback(context);
   }
 
   try {
     const parsed = JSON.parse(jsonString);
-    return normalizeFeedback(parsed, snapshot);
+    return normalizeFeedback(parsed, context);
   } catch (error) {
-    return buildFallbackFeedback(snapshot);
+    return buildFallbackFeedback(context);
   }
 };
 
