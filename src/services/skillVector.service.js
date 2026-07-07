@@ -1,3 +1,6 @@
+// Deprecated legacy skill evidence weighting.
+// Dev2Vec analysis/role-match/roadmap paths build model input and skill gaps
+// from Dev2Vec services instead of using these package/config weights.
 const {
   canonicalizeSkillName,
   getCanonicalSkillCategory,

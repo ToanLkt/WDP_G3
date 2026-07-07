@@ -1,3 +1,6 @@
+// Legacy weighted role vectors kept for backward compatibility with older
+// non-Dev2Vec helpers. Dev2Vec phase 5/6/7 paths and GET /api/roles/catalog
+// must use src/constants/dev2vecCatalog.js instead.
 const skill = (name, weight, minScore, importance) => ({
   skill: name,
   canonicalSkillName: name,

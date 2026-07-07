@@ -22,7 +22,7 @@ const router = express.Router();
  *   post:
  *     tags: [Roadmaps]
  *     summary: Generate a personalized roadmap for the current user
- *     description: Uses the latest user-contribution analysis skillVector, user level band, role catalog, and skill catalog to generate a personalized roadmap. The frontend does not need to call the role-matches API first.
+ *     description: Uses the latest user-contribution analysis and Dev2Vec role match/skill gap output to generate a personalized roadmap. Roadmap skill gaps are derived from Dev2Vec skill prototype similarity, and roleMatch.matchScore is classifier probability * 100.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -54,7 +54,7 @@ const router = express.Router();
  *                 description: Required when sourceMode is selected_repos.
  *               roleId:
  *                 type: string
- *                 example: backend-developer
+ *                 example: backend
  *               level:
  *                 type: string
  *                 description: Requested level fallback. If Analysis has summary.userLevel, that value becomes effectiveLevel.
@@ -76,7 +76,7 @@ const router = express.Router();
  *               summary: Single repo
  *               value:
  *                 targetRole: Backend Developer
- *                 roleId: backend-developer
+ *                 roleId: backend
  *                 level: beginner
  *                 durationWeeks: 6
  *                 language: vi
@@ -88,7 +88,7 @@ const router = express.Router();
  *               summary: All analyzed repos
  *               value:
  *                 targetRole: Backend Developer
- *                 roleId: backend-developer
+ *                 roleId: backend
  *                 level: beginner
  *                 durationWeeks: 6
  *                 language: vi
@@ -99,7 +99,7 @@ const router = express.Router();
  *               summary: Selected repos
  *               value:
  *                 targetRole: Backend Developer
- *                 roleId: backend-developer
+ *                 roleId: backend
  *                 level: beginner
  *                 durationWeeks: 6
  *                 language: vi
@@ -201,6 +201,20 @@ router.post(
  *           type: string
  *         projectType:
  *           type: string
+ *         modelVersion:
+ *           type: string
+ *           nullable: true
+ *         scoringMethod:
+ *           type: string
+ *           example: dev2vec_doc2vec_classifier
+ *         vectorSources:
+ *           type: object
+ *         sourceStats:
+ *           type: object
+ *         requestedRoleId:
+ *           type: string
+ *         resolvedRoleId:
+ *           type: string
  *     RoadmapSkillGap:
  *       type: object
  *       properties:
@@ -210,6 +224,15 @@ router.post(
  *           type: string
  *         category:
  *           type: string
+ *         gapType:
+ *           type: string
+ *           enum: [missing, weak, recommended, matched]
+ *         similarity:
+ *           type: number
+ *           nullable: true
+ *         source:
+ *           type: string
+ *           example: dev2vec
  *         currentLevel:
  *           type: string
  *         targetLevel:

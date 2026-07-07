@@ -9,7 +9,7 @@ const router = express.Router();
  * @swagger
  * tags:
  *   - name: AI Feedback
- *     description: AI feedback APIs for analyzed repositories
+ *     description: AI feedback APIs generated from latest Dev2Vec analysis snapshots
  */
 
 /**
@@ -33,7 +33,8 @@ router.get('/me', authMiddleware, aiFeedbackController.getMyFeedbacks);
  * /api/ai-feedback/repositories/{repoId}:
  *   post:
  *     tags: [AI Feedback]
- *     summary: Generate AI feedback from latest analysis snapshot of a repository
+ *     summary: Generate AI feedback from latest Dev2Vec analysis snapshot of a repository
+ *     description: Requires running POST /api/analysis/repositories/{repoId} first. Feedback is based on Dev2Vec role prediction, skill gaps, source stats, and evidence preview.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -47,7 +48,7 @@ router.get('/me', authMiddleware, aiFeedbackController.getMyFeedbacks);
  *       201:
  *         description: AI feedback generated successfully
  *       400:
- *         description: Please analyze repository before generating AI feedback
+ *         description: Dev2Vec analysis is required before generating AI feedback
  *       401:
  *         description: Unauthorized
  *       404:
@@ -61,6 +62,7 @@ router.post('/repositories/:repoId', authMiddleware, aiFeedbackController.genera
  *   get:
  *     tags: [AI Feedback]
  *     summary: Get latest AI feedback result for a repository
+ *     description: Returns the latest saved feedback. Does not regenerate AI feedback or run Dev2Vec inference.
  *     security:
  *       - bearerAuth: []
  *     parameters:

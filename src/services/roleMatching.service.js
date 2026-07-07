@@ -1,3 +1,6 @@
+// Deprecated legacy weighted role matching.
+// Kept only for backward-compatible non-Dev2Vec helpers/tests. Do not use this
+// service in the main analysis role-matches or roadmap generation paths.
 const { ROLE_SKILL_VECTORS } = require('../constants/roleSkillVectors');
 const {
   canonicalizeSkillName,

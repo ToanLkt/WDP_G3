@@ -1,5 +1,6 @@
 const adminService = require('../services/admin.service');
 const chatService = require('../services/chat.service');
+const dev2vecStatusService = require('../services/dev2vec/dev2vecStatus.service');
 const { successResponse } = require('../utils/response');
 
 const handle = (serviceCall) => async (req, res, next) => {
@@ -36,6 +37,7 @@ module.exports = {
       adminUser: req.user,
     })
   ),
+  getDev2VecStatus: handle(() => dev2vecStatusService.getDev2VecStatus()),
   getChatSettings: handle(() => chatService.getChatSettings()),
   updateChatSettings: handle((req) => chatService.updateChatSettings({ user: req.user, body: req.body })),
   getChatSessions: handle((req) => chatService.getAdminChatSessions({ query: req.query })),

@@ -3,6 +3,10 @@ const { calculateScores } = require('./analysis.scoring');
 const { dedupeStrings, extractSkillSignals } = require('./analysis.skillExtractor');
 const { buildSkillVectorFromAnalysis } = require('../skillVector.service');
 const { generateAnalysisInsightsFromSkillVector } = require('../skillInsight.service');
+const {
+  buildDocumentationRecommendation,
+  detectDocumentationEvidence,
+} = require('../../utils/documentationEvidence');
 
 const getFileRule = (rules, checklistKey) => {
   const fileRules = rules.fileRules || {};
@@ -23,7 +27,7 @@ const getFileRule = (rules, checklistKey) => {
   return null;
 };
 
-const buildChecklist = (packageRecord, skillSignals) => {
+const buildChecklist = (packageRecord, skillSignals, docsEvidence = {}) => {
   const packageFiles = Array.isArray(packageRecord && packageRecord.packageFiles) ? packageRecord.packageFiles : [];
   const detectedFiles = Array.isArray(packageRecord && packageRecord.detectedFiles) ? packageRecord.detectedFiles : [];
   const configs = Array.isArray(packageRecord && packageRecord.configs) ? packageRecord.configs : [];
@@ -35,7 +39,10 @@ const buildChecklist = (packageRecord, skillSignals) => {
   const packageLower = packages.map((pkg) => String(pkg || '').toLowerCase());
   const signalLower = skillSignals.map((signal) => String(signal || '').toLowerCase());
 
-  const hasReadme = packageFilesLower.includes('readme.md') || detectedNamesLower.includes('readme.md');
+  const hasReadme =
+    docsEvidence.readmeRootExists === true ||
+    packageFilesLower.includes('readme.md') ||
+    detectedNamesLower.includes('readme.md');
   const hasEnvExample = packageFilesLower.includes('.env.example') || detectedNamesLower.includes('.env.example');
   const hasDocker =
     packageFilesLower.includes('dockerfile') || detectedNamesLower.includes('dockerfile') || configLower.includes('docker');
@@ -169,6 +176,21 @@ const inferCareerDirection = ({ skillSignals, careerSignals, rules }) => {
   return bestScore > 0 ? bestCareer : 'Generalist Software Engineer';
 };
 
+const getPackageRecordFilePaths = (packageRecord) => {
+  if (!packageRecord) return [];
+  return [
+    ...(Array.isArray(packageRecord.packageFiles) ? packageRecord.packageFiles : []),
+    ...(Array.isArray(packageRecord.detectedFiles) ? packageRecord.detectedFiles : []),
+  ];
+};
+
+const buildDocumentationEvidenceForAnalysis = ({ packageRecord, touchedFiles }) => (
+  detectDocumentationEvidence([
+    ...getPackageRecordFilePaths(packageRecord),
+    ...(Array.isArray(touchedFiles) ? touchedFiles : []),
+  ])
+);
+
 const normalizeText = (value) => String(value || '').trim().toLowerCase();
 const clamp = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0));
 
@@ -280,6 +302,41 @@ const getTouchedFileNames = (commits) => {
     }
   }
   return dedupeStrings(files);
+};
+
+const shouldSuppressDocumentationGap = (docsEvidence = {}) => (
+  docsEvidence.readmeRootExists === true
+  || Number(docsEvidence.markdownFileCount || 0) > 0
+  || docsEvidence.hasDocsDirectory === true
+);
+
+const removeDocumentationGaps = (values = [], docsEvidence = {}) => {
+  if (!shouldSuppressDocumentationGap(docsEvidence)) return values;
+  return values.filter((value) => {
+    const text = String(value || '').toLowerCase();
+    return !(
+      text.includes('documentation')
+      || text.includes('readme')
+      || text.includes('tài liệu')
+      || text.includes('tai lieu')
+    );
+  });
+};
+
+const applyDocumentationRecommendation = (recommendations = [], docsEvidence = {}) => {
+  const cleaned = removeDocumentationGaps(recommendations, docsEvidence);
+  const recommendation = buildDocumentationRecommendation(docsEvidence);
+  if (
+    recommendation
+    && docsEvidence.documentationStatus !== 'no_markdown_docs'
+    && docsEvidence.documentationStatus !== 'unknown'
+  ) {
+    cleaned.push(recommendation);
+  }
+  if (docsEvidence.documentationStatus === 'unknown') {
+    cleaned.push(recommendation);
+  }
+  return dedupeStrings(cleaned);
 };
 
 const calculateContributionScore = (commitSummary = {}) => {
@@ -408,9 +465,13 @@ const buildAnalysisPayload = ({ repository, packageRecord, commits, rules, contr
   const configs = dedupeStrings((normalizedPackageRecord && normalizedPackageRecord.configs) || []);
 
   const extracted = extractSkillSignals(normalizedPackageRecord, rules);
-  const checklist = buildChecklist(normalizedPackageRecord, extracted.skillSignals);
   const commitAnalysis = analyzeCommits(commits, rules);
   const touchedFiles = getTouchedFileNames(commits);
+  const docsEvidence = buildDocumentationEvidenceForAnalysis({
+    packageRecord: normalizedPackageRecord,
+    touchedFiles,
+  });
+  const checklist = buildChecklist(normalizedPackageRecord, extracted.skillSignals, docsEvidence);
 
   const strengths = [...extracted.strengths, ...commitAnalysis.strengths];
   const weaknesses = [...commitAnalysis.weaknesses];
@@ -424,6 +485,8 @@ const buildAnalysisPayload = ({ repository, packageRecord, commits, rules, contr
 
       if (checklist[key]) {
         strengths.push(fileRule.strength);
+      } else if (key === 'hasReadme' && shouldSuppressDocumentationGap(docsEvidence)) {
+        // Markdown/docs exist, so avoid claiming that documentation is missing.
       } else if (fileRule.weakness) {
         weaknesses.push(fileRule.weakness);
       }
@@ -440,8 +503,14 @@ const buildAnalysisPayload = ({ repository, packageRecord, commits, rules, contr
     weaknesses.push('Repository package/config data has not been fetched yet.');
   }
 
-  let missingSkills = buildMissingSkills({ checklist, packageRecord: normalizedPackageRecord });
-  let recommendations = buildRecommendations({ packageRecord: normalizedPackageRecord, missingSkills, rules });
+  let missingSkills = removeDocumentationGaps(
+    buildMissingSkills({ checklist, packageRecord: normalizedPackageRecord }),
+    docsEvidence
+  );
+  let recommendations = applyDocumentationRecommendation(
+    buildRecommendations({ packageRecord: normalizedPackageRecord, missingSkills, rules }),
+    docsEvidence
+  );
   const projectType = inferProjectType({ frameworks, configs, packages, rules });
   const careerDirection = inferCareerDirection({
     skillSignals: extracted.skillSignals,
@@ -472,11 +541,14 @@ const buildAnalysisPayload = ({ repository, packageRecord, commits, rules, contr
   }
 
   if (scores.documentationScore < 60) {
-    recommendations.push('Nen bo sung README, .env.example hoac API docs de cai thien kha nang ban giao project.');
+    recommendations = applyDocumentationRecommendation([
+      ...recommendations,
+      'Nen bo sung README, .env.example hoac API docs de cai thien kha nang ban giao project.',
+    ], docsEvidence);
   }
 
-  missingSkills = dedupeStrings(missingSkills);
-  recommendations = dedupeStrings(recommendations);
+  missingSkills = dedupeStrings(removeDocumentationGaps(missingSkills, docsEvidence));
+  recommendations = applyDocumentationRecommendation(recommendations, docsEvidence);
   const skillRepresentation = buildSkillVectorFromAnalysis({
     languages,
     frameworks,
@@ -535,9 +607,18 @@ const buildAnalysisPayload = ({ repository, packageRecord, commits, rules, contr
     careerSignals: dedupeStrings(extracted.careerSignals),
     careerDirection,
     strengths: vectorInsights.strengths.length ? vectorInsights.strengths : oldStrengths,
-    weaknesses: vectorInsights.weaknesses.length ? vectorInsights.weaknesses : oldWeaknesses,
-    missingSkills: vectorInsights.missingSkills.length ? vectorInsights.missingSkills : missingSkills,
-    recommendations: vectorInsights.recommendations.length ? vectorInsights.recommendations : recommendations,
+    weaknesses: removeDocumentationGaps(
+      vectorInsights.weaknesses.length ? vectorInsights.weaknesses : oldWeaknesses,
+      docsEvidence
+    ),
+    missingSkills: removeDocumentationGaps(
+      vectorInsights.missingSkills.length ? vectorInsights.missingSkills : missingSkills,
+      docsEvidence
+    ),
+    recommendations: applyDocumentationRecommendation(
+      vectorInsights.recommendations.length ? vectorInsights.recommendations : recommendations,
+      docsEvidence
+    ),
     scores,
     summary: {
       careerDirection,
@@ -562,6 +643,7 @@ const buildAnalysisPayload = ({ repository, packageRecord, commits, rules, contr
         ? {
             packageFiles: normalizedPackageRecord.packageFiles || [],
             detectedFiles: normalizedPackageRecord.detectedFiles || [],
+            documentation: docsEvidence,
             lastFetchedAt: normalizedPackageRecord.lastFetchedAt || null,
           }
         : null,
@@ -641,6 +723,7 @@ const getMissingSkills = (source, limit = 5) => {
 const contributionWording = (sentence, kind) => {
   const text = String(sentence || '').trim();
   if (!text) return '';
+  if (/^(Hệ thống|Chưa thấy|Bạn nên)\b/i.test(text)) return text;
   let updated = text
     .replace(/^Repo\s+(thể hiện|có)/i, 'Phần commit của bạn cho thấy')
     .replace(/^Repository\s+(shows|has)/i, 'Your contribution shows')
@@ -730,6 +813,18 @@ const formatAnalysisResponse = (snapshot, options = {}) => {
       formatted.debug = {
         skillVector: (Array.isArray(source.skillVector) ? source.skillVector : []).map(formatDebugSkill),
       };
+      if (source.dev2vec) {
+        formatted.debug.dev2vec = {
+          modelVersion: source.dev2vec.modelVersion || null,
+          vectorDims: source.dev2vec.vectorDims || {},
+          vectorSources: source.dev2vec.vectorSources || {},
+          sourceStats: source.dev2vec.sourceStats || {},
+          evidencePreview: source.dev2vec.evidencePreview || {},
+          rolePredictions: source.dev2vec.rolePredictions || [],
+          skillGaps: source.dev2vec.skillGaps || {},
+          scoringMethod: source.dev2vec.scoringMethod || '',
+        };
+      }
     }
   }
 

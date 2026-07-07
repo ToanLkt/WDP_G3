@@ -30,6 +30,13 @@ Important rules:
 - If Roadmap Skill Gap Context is available, prioritize its prioritySkills in order.
 - Do not make alreadyStrongSkills the main learning content.
 - Every skill name must use the canonical name from Roadmap Skill Gap Context.
+- mainPath phases and tasks must use only canonical skills from Roadmap Skill Gap Context skillGapSummary/skillGaps.
+- Do not invent a new primary skillName or canonicalSkillName for mainPath tasks.
+- If a task mentions Docker, Docker Compose, Dockerfile, containers, or deployment containers, set skillName/canonicalSkillName to Docker Basics when Docker Basics exists in skillGapSummary.
+- If a task mentions Jest, Supertest, unit tests, integration tests, or API tests, set skillName/canonicalSkillName to API Testing when API Testing exists in skillGapSummary.
+- If a task mentions MongoDB, Mongoose, schema design, indexes, queries, or data models, set skillName/canonicalSkillName to Database when Database exists in skillGapSummary.
+- If a task mentions JWT, RBAC, refresh tokens, login, auth, or permissions, set skillName/canonicalSkillName to Authentication when Authentication exists in skillGapSummary.
+- If a task mentions Swagger, OpenAPI, API endpoints, routes, controllers, CRUD, or REST, set skillName/canonicalSkillName to REST API when REST API exists in skillGapSummary.
 - Do not duplicate canonical skills across priority gap items. Alternative paths must use different skills or clearly different objectives.
 - Generate concise, actionable tasks.
 - Do not include learning resource links, books, courses, videos, or documentation URLs.

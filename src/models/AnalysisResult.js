@@ -86,6 +86,7 @@ const analysisResultSchema = new mongoose.Schema(
     rawAnalysis: { type: Object, default: {} },
     skillEvidence: { type: [skillEvidenceSchema], default: [] },
     skillVector: { type: [skillVectorSchema], default: [] },
+    dev2vec: { type: Object, default: {} },
   },
   {
     timestamps: true,

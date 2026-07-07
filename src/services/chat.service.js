@@ -253,12 +253,14 @@ const buildSkillSignalContext = (skillSignals) =>
   }));
 
 const shouldIncludeChatDebug = () => process.env.NODE_ENV !== 'production';
-const NO_SKILL_SCORE_DATA_MESSAGE = 'Hien chua du du lieu phan tich tu repo de xac dinh.';
+const NO_SKILL_SCORE_DATA_MESSAGE =
+  'Hien chua co phan tich Dev2Vec tu repository. Hay phan tich repo truoc de minh tu van role va skill gap chinh xac hon.';
 const intentsRequiringSkillScore = new Set([
   CHAT_INTENTS.WEAK_SKILLS,
   CHAT_INTENTS.STRONG_SKILLS,
   CHAT_INTENTS.NEXT_SKILLS,
   CHAT_INTENTS.ROLE_FIT,
+  CHAT_INTENTS.REPO_REVIEW,
 ]);
 
 const buildUserGithubContext = async (userId) => {
@@ -447,7 +449,10 @@ const sendMessage = async ({ user, params, body }) => {
       .limit(MAX_CHAT_HISTORY)
       .select('role content createdAt')
       .lean(),
-    buildChatSkillScoreContext(userId, { intent }),
+    buildChatSkillScoreContext(userId, {
+      intent,
+      repositoryId: session.repositoryId || session.repoId || body?.repositoryId || body?.repoId || null,
+    }),
   ]);
 
   const shouldShortCircuitNoSkillData =
@@ -487,7 +492,7 @@ const sendMessage = async ({ user, params, body }) => {
       model: assistantResult.model,
       usedFallback: assistantResult.usedFallback,
       intent,
-      contextSource: 'skillVector',
+      contextSource: 'dev2vec',
     },
   });
 
@@ -513,7 +518,7 @@ const sendMessage = async ({ user, params, body }) => {
 
   if (shouldIncludeChatDebug()) {
     data.intent = intent;
-    data.contextSource = 'skillVector';
+    data.contextSource = 'dev2vec';
     data.skillScoreSummary = skillScoreContext.summary;
   }
 
