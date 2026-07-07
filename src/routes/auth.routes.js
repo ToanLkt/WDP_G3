@@ -1,13 +1,13 @@
-const express = require('express');
+const express = require("express");
 
-const authController = require('../controllers/auth.controller');
-const authMiddleware = require('../middlewares/auth.middleware');
-const validate = require('../middlewares/validate.middleware');
+const authController = require("../controllers/auth.controller");
+const authMiddleware = require("../middlewares/auth.middleware");
+const validate = require("../middlewares/validate.middleware");
 const {
   validateChangePasswordBody,
   validateRegisterBody,
   validateLoginBody,
-} = require('../validators/auth.validator');
+} = require("../validators/auth.validator");
 
 const router = express.Router();
 
@@ -53,7 +53,11 @@ const router = express.Router();
  *       409:
  *         description: Email already exists
  */
-router.post('/register', validate(validateRegisterBody), authController.register);
+router.post(
+  "/register",
+  validate(validateRegisterBody),
+  authController.register,
+);
 
 /**
  * @swagger
@@ -86,7 +90,135 @@ router.post('/register', validate(validateRegisterBody), authController.register
  *       401:
  *         description: Invalid email or password
  */
-router.post('/login', validate(validateLoginBody), authController.login);
+router.post("/login", validate(validateLoginBody), authController.login);
+
+/**
+ * @swagger
+ * /api/auth/google:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Login with Google ID token
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - idToken
+ *             properties:
+ *               idToken:
+ *                 type: string
+ *                 example: google_id_token
+ *     responses:
+ *       200:
+ *         description: Login with Google successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Login with Google successfully
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     accessToken:
+ *                       type: string
+ *                     user:
+ *                       type: object
+ *                       properties:
+ *                         _id:
+ *                           type: string
+ *                         name:
+ *                           type: string
+ *                         email:
+ *                           type: string
+ *                         avatar:
+ *                           type: string
+ *                         provider:
+ *                           type: string
+ *                           example: google
+ *       400:
+ *         description: idToken is required
+ *       401:
+ *         description: Invalid Google token
+ */
+router.post("/google", authController.loginWithGoogle);
+
+/**
+ * @swagger
+ * /api/auth/github:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Start GitHub OAuth2 login
+ *     description: Generates a GitHub OAuth authorization URL for Login with GitHub. Frontend opens authUrl in the browser. The GitHub OAuth App callback can point to either /api/auth/github/callback or the shared /api/github/oauth/callback; both callbacks dispatch by saved OAuth state.
+ *     security: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               redirectUrl:
+ *                 type: string
+ *                 example: https://web-project-seven-rust.vercel.app/auth/github/callback
+ *                 description: Optional allowlisted frontend callback URL that receives the login result. Production web should use https://web-project-seven-rust.vercel.app/auth/github/callback; local dev can use http://localhost:5173/auth/github/callback; mobile can use the exact MOBILE_AUTH_REDIRECT_URL such as gitanalyzer://auth/github/callback. Defaults to GITHUB_AUTH_REDIRECT_URL or FRONTEND_URL /auth/github/callback.
+ *     responses:
+ *       200:
+ *         description: GitHub OAuth authorization URL generated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 authUrl:
+ *                   type: string
+ *                   example: https://github.com/login/oauth/authorize?client_id=xxx&redirect_uri=http%3A%2F%2Flocalhost%3A5000%2Fapi%2Fauth%2Fgithub%2Fcallback&scope=read%3Auser+user%3Aemail&state=abc
+ *       500:
+ *         description: "GitHub OAuth environment is not configured. Required env: GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GITHUB_CALLBACK_URL, JWT_SECRET, MONGO_URI."
+ */
+router.post("/github", authController.startGithubLogin);
+
+/**
+ * @swagger
+ * /api/auth/github/callback:
+ *   get:
+ *     tags: [Auth]
+ *     summary: Handle GitHub OAuth2 callback
+ *     description: Shared-capable callback for GitHub OAuth. If state belongs to Login with GitHub, exchanges the code, creates or finds the user, creates an app JWT, then redirects to the saved frontend auth callback. If state belongs to repository connect, it falls back to the connect flow.
+ *     security: []
+ *     parameters:
+ *       - in: query
+ *         name: code
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Authorization code returned by GitHub
+ *       - in: query
+ *         name: state
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: CSRF protection state generated by the backend
+ *     responses:
+ *       302:
+ *         description: For login, redirects to /auth/github/callback#success=true&accessToken=<JWT>&provider=github. For connect fallback, redirects to /github/connect. Errors are returned in the frontend callback query string.
+ *       400:
+ *         description: Missing or invalid code/state
+ *       500:
+ *         description: GitHub OAuth environment or server dependencies are not configured
+ */
+router.get("/github/callback", authController.handleGithubCallback);
 
 /**
  * @swagger
@@ -102,7 +234,7 @@ router.post('/login', validate(validateLoginBody), authController.login);
  *       401:
  *         description: Unauthorized
  */
-router.post('/logout', authMiddleware, authController.logout);
+router.post("/logout", authMiddleware, authController.logout);
 
 /**
  * @swagger
@@ -142,7 +274,12 @@ router.post('/logout', authMiddleware, authController.logout);
  *       404:
  *         description: User not found
  */
-router.post('/change-password', authMiddleware, validate(validateChangePasswordBody), authController.changePassword);
+router.post(
+  "/change-password",
+  authMiddleware,
+  validate(validateChangePasswordBody),
+  authController.changePassword,
+);
 
 /**
  * @swagger
@@ -160,6 +297,6 @@ router.post('/change-password', authMiddleware, validate(validateChangePasswordB
  *       404:
  *         description: User not found
  */
-router.get('/me', authMiddleware, authController.getMe);
+router.get("/me", authMiddleware, authController.getMe);
 
 module.exports = router;

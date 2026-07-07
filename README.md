@@ -217,9 +217,9 @@ This is the safest and most consistent format across routes.
 
 - `POST /api/auth/register`
 - `POST /api/auth/login`
+- `POST /api/auth/github`
+- `GET /api/auth/github/callback`
 - `GET /api/auth/me`
-
-Use these first to obtain JWT token and inspect current user.
 
 ### 3. Profile
 
@@ -243,6 +243,11 @@ Profile is used later by AI feedback and chat context.
 - `GET /api/github/repositories/:repoId/commits/cached`
 
 Usage notes:
+
+- FE calls `GET /api/github/oauth` with JWT, then opens the returned `data.authorizeUrl`.
+- After the user authorizes on GitHub, the backend callback redirects to `/github/connect` on the localhost or Vercel frontend that started the flow.
+- Allowed frontend origins are configured through comma-separated `FRONTEND_URLS`.
+- Flutter and React Native call `GET /api/github/oauth?redirectUrl=gitanalyzer%3A%2F%2Fgithub%2Fconnect`. The callback redirects to the exact allowlisted `MOBILE_REDIRECT_URL`.
 
 - `GET /api/github/repositories` syncs from GitHub to MongoDB
 - `GET /api/github/repositories/cached` only reads local database
@@ -386,6 +391,28 @@ If you want one realistic end-to-end test sequence, use this order:
 - For chat quality, always analyze repository first.
 - Some endpoints are already functional, while some are still scaffold-only as noted above.
 
+## AI / Gemini Integration
+
+Gemini calls are centralized in `src/services/ai.service.js`. The shared service reads:
+
+```txt
+LLM_PROVIDER=gemini
+LLM_API_KEY=your_gemini_api_key
+LLM_MODEL=gemini-2.5-flash
+LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta
+```
+
+`LLM_MODEL` must be a model id such as `gemini-2.5-flash` or `gemini-2.0-flash`, not `models/gemini-2.5-flash`.
+
+APIs using Gemini:
+
+- `POST /api/ai-feedback/repositories/:repoId`: generates AI feedback from the latest repository analysis snapshot, with fallback feedback if Gemini fails.
+- `POST /api/chat/sessions/:sessionId/messages`: generates mentor chat replies from the user's GitHub context, with fallback chat text if Gemini fails.
+- `POST /api/roadmaps/generate`: generates roadmap JSON from GitHub context, with fallback roadmap if Gemini fails or JSON parsing fails.
+- `GET /api/ai/health`: checks AI env configuration without exposing secrets.
+
+Gemini failure logs include status, message, response data, provider, and model only. API keys and full keyed endpoints must not be logged.
+
 ## Deployment
 
 ### MongoDB Atlas
@@ -430,8 +457,12 @@ Set these variables on Render/Railway:
 - `GITHUB_CLIENT_ID`
 - `GITHUB_CLIENT_SECRET`
 - `GITHUB_CALLBACK_URL`
+- `GITHUB_AUTH_REDIRECT_URL`
+- `MOBILE_AUTH_REDIRECT_URL`
 - `FRONTEND_URL`
 - `CLIENT_URL`
+- `FRONTEND_URLS`
+- `MOBILE_REDIRECT_URL`
 - `LLM_PROVIDER`
 - `LLM_API_KEY`
 - `LLM_MODEL`
@@ -446,8 +477,14 @@ For the current Render/Vercel deployment, set:
 API_BASE_URL=https://career-roadmap-api-zs7y.onrender.com
 FRONTEND_URL=https://web-project-seven-rust.vercel.app
 CLIENT_URL=https://web-project-seven-rust.vercel.app
-GITHUB_CALLBACK_URL=https://career-roadmap-api-zs7y.onrender.com/api/github/oauth/callback
+GITHUB_CALLBACK_URL=https://career-roadmap-api-zs7y.onrender.com/api/auth/github/callback
+GITHUB_AUTH_REDIRECT_URL=https://web-project-seven-rust.vercel.app/auth/github/callback
+MOBILE_AUTH_REDIRECT_URL=gitanalyzer://auth/github/callback
+FRONTEND_URLS=https://web-project-seven-rust.vercel.app,http://localhost:5173
+MOBILE_REDIRECT_URL=gitanalyzer://github/connect
 ```
+
+Use this same `GITHUB_CALLBACK_URL` in the GitHub OAuth App. The shared callback dispatches both Login with GitHub and GitHub repository connect by checking the saved OAuth `state`.
 
 ### Test After Deploy
 
@@ -456,6 +493,17 @@ GITHUB_CALLBACK_URL=https://career-roadmap-api-zs7y.onrender.com/api/github/oaut
 - `GET /api/swagger`
 - `POST /api/auth/register`
 - `POST /api/auth/login`
+- `POST /api/auth/github`
+- `GET /api/auth/me` with the JWT returned from GitHub login redirect
+
+Local GitHub login test:
+
+1. Start backend with `npm run dev`.
+2. Call `POST http://localhost:5000/api/auth/github` with `{}`.
+3. Open the returned `authUrl` in the browser.
+4. Authorize the app on GitHub.
+5. Confirm the browser is redirected to `http://localhost:5173/auth/github/callback#success=true&accessToken=...`.
+6. Copy the `accessToken` value and call `GET /api/auth/me` with `Authorization: Bearer <accessToken>`.
 
 ### Frontend Handoff
 

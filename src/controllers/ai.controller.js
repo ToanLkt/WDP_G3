@@ -10,6 +10,16 @@ const analyzeWithAi = async (req, res, next) => {
   }
 };
 
+const getAiHealth = async (req, res, next) => {
+  try {
+    const result = await aiService.getAiConfigHealth();
+    return successResponse(res, result.message, result.data, result.statusCode);
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   analyzeWithAi,
+  getAiHealth,
 };

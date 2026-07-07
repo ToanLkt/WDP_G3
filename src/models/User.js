@@ -8,27 +8,64 @@ const userSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    name: {
+      type: String,
+      trim: true,
+    },
     avatarUrl: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    avatar: {
       type: String,
       default: '',
       trim: true,
     },
     email: {
       type: String,
-      required: true,
       unique: true,
+      sparse: true,
       lowercase: true,
       trim: true,
     },
     password: {
       type: String,
-      required: true,
+      required() {
+        return this.provider === 'local';
+      },
       select: false,
+    },
+    provider: {
+      type: String,
+      enum: ['local', 'google', 'github'],
+      default: 'local',
+    },
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+    },
+    githubId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+    },
+    githubUsername: {
+      type: String,
+      trim: true,
     },
     role: {
       type: String,
       enum: roles,
       default: 'student',
+    },
+    status: {
+      type: String,
+      enum: ['active', 'inactive', 'banned'],
+      default: 'active',
     },
     settings: {
       language: {

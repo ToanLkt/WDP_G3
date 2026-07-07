@@ -36,6 +36,14 @@ const roadmapTaskSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    skillName: { type: String, default: '', trim: true },
+    canonicalSkillName: { type: String, default: '', trim: true },
+    category: { type: String, default: 'General', trim: true },
+    itemId: { type: String, default: '', trim: true },
+    level: { type: String, default: '', trim: true },
+    week: { type: Number, default: 1 },
+    priority: { type: mongoose.Schema.Types.Mixed, default: 'medium' },
+    targetRole: { type: String, default: '', trim: true },
     status: {
       type: String,
       enum: ['not_started', 'in_progress', 'completed'],
@@ -112,11 +120,21 @@ const roadmapSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    repositoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Repository',
+      default: null,
+    },
     targetRole: {
       type: String,
       required: true,
       trim: true,
     },
+    roleId: { type: String, default: '', trim: true },
+    requestedLevel: { type: String, default: '', trim: true },
+    effectiveLevel: { type: String, default: '', trim: true },
+    durationWeeks: { type: Number, default: 6 },
+    language: { type: String, default: 'vi', trim: true },
     currentGithubDirection: {
       type: String,
       default: '',
@@ -139,10 +157,12 @@ const roadmapSchema = new mongoose.Schema(
         default: [],
       },
     },
+    mainRoadmap: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
     supportingPaths: {
       type: [supportingPathSchema],
       default: [],
     },
+    alternativeRoadmaps: { type: [mongoose.Schema.Types.Mixed], default: [] },
     sourceContextSummary: {
       repositoriesCount: {
         type: Number,
@@ -162,6 +182,10 @@ const roadmapSchema = new mongoose.Schema(
         default: null,
       },
     },
+    roadmapSource: { type: mongoose.Schema.Types.Mixed, default: 'legacy' },
+    roleMatch: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
+    skillGapSummary: { type: mongoose.Schema.Types.Mixed, default: () => [] },
+    progressSummary: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
     status: {
       type: String,
       enum: ['active', 'archived'],

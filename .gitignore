@@ -1,4 +1,11 @@
 node_modules
+.venv
+venv
+__pycache__
+*.pyc
+tmp
+temp
+logs
 .env
 .env.local
 .env.production

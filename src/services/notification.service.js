@@ -1,6 +1,13 @@
 const mongoose = require('mongoose');
 
 const Notification = require('../models/Notification');
+const UserSettings = require('../models/UserSettings');
+
+const notificationTypeSettingMap = {
+  GITHUB_ANALYSIS_REMINDER: 'githubAnalysisReminder',
+  ROADMAP_TASK_REMINDER: 'roadmapTaskReminder',
+  REPOSITORY_IMPROVEMENT: 'repositoryImprovementReminder',
+};
 
 const ensureAuthUser = (authUser) => {
   if (!authUser || !authUser.userId) {
@@ -20,9 +27,11 @@ const ensureValidObjectId = (id) => {
 
 const sanitizeNotification = (notification) => ({
   _id: notification._id,
+  userId: notification.user,
   title: notification.title,
   message: notification.message,
   type: notification.type,
+  reportId: notification.reportId || null,
   isRead: notification.isRead,
   scheduledAt: notification.scheduledAt,
   createdAt: notification.createdAt,
@@ -72,23 +81,50 @@ const getNotifications = async ({ authUser, query }) => {
   };
 };
 
-const createNotification = async ({ authUser, body }) => {
-  ensureAuthUser(authUser);
+const createAutomaticNotification = async ({
+  userId,
+  title,
+  message,
+  type = 'SYSTEM',
+  scheduledAt = null,
+  metadata = {},
+  reportId = null,
+  respectUserSettings = true,
+  throwOnError = false,
+}) => {
+  try {
+    if (!userId || !title || !message) {
+      return null;
+    }
 
-  const notification = await Notification.create({
-    user: authUser.userId,
-    title: String(body.title).trim(),
-    message: String(body.message).trim(),
-    type: body.type,
-    scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
-    metadata: body.metadata || {},
-  });
+    if (respectUserSettings) {
+      const settings = await UserSettings.findOne({ user: userId }).lean();
+      const typeSettingKey = notificationTypeSettingMap[type];
 
-  return {
-    message: 'Create notification successfully',
-    data: sanitizeNotification(notification),
-    statusCode: 201,
-  };
+      if (settings?.notificationEnabled === false || (typeSettingKey && settings?.[typeSettingKey] === false)) {
+        return null;
+      }
+    }
+
+    const notification = await Notification.create({
+      user: userId,
+      title: String(title).trim(),
+      message: String(message).trim(),
+      type,
+      reportId,
+      scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+      metadata,
+    });
+
+    return sanitizeNotification(notification);
+  } catch (error) {
+    if (throwOnError) {
+      throw error;
+    }
+
+    console.error('Create automatic notification failed:', error.message);
+    return null;
+  }
 };
 
 const markNotificationAsRead = async ({ authUser, notificationId }) => {
@@ -142,7 +178,7 @@ const deleteNotification = async ({ authUser, notificationId }) => {
 };
 
 module.exports = {
-  createNotification,
+  createAutomaticNotification,
   deleteNotification,
   getNotifications,
   markNotificationAsRead,

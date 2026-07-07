@@ -10,15 +10,6 @@ const getMe = async (req, res, next) => {
   }
 };
 
-const create = async (req, res, next) => {
-  try {
-    const result = await notificationService.createNotification({ authUser: req.user, body: req.body });
-    return successResponse(res, result.message, result.data, result.statusCode);
-  } catch (error) {
-    return next(error);
-  }
-};
-
 const markAsRead = async (req, res, next) => {
   try {
     const result = await notificationService.markNotificationAsRead({
@@ -44,7 +35,6 @@ const remove = async (req, res, next) => {
 };
 
 module.exports = {
-  create,
   getMe,
   markAsRead,
   remove,
