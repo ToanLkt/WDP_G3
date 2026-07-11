@@ -21,7 +21,6 @@
 
 - **Node.js** v18+
 - **npm** hoặc **yarn**
-- Backend API đã deploy: `https://career-roadmap-api-zs7y.onrender.com/api`
 - Một trong các môi trường chạy app:
   - Android Emulator (Android Studio)
   - iOS Simulator (macOS + Xcode)
@@ -36,24 +35,6 @@ cd mobile
 npm install
 ```
 
----
-
-## Cấu hình môi trường
-
-Sao chép file mẫu (đã trỏ sẵn API production):
-
-```bash
-cp .env.example .env
-```
-
-| Biến | Mô tả |
-|---|---|
-| `EXPO_PUBLIC_API_BASE_URL` | URL backend API, mặc định `https://career-roadmap-api-zs7y.onrender.com/api` |
-
-Nếu không có `.env`, app vẫn dùng URL deploy mặc định trong `src/constants/index.ts`.
-
----
-
 ## Chạy ứng dụng
 
 ```bash
@@ -62,30 +43,17 @@ npm start
 # hoặc
 npx expo start
 
-# Android Emulator
+# Android Emulator (Expo Go)
 npm run android
 
 # iOS Simulator (macOS)
 npm run ios
 
+# Native Android Build (Development Build)
+npx expo run:android
+
 # Xóa cache khi gặp lỗi bundler
 npx expo start --clear
-```
-
-> Sau khi đổi `.env`, chạy lại `npx expo start --clear` để Metro nạp biến môi trường mới.
-
----
-
-## GitHub OAuth
-
-1. Backend deploy cần cấu hình:
-   ```
-   GITHUB_CALLBACK_URL=https://career-roadmap-api-zs7y.onrender.com/api/github/oauth/callback
-   ```
-2. Thêm cùng callback URL vào **GitHub OAuth App**.
-3. Trong app: **Connect with GitHub** → authorize trên GitHub → **Refresh status**.
-
----
 
 ## Cấu trúc thư mục
 
@@ -119,9 +87,3 @@ mobile/
 - AsyncStorage (JWT persistence)
 
 ---
-
-## Liên kết
-
-- Backend API: https://career-roadmap-api-zs7y.onrender.com/api
-- Backend repo: nhánh `BE` trên cùng repository
-- Web app: nhánh `Web` trên cùng repository
