@@ -255,8 +255,8 @@ export const HomeScreen: React.FC = () => {
             <View style={styles.tagSection}>
               <Text style={styles.tagSectionTitle}>Hướng nghề nghiệp nổi bật</Text>
               <View style={styles.tagRow}>
-                {careerTags.length ? careerTags.map((item) => (
-                  <Badge key={item.label} label={`${item.label} · ${item.count}`} variant="success" style={styles.tag} />
+                {careerTags.length ? careerTags.filter(item => item.label).map((item, idx) => (
+                  <Badge key={`career-${idx}-${item.label}`} label={`${item.label} · ${item.count}`} variant="success" style={styles.tag} />
                 )) : <Text style={styles.emptyTagText}>Chưa có dữ liệu.</Text>}
               </View>
             </View>
@@ -264,8 +264,8 @@ export const HomeScreen: React.FC = () => {
             <View style={styles.tagSection}>
               <Text style={styles.tagSectionTitle}>Công nghệ nổi bật</Text>
               <View style={styles.tagRow}>
-                {techTags.length ? techTags.map((item) => (
-                  <Badge key={`${item.label}-${item.count}`} label={`${item.label} · ${item.count}`} variant="secondary" style={styles.tag} />
+                {techTags.length ? techTags.filter(item => item.label).map((item, idx) => (
+                  <Badge key={`tech-${idx}-${item.label}`} label={`${item.label} · ${item.count}`} variant="secondary" style={styles.tag} />
                 )) : <Text style={styles.emptyTagText}>Chưa có dữ liệu.</Text>}
               </View>
             </View>
@@ -273,8 +273,8 @@ export const HomeScreen: React.FC = () => {
             <View style={styles.tagSection}>
               <Text style={styles.tagSectionTitle}>Kỹ năng nên bổ sung</Text>
               <View style={styles.tagRow}>
-                {missingSkillTags.length ? missingSkillTags.map((label) => (
-                  <Badge key={label} label={label} variant="warning" style={styles.tag} />
+                {missingSkillTags.length ? missingSkillTags.filter(label => label).map((label, idx) => (
+                  <Badge key={`skill-${idx}-${label}`} label={label} variant="warning" style={styles.tag} />
                 )) : <Text style={styles.emptyTagText}>Chưa có dữ liệu.</Text>}
               </View>
             </View>
@@ -309,11 +309,11 @@ export const HomeScreen: React.FC = () => {
           </View>
         ) : (
           <View style={styles.analysisList}>
-            {analyses.slice(0, 4).map((analysis) => {
+            {analyses.slice(0, 4).map((analysis, idx) => {
               const score = analysis.scores.overallScore ?? analysis.scores.overall;
               return (
                 <TouchableOpacity
-                  key={analysis.id || analysis.repositoryId}
+                  key={analysis.id || analysis.repositoryId || idx}
                   style={styles.analysisItem}
                   activeOpacity={0.85}
                   onPress={() =>

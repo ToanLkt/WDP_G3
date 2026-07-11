@@ -11,12 +11,17 @@ import type {
   RoadmapListParams,
   LearningContent,
   AILearningResource,
+  RoadmapProgressRecord,
+  IntegratedLearningListResponse,
+  IntegratedLearningItemResponse,
 } from './types';
 
 export { roadmapTargetRoles }
 
 type RoadmapTask = {
   _id?: string
+  id?: string
+  itemId?: string
   title?: string
   description?: string
   skillTags?: string[]
@@ -35,6 +40,7 @@ type RoadmapTask = {
   targetRole?: string
   category?: string
   priority?: number
+  week?: number
 }
 
 type RoadmapPhase = {
@@ -49,6 +55,8 @@ type RoadmapPhase = {
 export type BackendRoadmap = {
   _id?: string
   id?: string
+  roadmapId?: string
+  title?: string
   targetRole?: string
   currentGithubDirection?: string
   summary?: string
@@ -56,6 +64,13 @@ export type BackendRoadmap = {
     title?: string
     reason?: string
     phases?: RoadmapPhase[]
+    tasks?: RoadmapTask[]
+  }
+  mainRoadmap?: {
+    title?: string
+    reason?: string
+    phases?: RoadmapPhase[]
+    tasks?: RoadmapTask[]
   }
   tasks?: RoadmapTask[]
   supportingPaths?: Array<{
@@ -279,9 +294,10 @@ const phaseTasks = (phase: RoadmapPhase, fallbackIndex: number): RoadmapTask[] =
 }
 
 export const normalizeBackendRoadmap = (backend: BackendRoadmap): Roadmap => {
-  const id = backend._id ?? backend.id ?? `roadmap-${Date.now()}`
-  const phases = backend.mainPath?.phases ?? []
-  const standaloneTasks = backend.tasks ?? []
+  const id = backend.roadmapId ?? backend._id ?? backend.id ?? `roadmap-${Date.now()}`
+  const mainRoadmap = backend.mainRoadmap ?? backend.mainPath
+  const phases = mainRoadmap?.phases ?? []
+  const standaloneTasks = mainRoadmap?.tasks ?? backend.tasks ?? []
   const allTasks = [...phases.flatMap(phaseTasks), ...standaloneTasks]
   const targetRole = backend.targetRole ?? backend.currentGithubDirection ?? 'Developer'
   const skills = unique([
@@ -290,8 +306,8 @@ export const normalizeBackendRoadmap = (backend: BackendRoadmap): Roadmap => {
     ...allTasks.flatMap((task) => task.skillTags ?? [])
   ])
   const missingSkills = unique(backend.sourceContextSummary?.missingSkills ?? [])
-  const title = toUserText(backend.mainPath?.title, `Roadmap ${targetRole}`)
-  const reason = toUserText(backend.mainPath?.reason)
+  const title = toUserText(backend.title ?? mainRoadmap?.title, `Roadmap ${targetRole}`)
+  const reason = toUserText(mainRoadmap?.reason)
   const summary = toUserText(backend.summary, reason || `Lộ trình cá nhân hóa cho ${targetRole}`)
   const estimatedHours = Math.max(
     allTasks.reduce((sum, task) => sum + asNumber(task.estimatedHours, 4), 0),
@@ -304,7 +320,7 @@ export const normalizeBackendRoadmap = (backend: BackendRoadmap): Roadmap => {
   const difficulty = inferDifficulty(phases, allTasks)
   const slug = `${slugify(title || targetRole)}-${id}`
 
-  const modules = (phases.length ? phases : [{ title: 'Lộ trình chính', goal: reason, tasks: standaloneTasks }]).map((phase, moduleIndex) => {
+  const modules = (phases.length ? phases : [{ title: 'Lộ trình chính', goal: reason, tasks: standaloneTasks } as RoadmapPhase]).map((phase, moduleIndex) => {
     const tasks = phaseTasks(phase, moduleIndex)
 
     return {
@@ -313,33 +329,37 @@ export const normalizeBackendRoadmap = (backend: BackendRoadmap): Roadmap => {
       description: toUserText(phase.goal, reason || 'Các nhiệm vụ học tập được cá nhân hóa theo phân tích GitHub.'),
       order: moduleIndex + 1,
       estimatedHours: tasks.reduce((sum, task) => sum + asNumber(task.estimatedHours, 4), 0),
-      nodes: tasks.map((task, taskIndex) => ({
-        id: task._id ?? `${id}-node-${moduleIndex + 1}-${taskIndex + 1}`,
-        title: toUserText(task.title, `Nhiệm vụ ${taskIndex + 1}`),
-        description: toUserText(task.description, phase.goal ?? 'Hoàn thành nhiệm vụ này để tiến gần hơn tới mục tiêu nghề nghiệp.'),
-        estimatedHours: asNumber(task.estimatedHours, 4),
-        difficulty,
-        dependencies: taskIndex === 0 ? [] : [tasks[taskIndex - 1]?._id ?? `${id}-node-${moduleIndex + 1}-${taskIndex}`],
-        status: normalizeStatus(task.status, moduleIndex === 0 ? taskIndex : taskIndex + 1),
-        skills: unique([...(task.skillTags ?? []), ...(phase.skills ?? [])]),
-        resources: (task.resources ?? []).map((resource, resourceIndex) => ({
-          id: resource._id ?? `${id}-resource-${moduleIndex + 1}-${taskIndex + 1}-${resourceIndex + 1}`,
-          title: toUserText(resource.title, 'Tài nguyên học tập'),
-          type: normalizeResourceType(resource.type),
-          url: resource.url ?? '#',
-          provider: resource.provider ?? 'AI Mentor',
-          estimatedMinutes: asNumber(resource.estimatedMinutes, 30)
-        })),
-        skillTags: task.skillTags,
-        canonicalSkillName: task.canonicalSkillName,
-        skillName: task.skillName,
-        targetRole: task.targetRole,
-        category: task.category,
-        priority: task.priority,
-        project: toUserText(task.description),
-        bookmarked: false,
-        xp: Math.max(80, asNumber(task.estimatedHours, 4) * 30)
-      })),
+      nodes: tasks.map((task, taskIndex) => {
+        // Use backend itemId (e.g., main-1-1-rest-api) as the node id so progress matching works
+        const nodeId = task.itemId ?? task._id ?? task.id ?? `${id}-node-${moduleIndex + 1}-${taskIndex + 1}`;
+        return {
+          id: nodeId,
+          title: toUserText(task.title, `Nhiệm vụ ${taskIndex + 1}`),
+          description: toUserText(task.description, phase.goal ?? 'Hoàn thành nhiệm vụ này để tiến gần hơn tới mục tiêu nghề nghiệp.'),
+          estimatedHours: asNumber(task.estimatedHours, 4),
+          difficulty,
+          dependencies: taskIndex === 0 ? [] : [tasks[taskIndex - 1]?.itemId ?? tasks[taskIndex - 1]?._id ?? `${id}-node-${moduleIndex + 1}-${taskIndex}`],
+          status: normalizeStatus(task.status, moduleIndex === 0 ? taskIndex : taskIndex + 1),
+          skills: unique([...(task.skillTags ?? []), ...(phase.skills ?? [])]),
+          resources: (task.resources ?? []).map((resource, resourceIndex) => ({
+            id: resource._id ?? `${id}-resource-${moduleIndex + 1}-${taskIndex + 1}-${resourceIndex + 1}`,
+            title: toUserText(resource.title, 'Tài nguyên học tập'),
+            type: normalizeResourceType(resource.type),
+            url: resource.url ?? '#',
+            provider: resource.provider ?? 'AI Mentor',
+            estimatedMinutes: asNumber(resource.estimatedMinutes, 30)
+          })),
+          skillTags: task.skillTags,
+          canonicalSkillName: task.canonicalSkillName,
+          skillName: task.skillName,
+          targetRole: task.targetRole,
+          category: task.category,
+          priority: task.priority,
+          project: toUserText(task.description),
+          bookmarked: false,
+          xp: Math.max(80, asNumber(task.estimatedHours, 4) * 30)
+        };
+      }),
       milestones: [{
         id: `${id}-milestone-${moduleIndex + 1}`,
         title: `Hoàn thành ${toUserText(phase.title, `giai đoạn ${moduleIndex + 1}`)}`,
@@ -438,20 +458,68 @@ export const roadmapService = {
   },
 
   async getRoadmapById(idOrSlug: string): Promise<Roadmap | undefined> {
-    const slugParts = idOrSlug.split('-')
-    const backendId = slugParts[slugParts.length - 1] ?? idOrSlug
-    const response = await apiClient.get(`/roadmaps/${backendId}`)
-    const roadmap = extractApiResource<BackendRoadmap>(response.data, ['roadmap'])
-    return roadmap ? normalizeBackendRoadmap(roadmap) : undefined
+    try {
+      // Try full ID first (highly likely for modern backend UUIDs containing hyphens)
+      const response = await apiClient.get(`/roadmaps/${idOrSlug}`);
+      const roadmap = extractApiResource<BackendRoadmap>(response.data, ['roadmap']);
+      if (roadmap) return normalizeBackendRoadmap(roadmap);
+    } catch (err) {
+      // Fallback: legacy splitting logic for older slug formats
+      const slugParts = idOrSlug.split('-');
+      const backendId = slugParts[slugParts.length - 1] ?? idOrSlug;
+      if (backendId !== idOrSlug) {
+        const response = await apiClient.get(`/roadmaps/${backendId}`);
+        const roadmap = extractApiResource<BackendRoadmap>(response.data, ['roadmap']);
+        if (roadmap) return normalizeBackendRoadmap(roadmap);
+      }
+      throw err;
+    }
+    return undefined;
   },
 
-  async generateAIRoadmap(targetRole = 'Backend Developer', forceRegenerate = false): Promise<AIRecommendation> {
+  async generateAIRoadmap(
+    targetRole = 'Backend Developer',
+    optionsOrForce: import('./types').GenerateRoadmapOptions | boolean = false,
+    legacyRepoId?: string
+  ): Promise<AIRecommendation> {
+    const options: import('./types').GenerateRoadmapOptions = typeof optionsOrForce === 'boolean'
+      ? { forceRegenerate: optionsOrForce, repoId: legacyRepoId, sourceMode: legacyRepoId ? 'single_repo' : 'all_analyzed_repos' }
+      : optionsOrForce;
+
+    const selectedRepositoryIds = options.repoIds ?? [];
+    const sourceMode = options.sourceMode ?? (selectedRepositoryIds.length ? 'selected_repos' : options.repoId ? 'single_repo' : 'all_analyzed_repos');
+
     const safeRole = roadmapTargetRoles.includes(targetRole as typeof roadmapTargetRoles[number])
       ? targetRole
-      : 'Backend Developer'
-    const response = await apiClient.post('/roadmaps/generate', { targetRole: safeRole, forceRegenerate })
-    const roadmap = extractApiResource<BackendRoadmap>(response.data, ['roadmap'])
-    return buildRecommendation(roadmap)
+      : 'Backend Developer';
+
+    const roleIds: Record<string, string> = {
+      'Backend Developer': 'backend',
+      'Frontend Developer': 'frontend',
+      'Mobile Developer': 'mobile',
+      'DevOps Engineer': 'devops',
+      'Data Scientist': 'data_scientist',
+    };
+
+    const payload = {
+      targetRole: safeRole,
+      roleId: options.selectedRole?.roleId ?? options.roleId ?? roleIds[safeRole] ?? 'backend',
+      selectedRole: {
+        roleId: options.selectedRole?.roleId ?? options.roleId ?? roleIds[safeRole] ?? 'backend',
+        roleName: safeRole
+      },
+      level: options.level ?? 'beginner',
+      durationWeeks: options.durationWeeks ?? 6,
+      language: options.language ?? 'vi',
+      useRoleMatching: options.useRoleMatching ?? true,
+      forceRegenerate: options.forceRegenerate ?? false,
+      sourceMode,
+      ...(sourceMode === 'single_repo' ? { repoId: options.repoId } : {}),
+    };
+
+    const response = await apiClient.post('/roadmaps/generate', payload);
+    const roadmap = extractApiResource<BackendRoadmap>(response.data, ['roadmap']);
+    return buildRecommendation(roadmap);
   },
 
   async archiveRoadmap(roadmapId: string): Promise<Roadmap> {
@@ -478,5 +546,42 @@ export const roadmapService = {
     const response = await apiClient.post(`/learning/skills/${encodeURIComponent(skillName)}/resources/search`, data);
     const resources = extractApiResource<AILearningResource[]>(response.data, ['resources']);
     return Array.isArray(resources) ? resources : [];
+  },
+
+  async getRoadmapProgress(roadmapId: string): Promise<RoadmapProgressRecord> {
+    const response = await apiClient.get(`/roadmaps/${roadmapId}/progress`);
+    return extractApiResource<RoadmapProgressRecord>(response.data);
+  },
+
+  async updateRoadmapProgressItem(
+    roadmapId: string,
+    data: { itemId?: string; skillName?: string; status: 'not_started' | 'in_progress' | 'completed' | string }
+  ): Promise<RoadmapProgressRecord> {
+    const response = await apiClient.patch(`/roadmaps/${roadmapId}/progress/items`, data);
+    return extractApiResource<RoadmapProgressRecord>(response.data);
+  },
+
+  async resetRoadmapProgress(roadmapId: string): Promise<RoadmapProgressRecord> {
+    const response = await apiClient.post(`/roadmaps/${roadmapId}/progress/reset`);
+    return extractApiResource<RoadmapProgressRecord>(response.data);
+  },
+
+  async getRoadmapLearningList(roadmapId: string): Promise<IntegratedLearningListResponse> {
+    const response = await apiClient.get(`/roadmaps/${roadmapId}/learning`);
+    return extractApiResource<IntegratedLearningListResponse>(response.data);
+  },
+
+  async getRoadmapLearningItem(roadmapId: string, itemId: string): Promise<IntegratedLearningItemResponse> {
+    const response = await apiClient.get(`/roadmaps/${roadmapId}/learning/items/${itemId}`);
+    return extractApiResource<IntegratedLearningItemResponse>(response.data);
+  },
+
+  async generateRoadmapLearningItem(
+    roadmapId: string,
+    itemId: string,
+    options: { forceRegenerate?: boolean; includeResources?: boolean } = {}
+  ): Promise<IntegratedLearningItemResponse> {
+    const response = await apiClient.post(`/roadmaps/${roadmapId}/learning/items/${itemId}/generate`, options);
+    return extractApiResource<IntegratedLearningItemResponse>(response.data);
   }
 };

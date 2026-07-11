@@ -22,7 +22,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { SectionHeader } from '../../components/ui/SectionHeader';
 import { roadmapService } from '../../features/roadmaps/api';
-import type { LearningContent, LearningNode, Roadmap } from '../../features/roadmaps/types';
+import type { LearningContent, LearningNode, Roadmap, IntegratedLearningListItem } from '../../features/roadmaps/types';
 import { useTabBarAwareScroll } from '../../hooks/useTabBarAwareScroll';
 import type { RoadmapStackParamList } from '../../navigation/types';
 import { theme } from '../../theme';
@@ -44,6 +44,8 @@ export const SkillLearningDetailScreen: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabKey>('theory');
   const [aiResources, setAiResources] = useState<import('../../features/roadmaps/types').AILearningResource[]>([]);
   const [isSearchingVideos, setIsSearchingVideos] = useState(false);
+  // Integrated learning state
+  const [learningListItem, setLearningListItem] = useState<IntegratedLearningListItem | null>(null);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -51,24 +53,48 @@ export const SkillLearningDetailScreen: React.FC = () => {
       const data = await roadmapService.getRoadmapById(roadmapId);
       if (data) {
         setRoadmap(data);
+        let foundNode: LearningNode | null = null;
         if (nodeId) {
           for (const module of data.modules) {
             const found = module.nodes.find(n => n.id === nodeId);
-            if (found) {
-              setNode(found);
-              break;
-            }
+            if (found) { foundNode = found; break; }
           }
         } else {
           for (const module of data.modules) {
             const found = module.nodes.find(n => n.skillName === skillName || n.canonicalSkillName === skillName);
-            if (found) {
-              setNode(found);
-              break;
-            }
+            if (found) { foundNode = found; break; }
           }
         }
+        setNode(foundNode);
+
+        // Try fetching integrated learning list to check availability
+        roadmapService.getRoadmapLearningList(roadmapId)
+          .then((resp) => {
+            if (!resp?.items) return;
+            const match = resp.items.find((item) =>
+              item.itemId === nodeId ||
+              item.skillName === skillName ||
+              item.canonicalSkillName === skillName
+            );
+            if (match) {
+              setLearningListItem(match);
+              // Auto-load content if already available
+              if (match.learningStatus === 'available') {
+                return roadmapService.getRoadmapLearningItem(roadmapId, match.itemId);
+              }
+            }
+            return null;
+          })
+          .then((item) => {
+            if (item?.learning) {
+              setLearningContent(item.learning);
+              setActiveTab('theory');
+            }
+          })
+          .catch(() => { /* Silently ignore – user can manually trigger */ });
       }
+    } catch (err) {
+      console.warn('[SkillLearningDetail] Load failed:', err);
     } finally {
       setIsLoading(false);
     }
@@ -84,14 +110,42 @@ export const SkillLearningDetailScreen: React.FC = () => {
   const handleCompileWithAI = async () => {
     setIsGenerating(true);
     try {
-      const content = await roadmapService.generateLearningContent({
-        skillName,
-        targetRole: roleName,
-        level: difficulty,
-        language: 'vi',
-      });
-      setLearningContent(content);
-      setActiveTab('theory');
+      let content: LearningContent | null = null;
+
+      // Use integrated endpoint if we have a nodeId or learningListItem
+      const itemId = learningListItem?.itemId || nodeId;
+      if (itemId && roadmapId) {
+        try {
+          const resp = await roadmapService.generateRoadmapLearningItem(roadmapId, itemId, {
+            forceRegenerate: false,
+            includeResources: true,
+          });
+          if (resp?.learning) {
+            content = resp.learning;
+            // Refresh learning list item status
+            if (resp.itemId) {
+              setLearningListItem((prev) => prev ? { ...prev, learningStatus: 'available' } : prev);
+            }
+          }
+        } catch {
+          // fallback to generic skill endpoint below
+        }
+      }
+
+      // Generic fallback
+      if (!content) {
+        content = await roadmapService.generateLearningContent({
+          skillName,
+          targetRole: roleName,
+          level: difficulty,
+          language: 'vi',
+        });
+      }
+
+      if (content) {
+        setLearningContent(content);
+        setActiveTab('theory');
+      }
     } catch (error) {
       console.error('Error generating learning content:', error);
       // fallback to chat

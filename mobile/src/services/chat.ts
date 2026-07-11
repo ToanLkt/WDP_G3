@@ -5,7 +5,8 @@ import { normalizeChatMessage, normalizeChatSession, normalizeChatSessions } fro
 export interface ChatMessage {
   id: string;
   text: string;
-  sender: 'user' | 'ai';
+  /** 'user' | 'ai' | 'admin' */
+  sender: 'user' | 'ai' | 'admin';
   timestamp: string;
 }
 
@@ -17,10 +18,24 @@ export interface ChatSession {
   messages?: ChatMessage[];
 }
 
+export interface SendMessageResult {
+  userMessage: ChatMessage;
+  /** null when effectiveMode is MANUAL (waiting for admin) */
+  assistantMessage: ChatMessage | null;
+  effectiveMode: 'AI_AUTO' | 'MANUAL' | string;
+  status: 'active' | 'waiting_admin' | 'answered' | 'closed' | string;
+}
+
+const resolveSender = (role: string, senderType?: string): ChatMessage['sender'] => {
+  if (senderType === 'ADMIN') return 'admin';
+  if (senderType === 'USER' || role === 'user') return 'user';
+  return 'ai';
+};
+
 const toMobileMessage = (message: ReturnType<typeof normalizeChatMessage>): ChatMessage => ({
   id: message.id,
   text: message.content,
-  sender: message.role === 'user' ? 'user' : 'ai',
+  sender: resolveSender(message.role, (message as any).senderType),
   timestamp: message.timestamp,
 });
 
@@ -58,19 +73,32 @@ export const fetchChatSessionDetail = async (sessionId: string): Promise<ChatMes
 export const sendChatMessage = async (
   sessionId: string,
   message: string
-): Promise<{ userMessage: ChatMessage; assistantMessage: ChatMessage }> => {
+): Promise<SendMessageResult> => {
   const payload = await chatApi.sendMessage(sessionId, message);
   const data = extractApiResource<Record<string, unknown>>(payload, []);
 
+  const effectiveMode = String(data?.effectiveMode ?? data?.mode ?? 'AI_AUTO');
+  const status = String(data?.status ?? 'active');
   const userMsg = data?.userMessage;
-  const assistantMsg = data?.assistantMessage;
+  const assistantMsg = data?.assistantMessage ?? data?.aiMessage;
+
+  const userMessage = toMobileMessage(
+    normalizeChatMessage(userMsg || { content: message, role: 'user', senderType: 'USER' })
+  );
+
+  // In MANUAL mode the backend returns no AI reply yet
+  if (effectiveMode === 'MANUAL' || status === 'waiting_admin') {
+    return { userMessage, assistantMessage: null, effectiveMode, status };
+  }
 
   if (!assistantMsg) {
     throw new Error('No reply message returned from the AI Mentor.');
   }
 
   return {
-    userMessage: toMobileMessage(normalizeChatMessage(userMsg || { content: message, role: 'user' })),
+    userMessage,
     assistantMessage: toMobileMessage(normalizeChatMessage(assistantMsg)),
+    effectiveMode,
+    status,
   };
 };

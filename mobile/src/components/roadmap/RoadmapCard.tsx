@@ -18,59 +18,61 @@ export const RoadmapCard: React.FC<RoadmapCardProps> = ({ roadmap, onPress }) =>
   const isArchived = roadmap.status === 'archived';
 
   return (
-    <Card style={styles.card}>
-      <View style={[styles.gradientBar, isArchived && styles.gradientBarArchived]} />
+    <TouchableOpacity onPress={onPress} activeOpacity={0.95}>
+      <Card style={styles.card}>
+        <View style={[styles.gradientBar, isArchived && styles.gradientBarArchived]} />
 
-      <View style={styles.badgesRow}>
-        <Badge label={roadmap.category} variant="secondary" />
-        <Badge label={formatDifficulty(roadmap.difficulty)} variant="warning" />
-        <Badge
-          label={isArchived ? 'Đã lưu trữ' : 'Đang học'}
-          variant={isArchived ? 'muted' : 'success'}
-        />
-      </View>
+        <View style={styles.badgesRow}>
+          <Badge label={roadmap.category} variant="secondary" />
+          <Badge label={formatDifficulty(roadmap.difficulty)} variant="warning" />
+          <Badge
+            label={isArchived ? 'Đã lưu trữ' : 'Đang học'}
+            variant={isArchived ? 'muted' : 'success'}
+          />
+        </View>
 
-      <Text style={styles.title} numberOfLines={2}>{roadmap.title}</Text>
-      <Text style={styles.subtitle} numberOfLines={2}>{roadmap.subtitle}</Text>
+        <Text style={styles.title} numberOfLines={2}>{roadmap.title}</Text>
+        <Text style={styles.subtitle} numberOfLines={2}>{roadmap.subtitle}</Text>
 
-      <View style={styles.tagsRow}>
-        {roadmap.tags.slice(0, 4).map((tag) => (
-          <View key={tag} style={styles.tagChip}>
-            <Text style={styles.tagText} numberOfLines={1}>{tag}</Text>
+        <View style={styles.tagsRow}>
+          {roadmap.tags.slice(0, 4).map((tag) => (
+            <View key={tag} style={styles.tagChip}>
+              <Text style={styles.tagText} numberOfLines={1}>{tag}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.progressBarBg}>
+          <View style={[styles.progressBarFill, { width: `${roadmap.progress}%` }, isArchived && styles.progressArchived]} />
+        </View>
+
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <Clock size={14} color={theme.colors.textMuted} />
+            <Text style={styles.statText}>{roadmap.estimatedWeeks} tuần</Text>
           </View>
-        ))}
-      </View>
+          <View style={styles.statItem}>
+            <ListChecks size={14} color={theme.colors.textMuted} />
+            <Text style={styles.statText}>{totalNodes} nhiệm vụ</Text>
+          </View>
+          <View style={styles.statItem}>
+            <GitBranch size={14} color={theme.colors.textMuted} />
+            <Text style={styles.statText}>{roadmap.sourceRepositoriesCount ?? 0} repo</Text>
+          </View>
+        </View>
 
-      <View style={styles.progressBarBg}>
-        <View style={[styles.progressBarFill, { width: `${roadmap.progress}%` }, isArchived && styles.progressArchived]} />
-      </View>
-
-      <View style={styles.statsRow}>
-        <View style={styles.statItem}>
-          <Clock size={14} color={theme.colors.textMuted} />
-          <Text style={styles.statText}>{roadmap.estimatedWeeks} tuần</Text>
+        <View style={styles.footerRow}>
+          <View>
+            <Text style={styles.footerLabel}>{isArchived ? 'Tiến độ đã lưu' : 'Hoàn thành'}</Text>
+            <Text style={styles.footerValue}>{roadmap.progress}%</Text>
+          </View>
+          <TouchableOpacity style={styles.continueBtn} onPress={onPress} activeOpacity={0.8}>
+            <Text style={styles.continueText}>{isArchived ? 'Xem lại' : 'Tiếp tục'}</Text>
+            <ArrowRight size={14} color={theme.colors.textPrimary} />
+          </TouchableOpacity>
         </View>
-        <View style={styles.statItem}>
-          <ListChecks size={14} color={theme.colors.textMuted} />
-          <Text style={styles.statText}>{totalNodes} nhiệm vụ</Text>
-        </View>
-        <View style={styles.statItem}>
-          <GitBranch size={14} color={theme.colors.textMuted} />
-          <Text style={styles.statText}>{roadmap.sourceRepositoriesCount ?? 0} repo</Text>
-        </View>
-      </View>
-
-      <View style={styles.footerRow}>
-        <View>
-          <Text style={styles.footerLabel}>{isArchived ? 'Tiến độ đã lưu' : 'Hoàn thành'}</Text>
-          <Text style={styles.footerValue}>{roadmap.progress}%</Text>
-        </View>
-        <TouchableOpacity style={styles.continueBtn} onPress={onPress} activeOpacity={0.8}>
-          <Text style={styles.continueText}>{isArchived ? 'Xem lại' : 'Tiếp tục'}</Text>
-          <ArrowRight size={14} color={theme.colors.textPrimary} />
-        </TouchableOpacity>
-      </View>
-    </Card>
+      </Card>
+    </TouchableOpacity>
   );
 };
 

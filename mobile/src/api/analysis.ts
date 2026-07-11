@@ -15,4 +15,9 @@ export const analysisApi = {
     const response = await apiClient.get('/analysis/me');
     return unwrapResponse(response.data);
   },
+
+  async getRoleMatches(data: { sourceMode: string; repoId?: string; repoIds?: string[]; limit?: number; view?: string }) {
+    const response = await apiClient.post('/analysis/role-matches', data);
+    return unwrapResponse(response.data);
+  },
 };

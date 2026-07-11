@@ -29,6 +29,7 @@ import {
   fetchChatSessionDetail,
   fetchChatSessions,
   sendChatMessage,
+  type SendMessageResult,
 } from '../../services/chat';
 import { fetchMyAnalyses } from '../../services/analysis';
 import { formatRelativeTime } from '../../utils/formatRelativeTime';
@@ -61,6 +62,8 @@ export const ChatScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [analysisCount, setAnalysisCount] = useState(0);
+  /** True when the current session is in MANUAL (admin) mode */
+  const [isManualMode, setIsManualMode] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -182,17 +185,32 @@ export const ChatScreen: React.FC = () => {
 
     try {
       const session = await ensureSession();
-      const { assistantMessage } = await sendChatMessage(session.id, content);
-      setMessages((prev) => [...prev, assistantMessage]);
-      scrollToBottom();
+      const result = await sendChatMessage(session.id, content);
 
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === session.id
-            ? { ...s, lastMessage: assistantMessage.text, title: s.title || session.title }
-            : s
-        )
-      );
+      // Update mode tracking
+      setIsManualMode(result.effectiveMode === 'MANUAL' || result.status === 'waiting_admin');
+
+      if (result.assistantMessage) {
+        setMessages((prev) => [...prev, result.assistantMessage!]);
+        scrollToBottom();
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === session.id
+              ? { ...s, lastMessage: result.assistantMessage!.text, title: s.title || session.title }
+              : s
+          )
+        );
+      } else {
+        // MANUAL mode: show a placeholder admin waiting message
+        const waitingMsg: ChatMessage = {
+          id: `waiting-${Date.now()}`,
+          text: 'Tin nhắn của bạn đã được ghi nhận. Hỗ trợ viên sẽ phản hồi sớm.',
+          sender: 'admin',
+          timestamp: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, waitingMsg]);
+        scrollToBottom();
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Có lỗi khi gửi tin nhắn.';
       setError(message);
@@ -222,12 +240,20 @@ export const ChatScreen: React.FC = () => {
   );
 
   const renderMessageItem = ({ item }: { item: ChatMessage }) => {
-    const isAi = item.sender === 'ai';
+    const isUser = item.sender === 'user';
+    const isAdmin = item.sender === 'admin';
+    const isAi = !isUser && !isAdmin;
     return (
-      <View style={[styles.messageRow, isAi ? styles.messageRowAi : styles.messageRowUser]}>
-        {isAi && renderAiAvatar()}
-        <View style={[styles.bubble, isAi ? styles.aiBubble : styles.userBubble]}>
-          <Text style={[styles.bubbleText, isAi ? styles.aiText : styles.userText]}>{item.text}</Text>
+      <View style={[styles.messageRow, isUser ? styles.messageRowUser : styles.messageRowAi]}>
+        {!isUser && renderAiAvatar()}
+        <View style={[
+          styles.bubble,
+          isUser ? styles.userBubble : isAdmin ? styles.adminBubble : styles.aiBubble,
+        ]}>
+          {isAdmin && (
+            <Text style={styles.adminLabel}>Hỗ trợ viên</Text>
+          )}
+          <Text style={[styles.bubbleText, isUser ? styles.userText : styles.aiText]}>{item.text}</Text>
           <Text style={[styles.timeText, isAi ? styles.timeAi : styles.timeUser]}>
             {formatRelativeTime(item.timestamp)}
           </Text>
@@ -292,6 +318,14 @@ export const ChatScreen: React.FC = () => {
           <Text style={styles.errorText}>{error}</Text>
         </View>
       ) : null}
+
+      {isManualMode && (
+        <View style={styles.manualModeBanner}>
+          <Text style={styles.manualModeBannerText}>
+            🔔 Phiên này đang chờ hỗ trợ viên. AI sẽ không phản hồi cho đến khi được kích hoạt lại.
+          </Text>
+        </View>
+      )}
 
       {isLoading && messages.length === 0 ? (
         <View style={styles.loadingBox}>
@@ -727,5 +761,33 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.xs,
     color: theme.colors.textMuted,
     marginTop: 2,
+  },
+  adminBubble: {
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+  },
+  adminLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#F59E0B',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  manualModeBanner: {
+    marginHorizontal: theme.spacing.md,
+    marginVertical: theme.spacing.sm,
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    borderRadius: theme.roundness.sm,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    borderLeftWidth: 3,
+    borderLeftColor: '#F59E0B',
+  },
+  manualModeBannerText: {
+    fontSize: theme.typography.sizes.sm,
+    color: '#F59E0B',
+    lineHeight: 20,
   },
 });

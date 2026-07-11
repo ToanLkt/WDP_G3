@@ -1,3 +1,5 @@
+// ─── Core User & Profile ─────────────────────────────────────────────────────
+
 export interface User {
   id: string;
   email: string;
@@ -18,6 +20,8 @@ export interface Profile {
   currentSkills: string[];
   githubUsername?: string;
 }
+
+// ─── Repository ───────────────────────────────────────────────────────────────
 
 export interface Repository {
   id: string;
@@ -53,45 +57,7 @@ export interface RepositoryCommit {
   url?: string;
 }
 
-export interface AnalysisResult {
-  id: string;
-  repositoryId: string;
-  repositoryName: string;
-  repoName?: string;
-  fullName?: string;
-  createdAt: string;
-  projectType: string;
-  techStack: string[];
-  languages?: string[];
-  frameworks?: string[];
-  packages?: string[];
-  skillSignals?: string[];
-  careerSignals?: string[];
-  scores: {
-    architecture: number;
-    completeness: number;
-    commitQuality: number;
-    documentation: number;
-    codeConvention: number;
-    overall: number;
-    techStackScore?: number;
-    documentationScore?: number;
-    commitQualityScore?: number;
-    deploymentScore?: number;
-    testingScore?: number;
-    portfolioReadinessScore?: number;
-    overallScore?: number;
-  };
-  skillVector?: SkillVectorItem[];
-  strengths: string[];
-  weaknesses: string[];
-  recommendations: Recommendation[];
-  missingSkills: Skill[];
-  careerDirection: CareerDirection;
-  commitSummary?: CommitSummary;
-  checklist?: AnalysisChecklist;
-  portfolioReadiness: PortfolioChecklist;
-}
+// ─── Shared Analysis Building Blocks ─────────────────────────────────────────
 
 export interface CommitSummary {
   totalCommits: number;
@@ -156,6 +122,67 @@ export interface PortfolioChecklist {
   overallReadiness: number;
 }
 
+// ─── Analysis Result ──────────────────────────────────────────────────────────
+
+export interface AnalysisResult {
+  id: string;
+  snapshotId?: string;
+  repositoryId: string;
+  repositoryName: string;
+  repoName?: string;
+  fullName?: string;
+  createdAt: string;
+  projectType: string;
+  techStack: string[];
+  languages?: string[];
+  frameworks?: string[];
+  packages?: string[];
+  skillSignals?: string[];
+  careerSignals?: string[];
+  scores: {
+    architecture: number;
+    completeness: number;
+    commitQuality: number;
+    documentation: number;
+    codeConvention: number;
+    overall: number;
+    techStackScore?: number;
+    documentationScore?: number;
+    commitQualityScore?: number;
+    deploymentScore?: number;
+    testingScore?: number;
+    portfolioReadinessScore?: number;
+    overallScore?: number;
+  };
+  skillVector?: SkillVectorItem[];
+  strengths: string[];
+  weaknesses: string[];
+  recommendations: Recommendation[];
+  missingSkills: Skill[];
+  careerDirection: CareerDirection;
+  analysisScope?: {
+    type?: string;
+    githubUsername?: string;
+    totalRepoCommits?: number;
+    userCommits?: number;
+    activeDays?: number;
+    firstCommitDate?: string;
+    lastCommitDate?: string;
+  };
+  userLevel?: string;
+  summary?: {
+    userLevel?: string;
+    userReadinessScore?: number;
+    careerDirection?: string;
+    projectType?: string;
+  };
+  commitSummary?: CommitSummary;
+  checklist?: AnalysisChecklist;
+  portfolioReadiness: PortfolioChecklist;
+}
+
+// ─── Chat ─────────────────────────────────────────────────────────────────────
+
 export interface ChatSession {
   id: string;
   title: string;
@@ -170,6 +197,8 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
 }
+
+// ─── AI Feedback ──────────────────────────────────────────────────────────────
 
 export interface AIFeedback {
   id?: string;
@@ -196,6 +225,8 @@ export interface AIFeedback {
   raw?: unknown;
 }
 
+// ─── Notifications ────────────────────────────────────────────────────────────
+
 export interface NotificationItem {
   id: string;
   title: string;
@@ -204,6 +235,8 @@ export interface NotificationItem {
   read: boolean;
   createdAt?: string;
 }
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export interface DashboardStats {
   totalRepositories: number;
@@ -232,7 +265,17 @@ export interface ProgressData {
   };
 }
 
-export type RoleMatchLevel = 'high' | 'medium' | 'low' | 'very_low' | 'excellent' | 'good' | 'moderate' | string;
+// ─── Role Matching ────────────────────────────────────────────────────────────
+
+export type RoleMatchLevel =
+  | 'high'
+  | 'medium'
+  | 'low'
+  | 'very_low'
+  | 'excellent'
+  | 'good'
+  | 'moderate'
+  | string;
 
 export interface RoleMatch {
   roleId: string;
@@ -263,6 +306,8 @@ export interface RepositoryRoleMatches {
   matches: RoleMatch[];
 }
 
+// ─── Catalogs ─────────────────────────────────────────────────────────────────
+
 export interface RoleCatalogItem {
   roleId: string;
   roleName: string;
@@ -279,6 +324,60 @@ export interface SkillCatalogItem {
   aliases: string[];
   defaultLevel: string;
   tags: string[];
+}
+
+// ─── Snapshot & Progress Comparison ──────────────────────────────────────────
+
+export interface SkillVectorSummary {
+  totalSkills: number;
+  missingCount: number;
+  weakCount: number;
+  developingCount: number;
+  strongCount: number;
+  averageScore: number;
+}
+
+export interface AnalysisSnapshot {
+  id: string;
+  repositoryId: string;
+  repoName?: string;
+  fullName?: string;
+  analysisId?: string;
+  analysisScope?: {
+    type?: string;
+    githubUsername?: string;
+    totalRepoCommits?: number;
+    userCommits?: number;
+    activeDays?: number;
+    firstCommitDate?: string;
+    lastCommitDate?: string;
+  };
+  createdAt: string;
+  analyzedAt?: string;
+  userLevel?: string;
+  projectType?: string;
+  confidence?: string | number;
+  careerDirection?: string;
+  missingSkills: string[];
+  topSkills?: SkillVectorItem[];
+  skillVector?: SkillVectorItem[];
+  skillVectorSummary?: SkillVectorSummary;
+  overallScore: number;
+  techStackScore?: number;
+  documentationScore?: number;
+  commitQualityScore?: number;
+  testingScore?: number;
+  deploymentScore?: number;
+  portfolioReadinessScore?: number;
+}
+
+export interface SnapshotDelta {
+  userReadinessScore: number;
+  levelChanged: boolean;
+  fromLevel?: string;
+  toLevel?: string;
+  userCommitsDelta: number;
+  activeDaysDelta: number;
 }
 
 export interface SkillComparisonItem {
@@ -300,25 +399,46 @@ export interface SnapshotScoreChange {
   status: 'improved' | 'regressed' | 'unchanged' | string;
 }
 
+export interface SkillComparisonSummary {
+  totalComparedSkills: number;
+  improvedCount: number;
+  regressedCount: number;
+  unchangedCount: number;
+  newSkillCount: number;
+  resolvedMissingCount: number;
+  remainingMissingCount: number;
+  newMissingCount: number;
+  averageBeforeScore: number;
+  averageAfterScore: number;
+  averageChange: number;
+}
+
 export interface SnapshotComparison {
+  repositoryId?: string;
+  repoName?: string;
+  fullName?: string;
+  analysisScopeType?: string;
+  enoughData?: boolean;
+  firstSnapshot: AnalysisSnapshot | null;
+  latestSnapshot: AnalysisSnapshot | null;
+  delta?: SnapshotDelta;
+  skillChanges: SkillComparisonItem[];
   overallChange: number;
   scoreChanges: SnapshotScoreChange[];
   summary: string;
-  topImprovedSkills?: SkillComparisonItem[];
-  skillVectorComparison?: {
-    skillSummary?: {
-      totalComparedSkills: number;
-      improvedCount: number;
-      regressedCount: number;
-      resolvedMissingCount: number;
-      remainingMissingCount: number;
-    };
-    topImprovedSkills?: SkillComparisonItem[];
-    topRegressedSkills?: SkillComparisonItem[];
-    newSkills?: string[];
-    resolvedMissingSkills?: string[];
-    remainingMissingSkills?: string[];
-    newMissingSkills?: string[];
-    summary?: string;
-  };
+  improvements: SnapshotScoreChange[];
+  regressions: SnapshotScoreChange[];
+  improvedChecklist?: string[];
+  regressedChecklist?: string[];
+  stillMissingChecklist?: string[];
+  alreadyPresentChecklist?: string[];
+  remainingMissingSkills: string[];
+  resolvedMissingSkills: string[];
+  newMissingSkills: string[];
+  topImprovedSkills: SkillComparisonItem[];
+  topRegressedSkills: SkillComparisonItem[];
+  newSkills: SkillComparisonItem[];
+  skillComparisonSummary: SkillComparisonSummary;
+  skillComparisonText: string;
+  raw?: unknown;
 }

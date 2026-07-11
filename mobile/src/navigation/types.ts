@@ -5,7 +5,9 @@ export type AuthStackParamList = {
 
 export type RepositoriesStackParamList = {
   RepoList: undefined;
+  RepoDetail: { repoId: string; repoName: string };
   RepoAnalysis: { repoId: string; repoName: string };
+  RepoProgress: { repoId: string; repoName: string };
   ConnectGitHub: undefined;
 };
 

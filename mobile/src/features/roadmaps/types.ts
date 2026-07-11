@@ -14,6 +14,19 @@ export type RoadmapDifficulty = 'Beginner' | 'Intermediate' | 'Advanced';
 export type LearningNodeStatus = 'locked' | 'unlocked' | 'in-progress' | 'completed';
 export type ResourceType = 'article' | 'video' | 'docs' | 'course' | 'repo' | 'exercise';
 
+export interface GenerateRoadmapOptions {
+  sourceMode?: 'all_analyzed_repos' | 'single_repo' | 'selected_repos' | string;
+  repoId?: string;
+  repoIds?: string[];
+  roleId?: string;
+  selectedRole?: { roleId: string; roleName: string };
+  level?: 'beginner' | 'intermediate' | 'advanced' | string;
+  durationWeeks?: number;
+  language?: string;
+  useRoleMatching?: boolean;
+  forceRegenerate?: boolean;
+}
+
 export interface LearningResource {
   id: string;
   title: string;
@@ -192,3 +205,77 @@ export interface AILearningResource {
   score?: number;
   tags?: string[];
 }
+
+export interface RoadmapProgressItem {
+  itemId: string;
+  skillName?: string;
+  canonicalSkillName?: string;
+  status: 'not_started' | 'in_progress' | 'completed' | string;
+  progressPercent: number;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface RoadmapProgressRecord {
+  roadmapId: string;
+  overallProgress: number;
+  items: RoadmapProgressItem[];
+  progressSummary?: {
+    totalItems?: number;
+    completedItems?: number;
+    inProgressItems?: number;
+    notStartedItems?: number;
+    overallProgressPercent?: number;
+  };
+}
+
+export interface IntegratedLearningListItem {
+  itemId: string;
+  taskTitle: string;
+  canonicalSkillName: string;
+  skillName: string;
+  targetRole: string;
+  level: string;
+  week: number;
+  priority: string;
+  learningStatus: 'available' | 'missing' | string;
+}
+
+export interface IntegratedLearningListResponse {
+  roadmapId: string;
+  sourceMode: string;
+  language: string;
+  items: IntegratedLearningListItem[];
+}
+
+export interface IntegratedLearningItemResponse {
+  roadmapId: string;
+  itemId: string;
+  task: {
+    title: string;
+    description: string;
+    skillName?: string;
+    canonicalSkillName?: string;
+    category?: string;
+    targetRole?: string;
+    level?: string;
+    week?: number;
+    priority?: string;
+    estimatedHours?: number;
+  };
+  learning?: LearningContent;
+  personalizedContext?: {
+    sourceMode?: string;
+    repoName?: string;
+    projectType?: string;
+    repositoryNames?: string[];
+    practiceTask?: string;
+    roadmapReason?: string;
+  };
+  progress?: {
+    status: string;
+    progressPercent: number;
+  } | null;
+}
+

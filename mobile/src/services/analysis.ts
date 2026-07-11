@@ -21,3 +21,38 @@ export const fetchMyAnalyses = async () => {
   const list = extractApiResource<unknown>(payload, ['analyses', 'results', 'items', 'snapshots']);
   return normalizeAnalyses(Array.isArray(list) ? list : payload);
 };
+
+export interface RoleMatchesResponse {
+  sourceMode: string;
+  analysisSource?: {
+    type?: string;
+    sourceMode?: string;
+    totalRepositories?: number;
+    totalUserCommits?: number;
+    userLevel?: string;
+    userReadinessScore?: number;
+    repositoryNames?: string[];
+  };
+  matches: Array<{
+    roleId: string;
+    roleName: string;
+    matchScore: number;
+    matchLevel: string;
+    matchLevelLabel: string;
+    matchedSkillNames?: string[];
+    weakSkillNames?: string[];
+    missingSkillNames?: string[];
+    recommendedNextSkills?: string[];
+  }>;
+}
+
+export const fetchRoleMatches = async (params: {
+  sourceMode: 'single_repo' | 'all_analyzed_repos' | 'selected_repos' | string;
+  repoId?: string;
+  repoIds?: string[];
+  limit?: number;
+  view?: 'summary' | 'detail' | string;
+}): Promise<RoleMatchesResponse> => {
+  const payload = await analysisApi.getRoleMatches(params);
+  return extractApiResource<RoleMatchesResponse>(payload);
+};

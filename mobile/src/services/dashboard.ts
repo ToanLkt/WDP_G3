@@ -38,6 +38,20 @@ export const fetchDashboardOverview = async (): Promise<DashboardOverview> => {
   const skills = (data.skills as Record<string, unknown>) || {};
   const user = (data.user as Record<string, unknown>) || {};
 
+  const parseSkills = (arr: unknown): string[] => {
+    if (!Array.isArray(arr)) return [];
+    return arr.map((item) => {
+      if (typeof item === 'string') return item;
+      if (item && typeof item === 'object') {
+        const obj = item as Record<string, unknown>;
+        const name = obj.skill ?? obj.name ?? obj.skillName ?? obj.canonicalSkillName;
+        if (typeof name === 'string') return name;
+        if (name) return String(name);
+      }
+      return String(item ?? '');
+    }).filter(Boolean);
+  };
+
   return {
     user: {
       _id: String(user._id ?? ''),
@@ -54,8 +68,8 @@ export const fetchDashboardOverview = async (): Promise<DashboardOverview> => {
       unanalyzed: Number(repositories.unanalyzed ?? 0),
     },
     skills: {
-      strong: Array.isArray(skills.strong) ? skills.strong.map(String) : [],
-      missing: Array.isArray(skills.missing) ? skills.missing.map(String) : [],
+      strong: parseSkills(skills.strong),
+      missing: parseSkills(skills.missing),
     },
     suggestedCareerPath: data.suggestedCareerPath ? String(data.suggestedCareerPath) : null,
     roadmapProgress: Number(data.roadmapProgress ?? 0),

@@ -23,6 +23,7 @@ import { RoadmapListScreen } from '../screens/roadmap/RoadmapListScreen';
 import { RoadmapDetailScreen } from '../screens/roadmap/RoadmapDetailScreen';
 import { SkillLearningDetailScreen } from '../screens/roadmap/SkillLearningDetailScreen';
 
+
 import type {
   AuthStackParamList,
   MainTabParamList,
@@ -30,6 +31,9 @@ import type {
   RoadmapStackParamList,
   RootStackParamList,
 } from './types';
+import { RepoProgressScreen } from '@/screens/repositories/RepoProgressScreen';
+import { RepoDetailScreen } from '@/screens/repositories/RepoDetailScreen';
+
 
 export type {
   AuthStackParamList,
@@ -72,9 +76,9 @@ const CustomTabBarButton = ({ onPress, accessibilityState }: any) => {
         styles.customBtn,
         focused && styles.customBtnFocused
       ]}>
-        <Milestone 
-          color="#FFFFFF" 
-          size={focused ? 26 : 22} 
+        <Milestone
+          color="#FFFFFF"
+          size={focused ? 26 : 22}
         />
       </View>
     </TouchableOpacity>
@@ -98,20 +102,30 @@ const RepositoriesStackNavigator = () => {
         contentStyle: { backgroundColor: theme.colors.background },
       }}
     >
-      <RepoStack.Screen 
-        name="RepoList" 
-        component={RepositoriesScreen} 
-        options={{ headerShown: false }} 
+      <RepoStack.Screen
+        name="RepoList"
+        component={RepositoriesScreen}
+        options={{ headerShown: false }}
       />
-      <RepoStack.Screen 
-        name="RepoAnalysis" 
-        component={AnalysisResultScreen} 
-        options={({ route }) => ({ title: route.params?.repoName || 'Phân tích' })} 
+      <RepoStack.Screen
+        name="RepoDetail"
+        component={RepoDetailScreen}
+        options={({ route }) => ({ title: route.params?.repoName || 'Chi tiết Repo' })}
       />
-      <RepoStack.Screen 
-        name="ConnectGitHub" 
-        component={ConnectGitHubScreen} 
-        options={{ title: 'Connect GitHub' }} 
+      <RepoStack.Screen
+        name="RepoAnalysis"
+        component={AnalysisResultScreen}
+        options={({ route }) => ({ title: route.params?.repoName || 'Phân tích' })}
+      />
+      <RepoStack.Screen
+        name="RepoProgress"
+        component={RepoProgressScreen}
+        options={({ route }) => ({ title: route.params?.repoName || 'Tiến trình', headerBackTitle: 'Quay lại' })}
+      />
+      <RepoStack.Screen
+        name="ConnectGitHub"
+        component={ConnectGitHubScreen}
+        options={{ title: 'Connect GitHub' }}
       />
     </RepoStack.Navigator>
   );
@@ -213,9 +227,9 @@ const MainTabsNavigator = () => {
         name="RepositoriesTab"
         component={RepositoriesStackNavigator}
         options={{
-          title: 'Kho lưu trữ',
+          title: 'Repos',
           headerShown: false, // Stack navigator has its own headers
-          tabBarLabel: 'Kho lưu trữ',
+          tabBarLabel: 'Repos',
           tabBarIcon: ({ color, size }) => <FolderCode color={color} size={size - 2} />,
         }}
       />

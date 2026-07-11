@@ -29,7 +29,7 @@ import { Card } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { RoadmapCard } from '../../components/roadmap/RoadmapCard';
 import { useTabBarAwareScroll } from '../../hooks/useTabBarAwareScroll';
-import { fetchMyAnalyses } from '../../services/analysis';
+import { fetchMyAnalyses, fetchRoleMatches } from '../../services/analysis';
 import { roadmapService, roadmapTargetRoles } from '../../features/roadmaps/api';
 import {
   defaultRoadmapFilters,
@@ -43,7 +43,7 @@ import {
   type RoadmapRoleRecommendation,
 } from '../../features/roadmaps/recommendation';
 import type { Roadmap } from '../../features/roadmaps/types';
-import type { AnalysisResult } from '../../types';
+import type { AnalysisResult, RoleMatch } from '../../types';
 import type { RoadmapStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<RoadmapStackParamList, 'RoadmapList'>;
@@ -62,9 +62,15 @@ export const RoadmapListScreen: React.FC = () => {
   const [rolePickerVisible, setRolePickerVisible] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'active' | 'archived'>('active');
   const [filters, setFilters] = useState(defaultRoadmapFilters);
+  // Server-based role recommendations (primary). Falls back to local logic if unavailable.
+  const [serverRecommendedRole, setServerRecommendedRole] = useState<RoadmapRoleRecommendation | null>(null);
+  const [serverJobRoadmaps, setServerJobRoadmaps] = useState<RoadmapRoleRecommendation[]>([]);
+  // Full role matches from server (for rich role cards)
+  const [serverRoleMatches, setServerRoleMatches] = useState<RoleMatch[]>([]);
 
-  const recommendedRoadmap = useMemo(() => recommendRoadmapRole(analyses), [analyses]);
-  const jobReadinessRoadmaps = useMemo(() => recommendJobReadinessRoadmaps(analyses), [analyses]);
+  // Merge server recommendations with local fallback
+  const recommendedRoadmap = serverRecommendedRole ?? recommendRoadmapRole(analyses);
+  const jobReadinessRoadmaps = serverJobRoadmaps.length > 0 ? serverJobRoadmaps : recommendJobReadinessRoadmaps(analyses);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -76,6 +82,32 @@ export const RoadmapListScreen: React.FC = () => {
       ]);
       setRoadmaps(roadmapList);
       setAnalyses(analysisList);
+
+      // Fetch server-side role matches (best effort)
+      if (analysisList.length > 0) {
+        fetchRoleMatches({ sourceMode: 'all_analyzed_repos', limit: 5 })
+          .then((result) => {
+            if (result?.matches?.length > 0) {
+              setServerRoleMatches(result.matches);
+              const [top, ...rest] = result.matches;
+              setServerRecommendedRole({
+                role: top.roleName as any,
+                title: 'Đề xuất chính theo phân tích',
+                reason: `Điểm phù hợp: ${top.matchScore}% – ${top.matchLevelLabel}`,
+                focus: top.recommendedNextSkills?.join(', ') || 'Tập trung theo các kỹ năng chính đã phát hiện.',
+              });
+              setServerJobRoadmaps(
+                rest.slice(0, 2).map((m) => ({
+                  role: m.roleName as any,
+                  title: `Đề xuất phụ: ${m.roleName}`,
+                  reason: `Điểm phù hợp: ${m.matchScore}% – ${m.matchLevelLabel}`,
+                  focus: m.recommendedNextSkills?.join(', ') || 'Phát triển thêm kỹ năng còn thiếu.',
+                }))
+              );
+            }
+          })
+          .catch(() => { /* Use local fallback silently */ });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể tải danh sách roadmap.');
     } finally {
@@ -89,7 +121,16 @@ export const RoadmapListScreen: React.FC = () => {
     }, [loadData])
   );
 
-  const filteredRoadmaps = useMemo(() => filterRoadmaps(roadmaps, filters), [roadmaps, filters]);
+  const filteredRoadmaps = useMemo(() => {
+    const filtered = filterRoadmaps(roadmaps, filters);
+    // Deduplicate by id – API may return duplicates
+    const seen = new Set<string>();
+    return filtered.filter((r) => {
+      if (seen.has(r.id)) return false;
+      seen.add(r.id);
+      return true;
+    });
+  }, [roadmaps, filters]);
 
   const inProgressCount = roadmaps.filter((r) => r.progress > 0 && r.progress < 100).length;
   const archivedCount = roadmaps.filter((r) => r.status === 'archived').length;
@@ -198,52 +239,141 @@ export const RoadmapListScreen: React.FC = () => {
       </Card>
 
       <Card style={styles.aiCard} padded={false}>
-        <Text style={styles.sectionTitle}>AI đề xuất roadmap phù hợp</Text>
-        {recommendedRoadmap ? (
-          <Text style={[styles.sectionDesc, styles.sectionDescLast]}>
-            Đề xuất chính:{' '}
-            <Text style={styles.highlight}>{recommendedRoadmap.role}</Text>. {recommendedRoadmap.reason}
-          </Text>
-        ) : (
-          <Text style={[styles.sectionDesc, styles.sectionDescLast]}>
-            Chưa có đủ dữ liệu phân tích repository. Hãy phân tích ít nhất một repository để AI đề xuất hướng đi phù hợp hơn.
-          </Text>
-        )}
-        <View style={styles.buttonBlock}>
-          <Button
-            title="Tạo theo đề xuất chính"
-            onPress={() => recommendedRoadmap && handleGenerate(recommendedRoadmap.role, 'primary-recommendation')}
-            loading={generatingKey === 'primary-recommendation'}
-            disabled={!recommendedRoadmap || isGenerating}
-            icon={<Sparkles size={16} color={theme.colors.textPrimary} />}
-          />
-        </View>
+        <Text style={styles.sectionTitle}>Gợi ý vai trò phù hợp với hồ sơ học tập</Text>
+        <Text style={[styles.sectionDesc, { marginBottom: theme.spacing.sm }]}>
+          Chọn vai trò bạn muốn theo đuổi để tạo lộ trình học cá nhân hóa.
+        </Text>
 
-        {jobReadinessRoadmaps.length > 0 && (
-          <View style={styles.suggestionsBlock}>
-            <Text style={styles.suggestionHeading}>2 đề xuất phụ để tăng khả năng xin việc</Text>
-            <Text style={styles.sectionDesc}>
-              Các lộ trình phụ tập trung vào những tín hiệu nhà tuyển dụng thường kiểm tra: kiểm thử, triển khai, CI/CD, tài liệu và chất lượng code.
+        {serverRoleMatches.length === 0 && !recommendedRoadmap && (
+          <View style={styles.noMatchBox}>
+            <Text style={styles.noMatchText}>
+              Chưa có đủ dữ liệu phân tích repository. Hãy phân tích ít nhất một repository để AI gợi ý vai trò phù hợp.
             </Text>
-            {jobReadinessRoadmaps.map((suggestion) => (
-              <View key={suggestion.role + suggestion.title} style={styles.suggestionCard}>
-                <Badge label="Phụ trợ xin việc" variant="warning" />
-                <Text style={styles.suggestionTitle}>{suggestion.title}</Text>
-                <Text style={styles.suggestionRole}>{suggestion.role}</Text>
-                <Text style={styles.suggestionReason}>{suggestion.reason}</Text>
-                <Text style={styles.suggestionFocus}>Trọng tâm: {suggestion.focus}</Text>
-                <View style={styles.buttonBlock}>
-                  <Button
-                    title="Tạo lộ trình"
-                    onPress={() => handleGenerateSuggestion(suggestion)}
-                    loading={generatingKey === `suggestion-${suggestion.role}`}
-                    disabled={isGenerating}
-                    icon={<Sparkles size={16} color={theme.colors.textPrimary} />}
-                  />
+          </View>
+        )}
+
+        {/* Featured role – first / best match */}
+        {serverRoleMatches.length > 0 && serverRoleMatches.slice(0, 1).map((match) => (
+          <View key={match.roleId} style={styles.roleMatchCardFeatured}>
+            <View style={styles.roleMatchHeader}>
+              <View style={{ flex: 1 }}>
+                <Badge label="Gợi ý phù hợp nhất" variant="secondary" />
+                <Text style={styles.roleMatchName}>{match.roleName}</Text>
+                <Text style={styles.roleMatchLevel}>{match.matchLevelLabel}</Text>
+              </View>
+              <View style={styles.scoreCircle}>
+                <Text style={styles.scoreValue}>{match.matchScore}%</Text>
+                <Text style={styles.scoreLabel}>phù hợp</Text>
+              </View>
+            </View>
+            <View style={styles.progressBarBg}>
+              <View style={[styles.progressBarFill, { width: `${Math.min(match.matchScore, 100)}%` }]} />
+            </View>
+            {match.topMatchedSkills && match.topMatchedSkills.length > 0 && (
+              <View style={styles.skillSection}>
+                <Text style={styles.skillSectionLabel}>NĂNG LỰC HIỆN CÓ</Text>
+                <View style={styles.skillChips}>
+                  {match.topMatchedSkills.slice(0, 5).map((s) => (
+                    <View key={s} style={styles.skillChipGreen}><Text style={styles.skillChipTextGreen}>{s}</Text></View>
+                  ))}
                 </View>
+              </View>
+            )}
+            {match.topMissingSkills && match.topMissingSkills.length > 0 && (
+              <View style={styles.skillSection}>
+                <Text style={styles.skillSectionLabel}>CẦN CỦNG CỐ</Text>
+                <View style={styles.skillChips}>
+                  {match.topMissingSkills.slice(0, 5).map((s) => (
+                    <View key={s} style={styles.skillChipOrange}><Text style={styles.skillChipTextOrange}>{s}</Text></View>
+                  ))}
+                </View>
+              </View>
+            )}
+            {match.recommendedNextSkills && match.recommendedNextSkills.length > 0 && (
+              <View style={styles.skillSection}>
+                <Text style={styles.skillSectionLabel}>NÊN HỌC TIẾP</Text>
+                <View style={styles.skillChips}>
+                  {match.recommendedNextSkills.slice(0, 5).map((s) => (
+                    <View key={s} style={styles.skillChipBlue}><Text style={styles.skillChipTextBlue}>{s}</Text></View>
+                  ))}
+                </View>
+              </View>
+            )}
+            <View style={[styles.buttonBlock, { marginTop: theme.spacing.md }]}>
+              <Button
+                title="Tạo lộ trình học"
+                onPress={() => handleGenerate(match.roleName, `role-${match.roleId}`)}
+                loading={generatingKey === `role-${match.roleId}`}
+                disabled={isGenerating}
+                icon={<Sparkles size={16} color={theme.colors.textPrimary} />}
+              />
+            </View>
+          </View>
+        ))}
+
+        {/* Secondary matches */}
+        {serverRoleMatches.length > 1 && (
+          <View style={styles.roleMatchGrid}>
+            {serverRoleMatches.slice(1, 3).map((match) => (
+              <View key={match.roleId} style={styles.roleMatchCardSmall}>
+                <View style={styles.roleMatchSmallHeader}>
+                  <Text style={styles.roleMatchNameSmall}>{match.roleName}</Text>
+                  <Text style={styles.scoreSmall}>{match.matchScore}%</Text>
+                </View>
+                <View style={styles.progressBarBg}>
+                  <View style={[styles.progressBarFillSec, { width: `${Math.min(match.matchScore, 100)}%` }]} />
+                </View>
+                {match.topMissingSkills && match.topMissingSkills.length > 0 && (
+                  <View style={styles.skillSection}>
+                    <Text style={styles.skillSectionLabel}>CẦN CỦNG CỐ</Text>
+                    <View style={styles.skillChips}>
+                      {match.topMissingSkills.slice(0, 3).map((s) => (
+                        <View key={s} style={styles.skillChipOrange}><Text style={styles.skillChipTextOrange}>{s}</Text></View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+                {match.recommendedNextSkills && match.recommendedNextSkills.length > 0 && (
+                  <View style={styles.skillSection}>
+                    <Text style={styles.skillSectionLabel}>NÊN HỌC TIẾP</Text>
+                    <View style={styles.skillChips}>
+                      {match.recommendedNextSkills.slice(0, 3).map((s) => (
+                        <View key={s} style={styles.skillChipBlue}><Text style={styles.skillChipTextBlue}>{s}</Text></View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+                <TouchableOpacity
+                  style={styles.createSmallBtn}
+                  onPress={() => handleGenerate(match.roleName, `role-${match.roleId}`)}
+                  disabled={isGenerating}
+                >
+                  <Text style={styles.createSmallBtnText}>
+                    {generatingKey === `role-${match.roleId}` ? 'Đang tạo...' : 'Tạo lộ trình học'}
+                  </Text>
+                </TouchableOpacity>
               </View>
             ))}
           </View>
+        )}
+
+        {/* Local fallback when no server matches */}
+        {serverRoleMatches.length === 0 && recommendedRoadmap && (
+          <>
+            <View style={styles.roleMatchCardFeatured}>
+              <Text style={styles.roleMatchName}>{recommendedRoadmap.role}</Text>
+              <Text style={[styles.sectionDesc, { marginTop: 4 }]}>{recommendedRoadmap.reason}</Text>
+              <View style={styles.buttonBlock}>
+                <Button
+                  title="Tạo lộ trình học"
+                  onPress={() => handleGenerate(recommendedRoadmap.role, 'primary-recommendation')}
+                  loading={generatingKey === 'primary-recommendation'}
+                  disabled={isGenerating}
+                  icon={<Sparkles size={16} color={theme.colors.textPrimary} />}
+                />
+              </View>
+            </View>
+          </>
         )}
       </Card>
 
@@ -637,5 +767,176 @@ const styles = StyleSheet.create({
   roleOptionTextActive: {
     color: theme.colors.secondaryLight,
     fontWeight: theme.typography.weights.bold,
+  },
+  // Role match cards (Web parity)
+  noMatchBox: {
+    padding: theme.spacing.md,
+    borderRadius: theme.roundness.sm,
+    backgroundColor: theme.colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    marginBottom: theme.spacing.md,
+  },
+  noMatchText: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textMuted,
+    lineHeight: theme.typography.lineHeights.sm,
+  },
+  roleMatchCardFeatured: {
+    marginTop: theme.spacing.sm,
+    padding: theme.spacing.md,
+    borderRadius: theme.roundness.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.secondary,
+    backgroundColor: theme.colors.surfaceLight,
+    marginBottom: theme.spacing.sm,
+  },
+  roleMatchHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
+  },
+  roleMatchName: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.bold,
+    color: theme.colors.textPrimary,
+    marginTop: 6,
+  },
+  roleMatchLevel: {
+    fontSize: theme.typography.sizes.xs,
+    color: theme.colors.textMuted,
+    marginTop: 2,
+  },
+  scoreCircle: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 60,
+    padding: 8,
+    borderRadius: theme.roundness.sm,
+    backgroundColor: '#6366f115',
+  },
+  scoreValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: theme.colors.secondary,
+  },
+  scoreLabel: {
+    fontSize: 9,
+    color: theme.colors.textMuted,
+    textTransform: 'uppercase',
+  },
+  progressBarBg: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: theme.colors.border,
+    marginBottom: theme.spacing.sm,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 3,
+    backgroundColor: theme.colors.secondary,
+  },
+  progressBarFillSec: {
+    height: '100%',
+    borderRadius: 3,
+    backgroundColor: theme.colors.textMuted,
+  },
+  skillSection: {
+    marginBottom: theme.spacing.sm,
+  },
+  skillSectionLabel: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: theme.colors.textMuted,
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  },
+  skillChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  skillChipGreen: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    backgroundColor: '#22c55e15',
+    borderWidth: 1,
+    borderColor: '#22c55e50',
+  },
+  skillChipTextGreen: {
+    fontSize: 11,
+    color: '#16a34a',
+    fontWeight: '600',
+  },
+  skillChipOrange: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    backgroundColor: '#f9731615',
+    borderWidth: 1,
+    borderColor: '#f9731650',
+  },
+  skillChipTextOrange: {
+    fontSize: 11,
+    color: '#ea580c',
+    fontWeight: '600',
+  },
+  skillChipBlue: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    backgroundColor: '#6366f115',
+    borderWidth: 1,
+    borderColor: '#6366f150',
+  },
+  skillChipTextBlue: {
+    fontSize: 11,
+    color: theme.colors.secondary,
+    fontWeight: '600',
+  },
+  roleMatchGrid: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.sm,
+  },
+  roleMatchCardSmall: {
+    flex: 1,
+    padding: theme.spacing.sm + 2,
+    borderRadius: theme.roundness.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceLight,
+  },
+  roleMatchSmallHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing.xs,
+  },
+  roleMatchNameSmall: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.bold,
+    color: theme.colors.textPrimary,
+    flex: 1,
+  },
+  scoreSmall: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: 'bold',
+    color: theme.colors.textSecondary,
+  },
+  createSmallBtn: {
+    marginTop: theme.spacing.sm,
+    paddingVertical: 8,
+    borderRadius: 7,
+    backgroundColor: theme.colors.secondary,
+    alignItems: 'center',
+  },
+  createSmallBtnText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#000',
   },
 });

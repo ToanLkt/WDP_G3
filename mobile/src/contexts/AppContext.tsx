@@ -423,15 +423,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }));
       }
 
-      const { assistantMessage } = await sendChatMessage(sessionId, messageText);
+      const result = await sendChatMessage(sessionId, messageText);
 
-      setChatHistory((prevChats) => {
-        const currentHistory = prevChats[activeRepoId] || [];
-        return {
-          ...prevChats,
-          [activeRepoId]: [...currentHistory, assistantMessage],
-        };
-      });
+      if (result.assistantMessage) {
+        setChatHistory((prevChats) => {
+          const currentHistory = prevChats[activeRepoId] || [];
+          return {
+            ...prevChats,
+            [activeRepoId]: [...currentHistory, result.assistantMessage!],
+          };
+        });
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Có lỗi xảy ra khi liên kết với AI Mentor. Vui lòng kiểm tra và gửi lại.';
       const errorMsg: ChatMessage = {

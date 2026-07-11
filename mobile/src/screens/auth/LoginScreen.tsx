@@ -42,12 +42,24 @@ export const LoginScreen: React.FC = () => {
 
   // Google Auth Setup
   useEffect(() => {
-    import('@react-native-google-signin/google-signin').then(({ GoogleSignin }) => {
-      GoogleSignin.configure({
-        webClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || '',
-        offlineAccess: true,
+    import('@react-native-google-signin/google-signin')
+      .then(({ GoogleSignin }) => {
+        if (GoogleSignin && typeof GoogleSignin.configure === 'function') {
+          try {
+            GoogleSignin.configure({
+              webClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || '',
+              offlineAccess: true,
+            });
+          } catch (e) {
+            console.warn('Google Signin configuration failed:', e);
+          }
+        } else {
+          console.warn('GoogleSignin is not available in this environment.');
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to load Google Signin module:', err);
       });
-    });
   }, []);
 
   const handleGoogleLoginFlow = async () => {
@@ -55,6 +67,9 @@ export const LoginScreen: React.FC = () => {
     setApiError('');
     try {
       const { GoogleSignin } = await import('@react-native-google-signin/google-signin');
+      if (!GoogleSignin || typeof GoogleSignin.configure !== 'function') {
+        throw new Error('Google Sign-In không khả dụng trong môi trường này (ví dụ: Expo Go). Vui lòng sử dụng phương thức đăng nhập bằng Email/Password.');
+      }
       await GoogleSignin.hasPlayServices();
       const response = await GoogleSignin.signIn();
       if (response.type === 'success') {

@@ -95,6 +95,10 @@ export const AnalysisResultScreen: React.FC = () => {
     navigation.navigate('ChatTab', { repoId: data.repositoryId, repoName: repoName });
   };
 
+  const handleViewProgress = () => {
+    navigation.navigate('RepoProgress', { repoId: data.repositoryId, repoName: repoName });
+  };
+
   const languages = data.languages?.length ? data.languages : (data.techStack || []);
   const frameworks = data.frameworks?.length ? data.frameworks : (data.techStack || []);
   const packages = data.packages || [];
@@ -173,6 +177,12 @@ export const AnalysisResultScreen: React.FC = () => {
             <Badge key={lang} label={lang} variant="primary" style={{ marginLeft: 6 }} />
           ))}
         </View>
+
+        {/* Shortcut to progress screen */}
+        <TouchableOpacity style={styles.progressBtn} onPress={handleViewProgress} activeOpacity={0.8}>
+          <TrendingUp size={15} color="#10B981" />
+          <Text style={styles.progressBtnText}>📈 Xem Tiến trình</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Điểm phân tích */}
@@ -208,13 +218,42 @@ export const AnalysisResultScreen: React.FC = () => {
         <View style={styles.overviewRow}>
           <View style={styles.overviewItem}>
             <Text style={styles.overviewLabel}>LOẠI DỰ ÁN</Text>
-            <Text style={styles.overviewValue}>{data.projectType}</Text>
+            <Text style={styles.overviewValue}>{data.projectType || 'N/A'}</Text>
           </View>
           <View style={styles.overviewItem}>
             <Text style={styles.overviewLabel}>ĐỊNH HƯỚNG NGHỀ NGHIỆP</Text>
             <Text style={[styles.overviewValue, { color: theme.colors.secondaryLight }]}>{data.careerDirection?.primary || 'N/A'}</Text>
           </View>
         </View>
+
+        <View style={[styles.overviewRow, { marginTop: theme.spacing.sm }]}>
+          <View style={styles.overviewItem}>
+            <Text style={styles.overviewLabel}>ĐÓNG GÓP CỦA BẠN</Text>
+            <Text style={styles.overviewValue}>
+              {data.analysisScope?.userCommits ?? data.commitSummary?.totalCommits ?? '0'} / {data.analysisScope?.totalRepoCommits ?? data.commitSummary?.totalCommits ?? '0'} commits
+            </Text>
+          </View>
+          <View style={styles.overviewItem}>
+            <Text style={styles.overviewLabel}>CẤP ĐỘ NĂNG LỰC</Text>
+            <Badge
+              label={(data.summary?.userLevel || data.userLevel || 'Beginner').toUpperCase()}
+              variant={(data.summary?.userLevel || data.userLevel) === 'advanced' ? 'success' : (data.summary?.userLevel || data.userLevel) === 'intermediate' ? 'info' : 'warning'}
+            />
+          </View>
+        </View>
+
+        <View style={[styles.overviewRow, { marginTop: theme.spacing.sm }]}>
+          <View style={styles.overviewItem}>
+            <Text style={styles.overviewLabel}>TÀI KHOẢN GITHUB</Text>
+            <Text style={styles.overviewValue}>{data.analysisScope?.githubUsername || 'N/A'}</Text>
+          </View>
+          <View style={styles.overviewItem}>
+            <Text style={styles.overviewLabel}>SỐ NGÀY HOẠT ĐỘNG</Text>
+            <Text style={styles.overviewValue}>{data.analysisScope?.activeDays ?? data.commitSummary?.activeDays ?? 0} ngày</Text>
+          </View>
+        </View>
+
+        <View style={[styles.divider, { marginVertical: theme.spacing.md }]} />
 
         <View style={styles.overviewSection}>
           <Text style={styles.overviewLabel}>NGÔN NGỮ</Text>
@@ -633,5 +672,23 @@ const styles = StyleSheet.create({
   actionsRow: {
     flexDirection: 'row',
     gap: theme.spacing.md,
+  },
+  progressBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    marginTop: 12,
+    backgroundColor: 'rgba(16,185,129,0.12)',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.35)',
+  },
+  progressBtnText: {
+    color: '#10B981',
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

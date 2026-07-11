@@ -4,24 +4,27 @@ import { asArray, asNumber, asRecord, extractObject, firstString } from './helpe
 
 export const normalizeAnalysis = (payload: unknown): AnalysisResult => {
   const source = asRecord(extractObject(payload, ['analysis', 'result', 'snapshot']));
-  const scores = asRecord(source.scores ?? source.scoreBreakdown);
-  const careerDirectionValue = source.careerDirection;
+  const summary = asRecord(source.summary);
+  const scoreBreakdown = asRecord(source.scoreBreakdown);
+  const scores = asRecord(source.scores ?? source.scoreBreakdown ?? summary.scoreBreakdown);
+  const careerDirectionValue = source.careerDirection ?? summary.careerDirection;
   const careerDirection = asRecord(careerDirectionValue);
   const commitSummary = asRecord(source.commitSummary);
   const checklist = asRecord(source.checklist);
   const portfolioReadiness = asRecord(source.portfolioReadiness);
   const repository = asRecord(source.repository);
-  const repositoryId = firstString(source.repositoryId, repository._id, repository.id);
-  const repoName = firstString(source.repoName, source.repositoryName, repository.name, 'Repository');
+  const repositoryId = firstString(source.repositoryId, repository.repositoryId, repository._id, repository.id);
+  const repoName = firstString(source.repoName, source.repositoryName, repository.repoName, repository.name, 'Repository');
 
   return {
-    id: firstString(source.id, source._id),
+    id: firstString(source.id, source._id, source.analysisId),
+    snapshotId: firstString(source.snapshotId) || undefined,
     repositoryId,
     repositoryName: repoName,
     repoName,
     fullName: firstString(source.fullName, repository.fullName, repository.full_name),
     createdAt: firstString(source.createdAt, source.analyzedAt, new Date().toISOString()),
-    projectType: firstString(source.projectType, source.type, 'Unknown'),
+    projectType: firstString(summary.projectType, source.projectType, source.type, 'Unknown'),
     techStack: asArray(source.techStack ?? source.technologies).map(cleanAnalysisText),
     languages: asArray(source.languages).map(cleanAnalysisText),
     frameworks: asArray(source.frameworks).map(cleanAnalysisText),
@@ -37,14 +40,14 @@ export const normalizeAnalysis = (payload: unknown): AnalysisResult => {
       commitQuality: asNumber(scores.commitQuality ?? scores.commitQualityScore),
       documentation: asNumber(scores.documentation ?? scores.documentationScore),
       codeConvention: asNumber(scores.codeConvention ?? scores.codeQuality),
-      overall: asNumber(scores.overall ?? scores.overallScore ?? source.overallScore),
+      overall: asNumber(scores.overall ?? scores.overallScore ?? summary.overallScore ?? source.overallScore),
       techStackScore: asNumber(scores.techStackScore ?? scores.techStack),
       documentationScore: asNumber(scores.documentationScore ?? scores.documentation),
       commitQualityScore: asNumber(scores.commitQualityScore ?? scores.commitQuality),
       deploymentScore: asNumber(scores.deploymentScore ?? scores.deployment),
       testingScore: asNumber(scores.testingScore ?? scores.testing),
       portfolioReadinessScore: asNumber(scores.portfolioReadinessScore ?? scores.portfolioReadiness),
-      overallScore: asNumber(scores.overallScore ?? scores.overall ?? source.overallScore),
+      overallScore: asNumber(scores.overallScore ?? scores.overall ?? summary.overallScore ?? source.overallScore),
     },
     skillVector: asArray(source.skillVector).map((item) => {
       const record = asRecord(item);
@@ -76,7 +79,7 @@ export const normalizeAnalysis = (payload: unknown): AnalysisResult => {
       const record = asRecord(item);
       return {
         id: firstString(record.id, record._id, `skill-${index}`),
-        name: cleanAnalysisText(firstString(record.name, String(item))),
+        name: cleanAnalysisText(firstString(record.skill, record.name, record.skillName, record.canonicalSkillName, String(item))),
         category: cleanAnalysisText(firstString(record.category, 'Tổng quát')),
         level: firstString(record.level, 'beginner') as 'beginner' | 'intermediate' | 'advanced',
         importance: firstString(record.importance, 'medium') as 'high' | 'medium' | 'low',
@@ -86,12 +89,20 @@ export const normalizeAnalysis = (payload: unknown): AnalysisResult => {
       primary: cleanAnalysisText(firstString(
         careerDirection.primary,
         typeof careerDirectionValue === 'string' ? careerDirectionValue : undefined,
+        summary.careerDirection,
         source.targetCareer,
         'Software Engineer'
       )),
       secondary: asArray(careerDirection.secondary).map(cleanAnalysisText),
-      confidence: asNumber(careerDirection.confidence),
+      confidence: asNumber(careerDirection.confidence ?? summary.confidence),
       reasoning: cleanAnalysisText(firstString(careerDirection.reasoning)),
+    },
+    userLevel: firstString(summary.userLevel),
+    summary: {
+      userLevel: firstString(summary.userLevel) || undefined,
+      userReadinessScore: typeof summary.userReadinessScore === 'number' ? summary.userReadinessScore : undefined,
+      careerDirection: firstString(summary.careerDirection) || undefined,
+      projectType: firstString(summary.projectType) || undefined,
     },
     commitSummary: {
       totalCommits: asNumber(commitSummary.totalCommits),

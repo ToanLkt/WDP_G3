@@ -161,8 +161,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   contentRowWithIcon: {
-    width: '100%',
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
   },
   outlineButton: {
     paddingHorizontal: theme.spacing.lg,

@@ -56,20 +56,20 @@ export const RepositoriesScreen: React.FC = () => {
     }
   };
 
+  const handleOpenRepo = (repo: Repository) => {
+    navigation.navigate('RepoDetail', { repoId: repo.id, repoName: repo.name });
+  };
+
   const handleAnalyze = async (repo: Repository) => {
-    setAnalyzingRepoIds((prev) => ({ ...prev, [repo.id]: true }));
-    try {
-      await analyzeRepository(repo.id, { forceRefresh: repo.is_analyzed });
-      navigation.navigate('RepoAnalysis', { repoId: repo.id, repoName: repo.name });
-    } catch (err) {
-      alert(getApiErrorMessage(err) || 'Phân tích thất bại. Vui lòng thử lại.');
-    } finally {
-      setAnalyzingRepoIds((prev) => ({ ...prev, [repo.id]: false }));
-    }
+    navigation.navigate('RepoDetail', { repoId: repo.id, repoName: repo.name });
   };
 
   const handleViewAnalysis = (repoId: string, repoName: string) => {
-    navigation.navigate('RepoAnalysis', { repoId, repoName });
+    navigation.navigate('RepoDetail', { repoId, repoName });
+  };
+
+  const handleViewProgress = (repoId: string, repoName: string) => {
+    navigation.navigate('RepoProgress', { repoId, repoName });
   };
 
   if (!githubConnected) {
@@ -89,9 +89,9 @@ export const RepositoriesScreen: React.FC = () => {
   const listHeader = (
     <View style={styles.pageContent}>
       <View style={styles.headerText}>
-        <Text style={styles.pageTitle}>Kho lưu trữ</Text>
+        <Text style={styles.pageTitle}>Repos</Text>
         <Text style={styles.pageSubtitle}>
-          Đồng bộ kho lưu trữ từ GitHub, xem dữ liệu bộ nhớ đệm và chạy phân tích cho mỗi kho lưu trữ.
+          Xem, phân tích và theo dõi tiến trình từ các kho lưu trữ GitHub của bạn.
         </Text>
       </View>
 
@@ -101,7 +101,7 @@ export const RepositoriesScreen: React.FC = () => {
             <Search size={16} color={theme.colors.textMuted} style={styles.searchIcon} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Tìm kiếm kho lưu trữ..."
+              placeholder="Tìm repo..."
               placeholderTextColor={theme.colors.textMuted}
               value={search}
               onChangeText={setSearch}
@@ -116,7 +116,7 @@ export const RepositoriesScreen: React.FC = () => {
             icon={<RefreshCw size={14} color={theme.colors.textPrimary} />}
           />
         </View>
-        <Text style={styles.countText}>{filteredRepos.length} kho lưu trữ</Text>
+        <Text style={styles.countText}>{filteredRepos.length} repos</Text>
       </Card>
     </View>
   );
@@ -134,8 +134,10 @@ export const RepositoriesScreen: React.FC = () => {
             <View style={styles.cardWrap}>
               <RepoCard
                 repo={item}
+                onPress={handleOpenRepo}
                 onAnalyze={() => handleAnalyze(item)}
                 onViewAnalysis={handleViewAnalysis}
+                onViewProgress={handleViewProgress}
                 isAnalyzing={!!analyzingRepoIds[item.id]}
               />
             </View>
