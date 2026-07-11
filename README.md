@@ -43,17 +43,17 @@ npm start
 # hoặc
 npx expo start
 
-# Android Emulator
+# Android Emulator (Expo Go)
 npm run android
 
 # iOS Simulator (macOS)
 npm run ios
 
+# Native Android Build (Development Build)
+npx expo run:android
+
 # Xóa cache khi gặp lỗi bundler
 npx expo start --clear
-```
-
----
 
 ## Cấu trúc thư mục
 
