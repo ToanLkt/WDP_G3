@@ -155,56 +155,113 @@ const findDetailBySkill = (skillGap = {}, skillName) => {
   ));
 };
 
-const buildSkillItem = ({ skillName, skillGap, category, status }) => {
+const getRepoFeatureForSkill = (repoFeatureEvidence = {}, skillName) => {
+  const normalized = String(skillName || '').toLowerCase();
+  const aliases = [
+    ['REST API', ['rest api', 'express.js', 'express', 'swagger', 'api documentation']],
+    ['Database', ['database', 'mongodb', 'mongoose', 'mongodb crud', 'mongodb aggregation']],
+    ['Authentication', ['authentication', 'jwt authentication', 'jwt auth', 'security']],
+    ['Docker Basics', ['docker basics', 'docker', 'deployment']],
+    ['API Testing', ['api testing', 'testing', 'jest']],
+    ['Documentation', ['documentation']],
+  ];
+
+  const match = aliases.find(([, names]) => names.some((name) => normalized === name));
+  if (!match) return null;
+  const feature = repoFeatureEvidence[match[0]];
+  return feature?.detected ? feature : null;
+};
+
+const roundScore = (value) => Math.round((Number(value) || 0) * 10000) / 100;
+
+const getLevelFromScore = (score, evidenceDetected) => {
+  const displayScore = Number(score) || 0;
+  if (displayScore >= 45) return 'strong';
+  if (displayScore >= 20 || evidenceDetected) return 'weak';
+  return 'missing';
+};
+
+const getEvidencePaths = (feature = {}) => toArray(feature?.evidence)
+  .map((item) => item.path)
+  .filter(Boolean);
+
+const buildDev2VecSkillItem = ({ skillName, skillGap, category, dev2vecStatus, priority, repoFeatureEvidence }) => {
   const detail = findDetailBySkill(skillGap, skillName);
-  const similarity = Number.isFinite(Number(detail?.similarity))
-    ? Number(detail.similarity)
-    : null;
+  const canonicalSkillName = detail?.canonicalSkillName || skillName;
+  const similarity = Number.isFinite(Number(detail?.similarity)) ? Number(detail.similarity) : 0;
+  const feature = getRepoFeatureForSkill(repoFeatureEvidence, canonicalSkillName);
+  const evidenceDetected = Boolean(feature);
+  const evidenceStatus = feature
+    ? (dev2vecStatus === 'missing' || dev2vecStatus === 'weak' ? 'detected_but_low_similarity' : 'detected')
+    : 'not_detected';
+  const score = (dev2vecStatus === 'matched' || dev2vecStatus === 'weak' || evidenceDetected)
+    ? similarity
+    : 0;
+  const displayScore = roundScore(score);
 
   return {
     skill: skillName,
-    canonicalSkillName: detail?.canonicalSkillName || skillName,
+    canonicalSkillName,
     category,
-    score: similarity === null ? null : Math.round(similarity * 10000) / 100,
-    level: status === 'matched' ? 'strong' : 'basic',
+    priority,
+    score: displayScore,
+    level: getLevelFromScore(displayScore, evidenceDetected),
+    similarity,
+    dev2vecStatus,
+    evidenceDetected,
+    evidenceStatus,
+    evidence: getEvidencePaths(feature),
+    evidenceDetails: feature?.evidence || [],
+    reason: feature
+      ? 'Repo có evidence về skill này, nhưng Dev2Vec similarity còn thấp.'
+      : 'Chưa thấy đủ source evidence rõ cho skill này.',
   };
 };
 
-const buildMissingSkillItem = ({ skillName, skillGap, category, priority }) => {
-  const detail = findDetailBySkill(skillGap, skillName);
-  return {
-    skill: skillName,
-    canonicalSkillName: detail?.canonicalSkillName || skillName,
-    category,
-    priority,
-  };
+const buildSkillItem = ({ skillName, skillGap, category, status, repoFeatureEvidence }) => {
+  return buildDev2VecSkillItem({ skillName, skillGap, category, dev2vecStatus: status, priority: 'matched', repoFeatureEvidence });
+};
+
+const buildMissingSkillItem = ({ skillName, skillGap, category, priority, repoFeatureEvidence }) => {
+  return buildDev2VecSkillItem({ skillName, skillGap, category, dev2vecStatus: 'missing', priority, repoFeatureEvidence });
 };
 
 const buildAnalysisSkillsFromDev2Vec = (dev2vecOutput = {}, options = {}) => {
   const topPrediction = getTopPrediction(dev2vecOutput);
   const roleId = topPrediction?.roleId || '';
   const category = options.category || roleId;
+  const repoFeatureEvidence = options.repoFeatureEvidence || dev2vecOutput.repoFeatureEvidence || dev2vecOutput.evidencePreview?.repoFeatures || {};
   const skillGap = topPrediction ? getSkillGapForPrediction(dev2vecOutput, topPrediction) : {};
 
-  const topSkills = toArray(skillGap.matchedSkillNames).map((skillName) => (
-    buildSkillItem({ skillName, skillGap, category, status: 'matched' })
+  const matchedSkills = toArray(skillGap.matchedSkillNames).map((skillName) => (
+    buildSkillItem({ skillName, skillGap, category, status: 'matched', repoFeatureEvidence })
   ));
-  const weakSkills = toArray(skillGap.weakSkillNames);
-  const missingSkills = [
-    ...toArray(skillGap.missingSkillNames).map((skillName) => (
-      buildMissingSkillItem({ skillName, skillGap, category, priority: 'high' })
-    )),
-    ...weakSkills.map((skillName) => (
-      buildMissingSkillItem({ skillName, skillGap, category, priority: 'medium' })
-    )),
-  ];
+  const weakSkills = toArray(skillGap.weakSkillNames).map((skillName) => (
+    buildSkillItem({ skillName, skillGap, category, status: 'weak', repoFeatureEvidence })
+  ));
+  const missingCandidates = toArray(skillGap.missingSkillNames).map((skillName) => (
+    buildMissingSkillItem({ skillName, skillGap, category, priority: 'medium', repoFeatureEvidence })
+  ));
+  const topSkills = [...matchedSkills, ...weakSkills];
+  const missingSkills = [];
+
+  for (const item of missingCandidates) {
+    if (item.evidenceDetected) {
+      topSkills.push({ ...item, priority: 'matched' });
+    } else {
+      missingSkills.push(item);
+    }
+  }
 
   return {
     topSkills,
     missingSkills,
     strengths: topSkills.map((item) => item.canonicalSkillName),
-    weaknesses: weakSkills,
-    recommendations: toArray(skillGap.recommendedNextSkills),
+    weaknesses: topSkills.filter((item) => item.level === 'weak'),
+    recommendations: [
+      ...missingSkills.map((item) => item.canonicalSkillName),
+      ...topSkills.filter((item) => item.level === 'weak').map((item) => item.canonicalSkillName),
+    ],
   };
 };
 

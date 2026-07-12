@@ -79,11 +79,16 @@ const skillVectorSchema = new mongoose.Schema(
     score: { type: Number, default: 0, min: 0, max: 1 },
     level: {
       type: String,
-      enum: ['missing', 'weak', 'developing', 'strong'],
+      enum: ['missing', 'weak', 'developing', 'moderate', 'strong'],
       default: 'missing',
     },
     evidence: { type: [String], default: [] },
     sources: { type: [String], default: [] },
+    similarity: { type: Number, default: null },
+    dev2vecStatus: { type: String, default: '' },
+    evidenceDetected: { type: Boolean, default: false },
+    evidenceStatus: { type: String, default: '' },
+    reason: { type: String, default: '', trim: true },
     lastCalculatedAt: { type: Date, default: Date.now },
   },
   { _id: false }

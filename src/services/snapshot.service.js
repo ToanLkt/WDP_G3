@@ -27,6 +27,8 @@ const parseBoolean = (value) => value === true || value === 'true';
 const normalizeView = (query = {}) => (query.view === 'detail' ? 'detail' : 'summary');
 const isUserContributionSnapshot = (snapshot) => snapshot?.analysisScope?.type === 'user_contribution';
 const getSnapshotDate = (snapshot) => snapshot.analyzedAt || snapshot.createdAt || null;
+const getSnapshotUserCommits = (snapshot) => Number(snapshot.analysisScope?.userCommits || snapshot.commitSummary?.totalCommits || 0);
+const getSnapshotActiveDays = (snapshot) => Number(snapshot.analysisScope?.activeDays || snapshot.commitSummary?.activeDays || 0);
 
 const normalizeListMap = (values) => {
   const map = new Map();
@@ -38,6 +40,36 @@ const normalizeListMap = (values) => {
     }
   }
   return map;
+};
+
+const DEV2VEC_SCORING_METHOD = 'dev2vec_doc2vec_classifier';
+const LEGACY_SCORING_METHOD = 'legacy_weighted_scoring';
+const SCORING_METHOD_MISMATCH_WARNING = 'Snapshots use different scoring methods, so skill-level comparison is not reliable.';
+
+const hasObjectData = (value) => value && typeof value === 'object' && Object.keys(value).length > 0;
+
+const detectScoringMethod = (snapshot = {}) => {
+  const explicitMethod =
+    snapshot.dev2vec?.scoringMethod ||
+    snapshot.scoreBreakdown?.scoringMethod ||
+    snapshot.analysisSummary?.scoringMethod ||
+    snapshot.summary?.scoringMethod;
+  if (explicitMethod) return String(explicitMethod);
+
+  if (
+    hasObjectData(snapshot.dev2vec) &&
+    (
+      Array.isArray(snapshot.dev2vec.rolePredictions) ||
+      hasObjectData(snapshot.dev2vec.skillGaps) ||
+      snapshot.dev2vec.modelVersion ||
+      hasObjectData(snapshot.dev2vec.vectorSources) ||
+      hasObjectData(snapshot.dev2vec.sourceStats)
+    )
+  ) {
+    return DEV2VEC_SCORING_METHOD;
+  }
+
+  return LEGACY_SCORING_METHOD;
 };
 
 const buildSnapshotPayload = (analysisResult) => {
@@ -72,11 +104,17 @@ const buildSnapshotPayload = (analysisResult) => {
     skillVector: objectArray(source.skillVector),
     dev2vec: {
       modelVersion: source.dev2vec?.modelVersion || null,
+      vectorDims: source.dev2vec?.vectorDims || {},
+      repoVector: source.dev2vec?.repoVector || source.dev2vec?.vectors?.repoVector || [],
+      issueVector: source.dev2vec?.issueVector || source.dev2vec?.vectors?.issueVector || [],
+      apiVector: source.dev2vec?.apiVector || source.dev2vec?.vectors?.apiVector || [],
+      combinedVector: source.dev2vec?.combinedVector || source.dev2vec?.vectors?.combinedVector || [],
       vectorSources: source.dev2vec?.vectorSources || {},
       sourceStats: source.dev2vec?.sourceStats || {},
       rolePredictions: objectArray(source.dev2vec?.rolePredictions),
+      skillGaps: source.dev2vec?.skillGaps || {},
       evidencePreview: source.dev2vec?.evidencePreview || {},
-      scoringMethod: source.dev2vec?.scoringMethod || '',
+      scoringMethod: source.dev2vec?.scoringMethod || source.scoreBreakdown?.scoringMethod || '',
     },
     analyzedAt: source.analyzedAt || source.createdAt || new Date(),
     snapshotType: 'after_analysis',
@@ -194,11 +232,13 @@ const formatSnapshotResponse = (snapshotInput, options = {}) => {
       if (snapshot.dev2vec) {
         response.debug.dev2vec = {
           modelVersion: snapshot.dev2vec.modelVersion || null,
+          vectorDims: snapshot.dev2vec.vectorDims || {},
           vectorSources: snapshot.dev2vec.vectorSources || {},
           sourceStats: snapshot.dev2vec.sourceStats || {},
           rolePredictions: snapshot.dev2vec.rolePredictions || [],
+          skillGaps: snapshot.dev2vec.skillGaps || {},
           evidencePreview: snapshot.dev2vec.evidencePreview || {},
-          scoringMethod: snapshot.dev2vec.scoringMethod || '',
+          scoringMethod: detectScoringMethod(snapshot),
         };
       }
     }
@@ -308,28 +348,63 @@ const mapSkillVectorByCanonical = (skillVector = []) => {
   return map;
 };
 
-const buildComparisonResult = (fromSnapshotInput, toSnapshotInput) => {
-  const fromSnapshot = toObject(fromSnapshotInput);
-  const toSnapshot = toObject(toSnapshotInput);
-  const fromRepositoryId = String(fromSnapshot.repositoryId || '');
-  const toRepositoryId = String(toSnapshot.repositoryId || '');
+const getTopDev2VecRoleId = (snapshot = {}) => {
+  const predictions = Array.isArray(snapshot.dev2vec?.rolePredictions) ? snapshot.dev2vec.rolePredictions : [];
+  const topPrediction = [...predictions].sort((left, right) => Number(left.rank || 999) - Number(right.rank || 999))[0];
+  return topPrediction?.roleId || Object.keys(snapshot.dev2vec?.skillGaps || {})[0] || '';
+};
 
-  if (fromRepositoryId !== toRepositoryId) {
-    throw createStatusError('Snapshots must belong to the same repository.', 400);
-  }
-  if (!isUserContributionSnapshot(fromSnapshot) || !isUserContributionSnapshot(toSnapshot)) {
-    throw createStatusError('Snapshot not found', 404);
-  }
+const findDev2VecSkillDetail = (skillGap = {}, skillName, status) => {
+  const key = canonicalizeSkillName(skillName).toLowerCase();
+  return objectArray(skillGap.details).find((detail) => {
+    const detailKey = canonicalizeSkillName(detail.canonicalSkillName || detail.skillName || detail.skill).toLowerCase();
+    return detailKey === key && (!status || detail.status === status);
+  });
+};
 
-  const fromSummary = fromSnapshot.summary || {};
-  const toSummary = toSnapshot.summary || {};
-  const fromScope = fromSnapshot.analysisScope || {};
-  const toScope = toSnapshot.analysisScope || {};
-  const fromScore = Number(fromSummary.userReadinessScore || 0);
-  const toScore = Number(toSummary.userReadinessScore || 0);
-  const fromSkills = mapSkillVectorByCanonical(fromSnapshot.skillVector);
-  const toSkills = mapSkillVectorByCanonical(toSnapshot.skillVector);
-  const skillChanges = [...new Set([...fromSkills.keys(), ...toSkills.keys()])]
+const scoreDev2VecSkill = (detail, status) => {
+  if (Number.isFinite(Number(detail?.similarity))) return Math.min(1, Math.max(0, Number(detail.similarity)));
+  if (status === 'matched') return 1;
+  if (status === 'weak') return 0.5;
+  return 0;
+};
+
+const mapDev2VecSkillsByCanonical = (snapshot = {}) => {
+  const roleId = getTopDev2VecRoleId(snapshot);
+  const skillGap = snapshot.dev2vec?.skillGaps?.[roleId] || {};
+  const map = new Map();
+  const addSkills = (names, status) => {
+    for (const name of stringArray(names)) {
+      const detail = findDev2VecSkillDetail(skillGap, name, status);
+      const canonicalSkillName = canonicalizeSkillName(detail?.canonicalSkillName || detail?.skillName || name);
+      const key = canonicalSkillName.toLowerCase();
+      if (!key) continue;
+      const score = scoreDev2VecSkill(detail, status);
+      const current = map.get(key);
+      if (!current || score > current.score) {
+        map.set(key, {
+          skillName: canonicalSkillName,
+          canonicalSkillName,
+          category: roleId || getCanonicalSkillCategory(canonicalSkillName),
+          score: roundScore(score),
+          status,
+        });
+      }
+    }
+  };
+
+  addSkills(skillGap.matchedSkillNames, 'matched');
+  addSkills(skillGap.weakSkillNames, 'weak');
+  addSkills(skillGap.missingSkillNames, 'missing');
+  return map;
+};
+
+const compareSkillScoreMaps = (fromSkills, toSkills, { commonOnly = false } = {}) => {
+  const keys = commonOnly
+    ? [...fromSkills.keys()].filter((key) => toSkills.has(key))
+    : [...new Set([...fromSkills.keys(), ...toSkills.keys()])];
+
+  return keys
     .map((key) => {
       const fromSkill = fromSkills.get(key) || { score: 0, canonicalSkillName: toSkills.get(key)?.canonicalSkillName || '', category: toSkills.get(key)?.category || 'General' };
       const toSkill = toSkills.get(key) || { score: 0, canonicalSkillName: fromSkill.canonicalSkillName, category: fromSkill.category };
@@ -345,7 +420,80 @@ const buildComparisonResult = (fromSnapshotInput, toSnapshotInput) => {
       };
     })
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+};
+
+const buildSkillComparison = (fromSnapshot, toSnapshot, fromScoringMethod, toScoringMethod) => {
+  if (fromScoringMethod !== toScoringMethod) {
+    return {
+      comparisonMode: 'score_only',
+      comparableSkillScores: false,
+      skillChanges: [],
+      newSkills: [],
+      improvedSkills: [],
+      weakerSkills: [],
+      resolvedMissingSkills: [],
+      newMissingSkills: [],
+      warnings: [SCORING_METHOD_MISMATCH_WARNING],
+    };
+  }
+
+  if (fromScoringMethod === DEV2VEC_SCORING_METHOD) {
+    const skillChanges = compareSkillScoreMaps(
+      mapDev2VecSkillsByCanonical(fromSnapshot),
+      mapDev2VecSkillsByCanonical(toSnapshot),
+      { commonOnly: true }
+    );
+    return {
+      comparisonMode: 'dev2vec_skill_similarity',
+      comparableSkillScores: true,
+      skillChanges,
+      newSkills: skillChanges.filter((item) => item.fromScore === 0 && item.toScore > 0),
+      improvedSkills: skillChanges.filter((item) => item.trend === 'improved'),
+      weakerSkills: skillChanges.filter((item) => item.trend === 'weaker'),
+      resolvedMissingSkills: [],
+      newMissingSkills: [],
+      warnings: [],
+    };
+  }
+
+  const skillChanges = compareSkillScoreMaps(
+    mapSkillVectorByCanonical(fromSnapshot.skillVector),
+    mapSkillVectorByCanonical(toSnapshot.skillVector)
+  );
   const missingSkillComparison = compareMissingSkills(fromSnapshot, toSnapshot);
+  return {
+    comparisonMode: 'legacy_skill_score',
+    comparableSkillScores: true,
+    skillChanges,
+    newSkills: skillChanges.filter((item) => item.fromScore === 0 && item.toScore > 0),
+    improvedSkills: skillChanges.filter((item) => item.trend === 'improved'),
+    weakerSkills: skillChanges.filter((item) => item.trend === 'weaker'),
+    resolvedMissingSkills: missingSkillComparison.resolvedMissingSkills,
+    newMissingSkills: missingSkillComparison.newMissingSkills,
+    warnings: [],
+  };
+};
+
+const buildComparisonResult = (fromSnapshotInput, toSnapshotInput) => {
+  const fromSnapshot = toObject(fromSnapshotInput);
+  const toSnapshot = toObject(toSnapshotInput);
+  const fromRepositoryId = String(fromSnapshot.repositoryId || '');
+  const toRepositoryId = String(toSnapshot.repositoryId || '');
+
+  if (fromRepositoryId !== toRepositoryId) {
+    throw createStatusError('Snapshots must belong to the same repository.', 400);
+  }
+  if (!isUserContributionSnapshot(fromSnapshot) || !isUserContributionSnapshot(toSnapshot)) {
+    throw createStatusError('Snapshot not found', 404);
+  }
+
+  const fromSummary = fromSnapshot.summary || {};
+  const toSummary = toSnapshot.summary || {};
+  const fromScore = Number(fromSummary.userReadinessScore || 0);
+  const toScore = Number(toSummary.userReadinessScore || 0);
+  const fromScoringMethod = detectScoringMethod(fromSnapshot);
+  const toScoringMethod = detectScoringMethod(toSnapshot);
+  const skillComparison = buildSkillComparison(fromSnapshot, toSnapshot, fromScoringMethod, toScoringMethod);
 
   return {
     repositoryId: toSnapshot.repositoryId,
@@ -353,32 +501,37 @@ const buildComparisonResult = (fromSnapshotInput, toSnapshotInput) => {
     fullName: toSnapshot.fullName,
     analysisScopeType: 'user_contribution',
     enoughData: true,
+    comparisonMode: skillComparison.comparisonMode,
+    comparableSkillScores: skillComparison.comparableSkillScores,
     fromSnapshot: {
       snapshotId: fromSnapshot._id,
       createdAt: getSnapshotDate(fromSnapshot),
       userReadinessScore: fromScore,
       userLevel: fromSummary.userLevel || '',
+      scoringMethod: fromScoringMethod,
     },
     toSnapshot: {
       snapshotId: toSnapshot._id,
       createdAt: getSnapshotDate(toSnapshot),
       userReadinessScore: toScore,
       userLevel: toSummary.userLevel || '',
+      scoringMethod: toScoringMethod,
     },
     delta: {
       userReadinessScore: roundScore(toScore - fromScore),
       levelChanged: (fromSummary.userLevel || '') !== (toSummary.userLevel || ''),
       fromLevel: fromSummary.userLevel || '',
       toLevel: toSummary.userLevel || '',
-      userCommitsDelta: Number(toScope.userCommits || 0) - Number(fromScope.userCommits || 0),
-      activeDaysDelta: Number(toScope.activeDays || 0) - Number(fromScope.activeDays || 0),
+      userCommitsDelta: getSnapshotUserCommits(toSnapshot) - getSnapshotUserCommits(fromSnapshot),
+      activeDaysDelta: getSnapshotActiveDays(toSnapshot) - getSnapshotActiveDays(fromSnapshot),
     },
-    skillChanges,
-    newSkills: skillChanges.filter((item) => item.fromScore === 0 && item.toScore > 0),
-    improvedSkills: skillChanges.filter((item) => item.trend === 'improved'),
-    weakerSkills: skillChanges.filter((item) => item.trend === 'weaker'),
-    resolvedMissingSkills: missingSkillComparison.resolvedMissingSkills,
-    newMissingSkills: missingSkillComparison.newMissingSkills,
+    skillChanges: skillComparison.skillChanges,
+    newSkills: skillComparison.newSkills,
+    improvedSkills: skillComparison.improvedSkills,
+    weakerSkills: skillComparison.weakerSkills,
+    resolvedMissingSkills: skillComparison.resolvedMissingSkills,
+    newMissingSkills: skillComparison.newMissingSkills,
+    warnings: skillComparison.warnings,
   };
 };
 
@@ -445,4 +598,5 @@ module.exports = {
   buildComparisonResult,
   buildSnapshotPayload,
   formatSnapshotResponse,
+  detectScoringMethod,
 };
