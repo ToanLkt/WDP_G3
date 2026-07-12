@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 
-const EVIDENCE_VERSION = 'contribution-code-evidence-v3';
-const FILE_SELECTION_VERSION = 'commit-file-selection-all-eligible-v1';
+const EVIDENCE_VERSION = 'contribution-code-evidence-v4';
+const FILE_SELECTION_VERSION = 'commit-file-selection-all-eligible-v2';
 const SOURCE_EXTENSIONS = new Set(['.js', '.jsx', '.ts', '.tsx', '.vue', '.svelte', '.py', '.java', '.cs', '.go', '.rb', '.php', '.dart', '.swift', '.kt', '.kts', '.css', '.scss', '.html', '.json', '.yml', '.yaml', '.toml', '.tf']);
 const APP_SOURCE_EXTENSIONS = new Set(['.tsx', '.jsx', '.ts', '.js', '.vue', '.svelte', '.py', '.java', '.cs', '.go', '.rb', '.php', '.dart', '.swift', '.kt', '.kts']);
 const STYLE_EXTENSIONS = new Set(['.css', '.scss']);
@@ -121,8 +121,15 @@ const parseContributionCodeEvidence = ({ filename, content = '', evidenceSource 
   push(languages, 'python', ext === '.py');
   push(languages, 'dart', ext === '.dart');
 
-  const backendServer = /from\s+['"]express['"]|require\(['"]express['"]\)|express\.router|router\.(get|post|put|patch|delete)|app\.(get|post|put|patch|delete)|@controller\b|from\s+['"]@nestjs|fastify\(|koa\(/i.test(text);
+  const backendPath = /(^|\/)(server|app|index)\.(js|ts)$|(^|\/)(routes?|controllers?|services?|models?|middlewares?|repositories?)\/|(^|\/)src\/(routes?|controllers?|services?|models?|middlewares?|repositories?)\//i.test(lowerPath)
+    && !/\.(tsx|jsx|vue|svelte|css|scss)$/.test(lowerPath);
+  const backendServer = backendPath
+    || /from\s+['"]express['"]|require\(['"]express['"]\)|express\.router|router\.(get|post|put|patch|delete)|app\.(get|post|put|patch|delete)|@controller\b|from\s+['"]@nestjs|fastify\(|koa\(/i.test(text);
   const database = /mongoose|prisma|sequelize|typeorm|mongodb|postgres|mysql|schema\.prisma/i.test(text);
+  const authentication = /jsonwebtoken|jwt\.|bcrypt|passport|authorize|authorization|authenticate|authmiddleware|protectedroute|roles?|permissions?|refresh\s*token|access\s*token/i.test(text)
+    || /(^|\/)(auth|middlewares?\/auth|controllers?\/auth|services?\/auth)[^/]*\.(js|ts)$/i.test(lowerPath);
+  const docker = /(^|\/)(dockerfile|docker-compose\.[^.]+|compose\.ya?ml)$/i.test(lowerPath);
+  const apiTesting = TEST_PATH.test(path) && /supertest|request\(|app\.listen|express|router|api|endpoint|jest|vitest|describe\(|it\(|expect\(/i.test(text);
   const mobile = /react-native|from\s+['"]expo|@react-navigation|flutter\/material|androidmanifest|uikit/i.test(text)
     || /(^|\/)(android|ios|screens|navigation)\//.test(lowerPath);
   const frontendTest = TEST_PATH.test(path) && /testing-library|vitest|jest|cypress|playwright|render\(|describe\(|it\(|expect\(/i.test(text);
@@ -154,19 +161,34 @@ const parseContributionCodeEvidence = ({ filename, content = '', evidenceSource 
     push(skills, 'Frontend Testing', patterns.has('frontend_testing'));
     push(skills, 'Responsive Design', patterns.has('frontend_responsive'));
   }
-  if (backendServer || database) {
+  if (backendServer || database || authentication || apiTesting) {
     roles.add('backend');
     push(frameworks, 'express', /express/i.test(text));
     push(frameworks, 'nestjs', /@nestjs|@controller/i.test(text));
     push(libraries, 'mongoose', /mongoose/i.test(text));
     push(libraries, 'prisma', /prisma/i.test(text));
+    push(libraries, 'jsonwebtoken', /jsonwebtoken|jwt\./i.test(text));
+    push(libraries, 'bcrypt', /bcrypt/i.test(text));
+    push(libraries, 'supertest', /supertest/i.test(text));
     push(patterns, 'backend_route', backendServer);
     push(patterns, 'backend_database', database);
+    push(patterns, 'backend_auth', authentication);
+    push(patterns, 'backend_api_testing', apiTesting);
     push(skills, 'REST API', backendServer);
     push(skills, 'Database', database);
+    push(skills, 'Authentication', authentication);
+    push(skills, 'API Testing', apiTesting);
   }
   if (mobile) { roles.add('mobile'); patterns.add('mobile_source'); }
-  if (/dockerfile|docker-compose|github\/workflows|terraform|kubernetes|apiVersion:\s*apps/i.test(`${path}\n${text}`)) { roles.add('devops'); patterns.add('devops'); }
+  if (/dockerfile|docker-compose|github\/workflows|terraform|kubernetes|apiVersion:\s*apps/i.test(`${path}\n${text}`)) {
+    roles.add('devops');
+    patterns.add('devops');
+    if (docker) {
+      roles.add('backend');
+      skills.add('Docker Basics');
+      patterns.add('backend_docker');
+    }
+  }
   if (/import\s+pandas|from\s+sklearn|tensorflow|torch|model\.fit|\.ipynb/i.test(text)) { roles.add('data'); patterns.add('data_ml'); }
 
   return {

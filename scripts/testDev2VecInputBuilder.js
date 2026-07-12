@@ -63,7 +63,7 @@ const input = buildDev2VecInputFromRepositoryAnalysis({
 });
 
 assert.strictEqual(input.requestId, 'builder-smoke');
-assert.strictEqual(input.topN, 3);
+assert.strictEqual(input.topN, 5);
 assert(input.repoDocument.includes('career-api'));
 assert(input.repoDocument.includes('feat: add rest api controller'));
 assert(input.repoDocument.includes('src/modules/api/file-0-0.js'));

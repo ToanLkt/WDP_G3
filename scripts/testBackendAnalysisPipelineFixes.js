@@ -221,13 +221,45 @@ const runtimeOutput = {
   ],
   skillGaps: {
     backend: { missingSkillNames: ['REST API', 'Database', 'Authentication'] },
-    frontend: { missingSkillNames: ['React UI', 'Component Design', 'Frontend Testing'] },
+    frontend: { missingSkillNames: ['React UI', 'Component Design', 'State Management', 'Frontend Testing', 'Responsive Design'] },
   },
 };
 const payload = buildDev2VecAnalysisPayload({
   repository: { _id: 'repo', githubRepoId: 1, name: 'fixture', fullName: 'fixture/frontend', language: 'TypeScript' },
   packageRecord: { packages: ['react', 'vite'], frameworks: ['React'], languages: ['TypeScript'] },
-  commits: [{ sha: 'a', files: [{ filename: 'src/pages/App.tsx' }] }],
+  commits: [{
+    sha: 'a',
+    files: [{ filename: 'src/pages/App.tsx' }],
+    normalizedFiles: [
+      {
+        filename: 'src/pages/App.tsx',
+        evidenceSource: 'commit_patch',
+        detectedFrameworks: ['react'],
+        detectedPatterns: ['frontend_component', 'frontend_style', 'frontend_responsive'],
+        detectedRoleSignals: ['frontend'],
+        skillSignals: ['React UI', 'Component Design', 'Responsive Design'],
+        evidenceVersion: 'fixture',
+      },
+      {
+        filename: 'src/components/AuthProvider.tsx',
+        evidenceSource: 'commit_patch',
+        detectedFrameworks: ['react'],
+        detectedPatterns: ['frontend_component', 'frontend_state'],
+        detectedRoleSignals: ['frontend'],
+        skillSignals: ['React UI', 'Component Design', 'State Management'],
+        evidenceVersion: 'fixture',
+      },
+      {
+        filename: 'src/components/UserCard.tsx',
+        evidenceSource: 'commit_patch',
+        detectedFrameworks: ['react'],
+        detectedPatterns: ['frontend_component'],
+        detectedRoleSignals: ['frontend'],
+        skillSignals: ['React UI', 'Component Design'],
+        evidenceVersion: 'fixture',
+      },
+    ],
+  }],
   contributionScope: { totalRepoCommits: 5 },
   githubAccount: { username: 'fixture-user' },
   dev2vecInput: {
@@ -246,10 +278,16 @@ const payload = buildDev2VecAnalysisPayload({
 const response = sanitizeAnalysisSnapshot({ _id: 'analysis', ...payload }, { view: 'summary' });
 assert.strictEqual(response.summary.projectType, 'Frontend');
 assert.strictEqual(response.summary.careerDirection, 'Frontend Developer');
+assert(response.topSkills.length > 0);
+assert(response.topSkills.some((skill) => skill.skill === 'React UI'));
+assert(response.topSkills.some((skill) => skill.skill === 'Component Design'));
+assert(response.topSkills.some((skill) => skill.skill === 'State Management'));
+assert(response.topSkills.some((skill) => skill.skill === 'Responsive Design'));
 assert(response.missingSkills.every((skill) => skill.category === 'frontend'));
-assert(response.missingSkills.some((skill) => skill.skill === 'React UI'));
-assert(response.missingSkills.some((skill) => skill.skill === 'Component Design'));
+assert(!response.missingSkills.some((skill) => ['React UI', 'Component Design', 'State Management', 'Responsive Design'].includes(skill.skill)));
+assert(response.missingSkills.some((skill) => skill.skill === 'Frontend Testing'));
 assert(!response.missingSkills.some((skill) => ['REST API', 'Database', 'Authentication'].includes(skill.skill)));
+assert(!response.topSkills.some((topSkill) => response.missingSkills.some((missingSkill) => missingSkill.skill === topSkill.skill)));
 assert.strictEqual(Object.prototype.hasOwnProperty.call(response, 'normalizedFiles'), false);
 
 const originalAxiosGet = axios.get;

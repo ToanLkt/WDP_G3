@@ -238,7 +238,7 @@ const buildSkillVectorFromDev2VecSkills = ({ topSkills = [], missingSkills = [] 
       canonicalSkillName,
       normalizedSkillName: normalizeSkillText(canonicalSkillName),
       category: item.category || getCanonicalSkillCategory(canonicalSkillName),
-      score: toSkillScore100(item.score, item.priority === 'medium' ? 25 : 0),
+      score: toSkillScore100(item.score, 0),
       level: item.level || (item.priority === 'medium' ? 'weak' : 'missing'),
       similarity: item.similarity,
       dev2vecStatus: item.dev2vecStatus,
@@ -272,6 +272,14 @@ const buildDev2VecAnalysisPayload = ({
 }) => {
   let summary = buildAnalysisSummaryFromDev2Vec(dev2vecOutput);
   const repoFeatureEvidence = dev2vecInput.repoFeatureEvidence || dev2vecInput.evidencePreview?.repoFeatures || {};
+  const hasDetectedRepoFeature = Object.values(repoFeatureEvidence)
+    .some((feature) => feature && feature.detected === true);
+  const hasAnyTechnicalEvidence = Boolean(
+    Number(dev2vecInput.sourceStats?.sourceFileCount || 0) > 0
+    || Number(dev2vecInput.sourceStats?.apiTokenCount || 0) > 0
+    || Number(dev2vecInput.sourceStats?.userContributionFileCount || 0) > 0
+    || hasDetectedRepoFeature
+  );
   const repositoryProjectType = inferProjectTypeFromRepositoryContext(dev2vecInput, summary.projectType);
   if (repositoryProjectType) summary.projectType = repositoryProjectType;
   const contributionCareerDirection = inferCareerDirectionFromUserContribution(dev2vecInput, summary.projectType);
@@ -283,30 +291,50 @@ const buildDev2VecAnalysisPayload = ({
     devops: Number(dev2vecInput.sourceStats?.userContributionDevopsFileCount || 0),
     data: Number(dev2vecInput.sourceStats?.userContributionDataFileCount || 0),
   };
-  const effectiveRole = resolveEffectiveRole({
-    repositoryRole: summary.projectType,
-    userContributionRole: contributionCareerDirection,
-    classifierRole: summary.careerDirection,
-    classifierConfidence: Number(dev2vecOutput.rolePredictions?.[0]?.probability || 0),
-    userContributionEvidence: {
-      topFileCount: contributionCounts[contributionKey] || 0,
-      competingFileCount: Math.max(0, ...Object.entries(contributionCounts)
-        .filter(([key]) => key !== contributionKey)
-        .map(([, count]) => count)),
-    },
-  });
+  const effectiveRole = hasAnyTechnicalEvidence
+    ? resolveEffectiveRole({
+      repositoryRole: summary.projectType,
+      userContributionRole: contributionCareerDirection,
+      classifierRole: summary.careerDirection,
+      classifierConfidence: Number(dev2vecOutput.rolePredictions?.[0]?.probability || 0),
+      userContributionEvidence: {
+        topFileCount: contributionCounts[contributionKey] || 0,
+        competingFileCount: Math.max(0, ...Object.entries(contributionCounts)
+          .filter(([key]) => key !== contributionKey)
+          .map(([, count]) => count)),
+      },
+    })
+    : {
+      effectiveRoleId: '',
+      effectiveRoleName: '',
+      reason: 'insufficient_technical_evidence',
+      source: 'none',
+      confidenceSource: 'none',
+    };
   const repositoryRole = summary.projectType;
   const classifierRole = dev2vecOutput.rolePredictions?.[0]?.roleName || summary.careerDirection;
-  const effectiveSummary = buildAnalysisSummaryFromDev2Vec(dev2vecOutput, { roleId: effectiveRole.effectiveRoleId });
+  const effectiveSummary = hasAnyTechnicalEvidence
+    ? buildAnalysisSummaryFromDev2Vec(dev2vecOutput, { roleId: effectiveRole.effectiveRoleId })
+    : buildAnalysisSummaryFromDev2Vec({}, { roleId: '' });
+  const effectiveProjectType = effectiveSummary.projectType || repositoryRole;
+  const finalProjectType = !hasAnyTechnicalEvidence
+    ? ''
+    : effectiveRole.reason === 'strong_changed_file_evidence_overrides_low_confidence_classifier'
+      ? effectiveProjectType
+      : repositoryRole;
   summary = {
     ...effectiveSummary,
-    projectType: repositoryRole,
+    projectType: finalProjectType,
     careerDirection: effectiveRole.effectiveRoleName || effectiveSummary.careerDirection,
   };
   const skillMapping = buildAnalysisSkillsFromDev2Vec({
     ...dev2vecOutput,
     repoFeatureEvidence,
-  }, { repoFeatureEvidence, roleId: effectiveRole.effectiveRoleId });
+  }, {
+    repoFeatureEvidence,
+    roleId: effectiveRole.effectiveRoleId,
+    commits,
+  });
   if (isAnalysisRoleDebugEnabled()) {
     console.log('[analysis-role][debug]', {
       repositoryRole,
@@ -329,6 +357,48 @@ const buildDev2VecAnalysisPayload = ({
       selectedSkillGapRole: effectiveRole.effectiveRoleId,
       responseCareerDirection: summary.careerDirection,
       responseProjectType: summary.projectType,
+    });
+  }
+  if (isAnalysisSkillDebugEnabled()) {
+    const debug = skillMapping.debug || {};
+    const evidenceSourceCounts = (commits || [])
+      .flatMap((commit) => Array.isArray(commit.normalizedFiles) ? commit.normalizedFiles : [])
+      .reduce((counts, file) => {
+        const key = file.evidenceSource || 'unknown';
+        counts[key] = (counts[key] || 0) + 1;
+        return counts;
+      }, {});
+    const normalizedSignals = (commits || [])
+      .flatMap((commit) => Array.isArray(commit.normalizedFiles) ? commit.normalizedFiles : [])
+      .reduce((signals, file) => {
+        [
+          ...(file.detectedFrameworks || []),
+          ...(file.detectedLibraries || []),
+          ...(file.detectedPatterns || []),
+          ...(file.detectedRoleSignals || []),
+          ...(file.skillSignals || []),
+        ].forEach((signal) => {
+          const value = String(signal || '').trim();
+          if (value) signals.add(value);
+        });
+        return signals;
+      }, new Set());
+    console.log('[analysis-skill][debug]', {
+      flowVersion: getCurrentDev2VecPipelineMetadata().analysisPipelineVersion,
+      evidenceVersion: (commits || []).flatMap((commit) => commit.normalizedFiles || [])[0]?.evidenceVersion || '',
+      skillMappingVersion: debug.skillMappingVersion || '',
+      effectiveRole: effectiveRole.effectiveRoleName,
+      roleCatalogKey: effectiveRole.effectiveRoleId,
+      sourceFetchStatus: hasAnyTechnicalEvidence ? 'available' : 'unavailable',
+      sourceFileCount: Number(dev2vecInput.sourceStats?.sourceFileCount || 0),
+      apiTokenCount: Number(dev2vecInput.sourceStats?.apiTokenCount || 0),
+      matchedCommitCount: Array.isArray(commits) ? commits.length : 0,
+      evidenceRecordCount: Number(debug.evidenceRecordCount || 0),
+      evidenceSourceCounts,
+      normalizedSignals: [...normalizedSignals].sort(),
+      canonicalSkills: debug.canonicalSkills || [],
+      finalTopSkills: (skillMapping.topSkills || []).map((item) => item.canonicalSkillName),
+      finalMissingSkills: (skillMapping.missingSkills || []).map((item) => item.canonicalSkillName),
     });
   }
   const skillVector = buildSkillVectorFromDev2VecSkills(skillMapping);
@@ -518,7 +588,6 @@ const inferCareerDirectionFromUserContribution = (dev2vecInput = {}, projectType
   const top = roles[0];
   const second = roles[1];
   if (!top || top[1] < 2 || top[1] < second[1] + 2) return '';
-  if (projectType && projectType !== top[2] && top[1] < 4) return '';
   return top[0];
 };
 

@@ -57,6 +57,7 @@ const compareMetadata = (cached = {}, current = {}) => {
     ['issueEvidenceVersion', 'pipeline_version_mismatch'],
     ['sourceUsageParserVersion', 'pipeline_version_mismatch'],
     ['roleResolverVersion', 'pipeline_version_mismatch'],
+    ['skillMappingVersion', 'pipeline_version_mismatch'],
     ['modelArtifactVersion', 'model_version_mismatch'],
     ['scoringVersion', 'scoring_version_mismatch'],
   ];

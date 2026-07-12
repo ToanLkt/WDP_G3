@@ -5,6 +5,13 @@ const { buildLearningPrompt } = require('./ai/learning.prompt');
 const { createStatusError } = require('./github/github.utils');
 const { findCatalogResources } = require('./learningResourceCatalog.service');
 const { searchYoutubeVideos } = require('./youtube.service');
+const {
+  calculateYouTubeVideoScore,
+  fetchYouTubeVideoDetails,
+  mapVideoDetail,
+  validateYouTubeVideoMetadata,
+} = require('./youtube.service');
+const { checkYouTubeSafety } = require('./youtubeSafety.service');
 const normalizeText = require('../utils/normalizeText');
 const { canonicalizeSkillName } = require('../utils/skillCanonicalizer');
 
@@ -16,6 +23,28 @@ const DEFAULT_RESOURCE_TYPE = 'video';
 const VALID_LEVELS = ['beginner', 'intermediate', 'advanced'];
 const VALID_RESOURCE_TYPES = ['video', 'article', 'docs'];
 const VALID_RESOURCE_SOURCES = ['curated', 'youtube_api', 'manual'];
+const INTERNAL_RESOURCE_FIELDS = [
+  'youtubeVideoId',
+  'youtubeChannelId',
+  'durationSeconds',
+  'privacyStatus',
+  'embeddable',
+  'safetyStatus',
+  'safetyReasons',
+  'validatedAt',
+  'metadataExpiresAt',
+];
+
+const parsePositiveInteger = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const getYoutubeMetadataTtlMs = () => (
+  parsePositiveInteger(process.env.YOUTUBE_METADATA_TTL_HOURS, 168) * 60 * 60 * 1000
+);
+
+const getMetadataExpiresAt = (validatedAt = new Date()) => new Date(new Date(validatedAt).getTime() + getYoutubeMetadataTtlMs());
 
 const normalizeLevel = (level) => {
   const normalized = normalizeText(level || DEFAULT_LEVEL);
@@ -65,10 +94,16 @@ const getLearningMetadata = (identity) => ({
   language: identity.language,
 });
 
-const canonicalizeStoredDocument = (document, identity) => ({
-  ...document,
-  ...getLearningMetadata(identity),
-});
+const canonicalizeStoredDocument = (document, identity) => {
+  const output = {
+    ...document,
+    ...getLearningMetadata(identity),
+  };
+  for (const field of INTERNAL_RESOURCE_FIELDS) {
+    delete output[field];
+  }
+  return output;
+};
 
 const getPersistedIdentity = (identity) => ({
   skillName: identity.skillName,
@@ -249,6 +284,93 @@ const sortResources = (query) =>
     { $project: { sourcePriority: 0 } },
   ]);
 
+const isYoutubeResource = (resource = {}) => (
+  resource.source === 'youtube_api' || /youtube\.com|youtu\.be/i.test(String(resource.url || ''))
+);
+
+const isResourceMetadataFresh = (resource = {}) => (
+  !isYoutubeResource(resource)
+  || (resource.metadataExpiresAt && new Date(resource.metadataExpiresAt).getTime() > Date.now())
+);
+
+const extractVideoIdFromUrl = (url = '') => {
+  const text = String(url || '');
+  const watchMatch = text.match(/[?&]v=([^&]+)/i);
+  if (watchMatch) return watchMatch[1];
+  const shortMatch = text.match(/youtu\.be\/([^?&/]+)/i);
+  return shortMatch ? shortMatch[1] : '';
+};
+
+const revalidateYoutubeResource = async (resource = {}, identity = {}) => {
+  const videoId = resource.youtubeVideoId || extractVideoIdFromUrl(resource.url);
+  if (!videoId || !process.env.YOUTUBE_API_KEY) return null;
+  const details = await fetchYouTubeVideoDetails([videoId]);
+  const detail = details.find((item) => item.id === videoId);
+  if (!detail) {
+    await LearningResource.deleteOne({ _id: resource._id });
+    return null;
+  }
+
+  const video = mapVideoDetail(detail);
+  const metadata = validateYouTubeVideoMetadata(video);
+  const safety = checkYouTubeSafety(video);
+  const score = calculateYouTubeVideoScore({
+    title: video.title,
+    description: video.description,
+    channelTitle: video.channelTitle,
+    skillName: identity.skillName || resource.skillName,
+    level: identity.level || resource.level,
+  });
+  if (!metadata.valid || !safety.allowed || score < 40) {
+    await LearningResource.deleteOne({ _id: resource._id });
+    return null;
+  }
+
+  const validatedAt = new Date();
+  const updated = await LearningResource.findOneAndUpdate(
+    { _id: resource._id },
+    {
+      $set: {
+        title: video.title,
+        url: video.url,
+        provider: video.provider,
+        thumbnailUrl: video.thumbnailUrl,
+        channelTitle: video.channelTitle,
+        publishedAt: video.publishedAt,
+        score,
+        youtubeVideoId: video.videoId,
+        youtubeChannelId: video.channelId,
+        durationSeconds: video.durationSeconds,
+        privacyStatus: video.privacyStatus,
+        embeddable: video.embeddable,
+        safetyStatus: 'allowed',
+        safetyReasons: [],
+        validatedAt,
+        metadataExpiresAt: getMetadataExpiresAt(validatedAt),
+      },
+    },
+    { new: true }
+  ).lean();
+  return updated;
+};
+
+const filterFreshOrRevalidatedResources = async (resources = [], identity = {}) => {
+  const output = [];
+  for (const resource of resources) {
+    if (isResourceMetadataFresh(resource)) {
+      output.push(resource);
+      continue;
+    }
+    try {
+      const revalidated = await revalidateYoutubeResource(resource, identity);
+      if (revalidated) output.push(revalidated);
+    } catch (error) {
+      // Fail closed for stale YouTube resources; keep curated/manual resources unaffected.
+    }
+  }
+  return output;
+};
+
 const getLearningResources = async ({ skillName, targetRole, level, language, type }) => {
   const { identity, query } = buildResourceQuery({ skillName, targetRole, level, language, type });
 
@@ -256,16 +378,16 @@ const getLearningResources = async ({ skillName, targetRole, level, language, ty
     throw createStatusError('skillName is required', 400);
   }
 
-  let resources = await sortResources(query);
+  let resources = await filterFreshOrRevalidatedResources(await sortResources(query), identity);
   if (
     !resources.length &&
     identity.legacyNormalizedSkillName &&
     identity.legacyNormalizedSkillName !== identity.normalizedSkillName
   ) {
-    resources = await sortResources({
+    resources = await filterFreshOrRevalidatedResources(await sortResources({
       ...query,
       normalizedSkillName: identity.legacyNormalizedSkillName,
-    });
+    }), identity);
   }
 
   return {
@@ -354,16 +476,16 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
     throw createStatusError('skillName is required', 400);
   }
 
-  let existing = await sortResources(query);
+  let existing = await filterFreshOrRevalidatedResources(await sortResources(query), identity);
   if (
     !existing.length &&
     identity.legacyNormalizedSkillName &&
     identity.legacyNormalizedSkillName !== identity.normalizedSkillName
   ) {
-    existing = await sortResources({
+    existing = await filterFreshOrRevalidatedResources(await sortResources({
       ...query,
       normalizedSkillName: identity.legacyNormalizedSkillName,
-    });
+    }), identity);
   }
   if (existing.length) {
     return {
@@ -461,6 +583,15 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
     source: 'youtube_api',
     score: bestVideo.score,
     cachedAt: new Date(),
+    youtubeVideoId: bestVideo.videoId,
+    youtubeChannelId: bestVideo.channelId,
+    durationSeconds: bestVideo.durationSeconds,
+    privacyStatus: bestVideo.privacyStatus,
+    embeddable: bestVideo.embeddable,
+    safetyStatus: bestVideo.safetyStatus,
+    safetyReasons: bestVideo.safetyReasons,
+    validatedAt: bestVideo.validatedAt,
+    metadataExpiresAt: getMetadataExpiresAt(bestVideo.validatedAt),
   });
 
   return {
@@ -481,6 +612,8 @@ module.exports = {
   getLearningResources,
   saveLearningResource,
   searchAndCacheYoutubeResources,
+  isResourceMetadataFresh,
+  revalidateYoutubeResource,
   extractJsonFromText,
   buildLearningIdentity,
   buildLearningContentKey,

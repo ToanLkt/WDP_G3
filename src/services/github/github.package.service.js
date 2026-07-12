@@ -315,11 +315,13 @@ const addControlledSourceEvidenceFiles = async ({ owner, repo, accessToken, dete
     maxFilesPerCategory: SOURCE_MAX_FILES_PER_CATEGORY,
   };
   const sourceUsage = parseSourceUsageEvidence(sourceFiles);
+  const parsedSourceUsageFiles = Array.isArray(sourceUsage.files) ? sourceUsage.files : [];
+  const skippedSourceUsageFiles = Array.isArray(sourceUsage.skipped) ? sourceUsage.skipped : [];
   rawData.__sourceUsageCache = {
     tokens: sourceUsage.tokens,
-    parsedFileCount: sourceUsage.files.length,
-    skippedFileCount: sourceUsage.skipped.length,
-    totalChars: sourceUsage.totalChars,
+    parsedFileCount: parsedSourceUsageFiles.length,
+    skippedFileCount: skippedSourceUsageFiles.length,
+    totalChars: Number(sourceUsage.totalChars || 0),
     sourceUsageParserVersion: SOURCE_USAGE_PARSER_VERSION,
     generatedAt: new Date(),
   };

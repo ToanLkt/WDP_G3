@@ -11,10 +11,17 @@ const normalizeRoleId = (value) => {
   return Object.keys(ROLE_DEFINITIONS).find((key) => text.includes(key)) || '';
 };
 
-const resolveEffectiveRole = ({ repositoryRole, userContributionRole, classifierRole, userContributionEvidence = {} }) => {
+const resolveEffectiveRole = ({
+  repositoryRole,
+  userContributionRole,
+  classifierRole,
+  classifierConfidence = 0,
+  userContributionEvidence = {},
+}) => {
   const repositoryKey = normalizeRoleId(repositoryRole);
   const contributionKey = normalizeRoleId(userContributionRole);
   const classifierKey = normalizeRoleId(classifierRole);
+  const confidence = Number(classifierConfidence || 0);
   const topFileCount = Number(userContributionEvidence.topFileCount || 0);
   const competingFileCount = Number(userContributionEvidence.competingFileCount || 0);
   const strongContribution = topFileCount >= 2
@@ -27,6 +34,20 @@ const resolveEffectiveRole = ({ repositoryRole, userContributionRole, classifier
     selectedKey = repositoryKey;
     reason = 'repository_contribution_agreement';
     confidenceSource = 'repository_and_changed_files';
+  } else if (
+    contributionKey
+    && strongContribution
+    && contributionKey !== classifierKey
+    && (
+      confidence < 0.75
+      || !repositoryKey
+      || repositoryKey !== classifierKey
+      || competingFileCount === 0
+    )
+  ) {
+    selectedKey = contributionKey;
+    reason = 'strong_changed_file_evidence_overrides_low_confidence_classifier';
+    confidenceSource = 'changed_files';
   } else if (contributionKey && strongContribution && !repositoryKey) {
     selectedKey = contributionKey;
     reason = 'strong_changed_file_evidence';

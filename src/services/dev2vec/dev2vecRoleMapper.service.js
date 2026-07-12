@@ -6,15 +6,23 @@ const MATCH_LEVEL_LABELS = {
   low: 'Không phù hợp',
 };
 
+const { DEV2VEC_ROLES } = require('../../constants/dev2vecCatalog');
+
 const toArray = (value) => (Array.isArray(value) ? value : []);
+
+const SKILL_SCORE_SCALE = '0-100';
+const SKILL_PRESENT_THRESHOLD = 60;
+const SKILL_WEAK_THRESHOLD = 20;
+const SKILL_MAPPING_VERSION = 'canonical-skill-mapping-v3';
 
 const roundPercent = (probability) => (
   Math.round((Number(probability) || 0) * 10000) / 100
 );
 
 const toPercentScore = (value) => {
-  const numeric = Number(value) || 0;
-  return Math.round((numeric <= 1 ? numeric * 100 : numeric) * 100) / 100;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+  return Math.round(numeric * 10000) / 100;
 };
 
 const getDev2VecMatchLevel = (matchScore) => {
@@ -133,6 +141,16 @@ const getPredictionForRole = (dev2vecOutput = {}, roleId = '') => {
 };
 
 const buildAnalysisSummaryFromDev2Vec = (dev2vecOutput = {}, options = {}) => {
+  if (Object.prototype.hasOwnProperty.call(options, 'roleId') && !options.roleId) {
+    return {
+      careerDirection: '',
+      userLevel: 'novice',
+      userReadinessScore: 0,
+      overallScore: 0,
+      projectType: '',
+      confidence: 0,
+    };
+  }
   const topPrediction = getPredictionForRole(dev2vecOutput, options.roleId);
   if (!topPrediction) {
     return {
@@ -188,10 +206,10 @@ const getRepoFeatureForSkill = (repoFeatureEvidence = {}, skillName) => {
 
 const roundScore = (value) => toPercentScore(value);
 
-const getLevelFromScore = (score, evidenceDetected) => {
+const getLevelFromScore = (score) => {
   const displayScore = Number(score) || 0;
-  if (displayScore >= 45) return 'strong';
-  if (displayScore >= 20 || evidenceDetected) return 'weak';
+  if (displayScore >= SKILL_PRESENT_THRESHOLD) return 'strong';
+  if (displayScore > 0 || displayScore >= SKILL_WEAK_THRESHOLD) return 'weak';
   return 'missing';
 };
 
@@ -208,10 +226,7 @@ const buildDev2VecSkillItem = ({ skillName, skillGap, category, dev2vecStatus, p
   const evidenceStatus = feature
     ? (dev2vecStatus === 'missing' || dev2vecStatus === 'weak' ? 'detected_but_low_similarity' : 'detected')
     : 'not_detected';
-  const score = (dev2vecStatus === 'matched' || dev2vecStatus === 'weak' || evidenceDetected)
-    ? similarity
-    : 0;
-  const displayScore = roundScore(score);
+  const displayScore = roundScore(similarity);
 
   return {
     skill: skillName,
@@ -219,7 +234,7 @@ const buildDev2VecSkillItem = ({ skillName, skillGap, category, dev2vecStatus, p
     category,
     priority,
     score: displayScore,
-    level: getLevelFromScore(displayScore, evidenceDetected),
+    level: getLevelFromScore(displayScore),
     similarity,
     dev2vecStatus,
     evidenceDetected,
@@ -232,6 +247,65 @@ const buildDev2VecSkillItem = ({ skillName, skillGap, category, dev2vecStatus, p
   };
 };
 
+const getRoleCatalogSkills = (roleId = '') => (
+  DEV2VEC_ROLES.find((role) => String(role.roleId || '').toLowerCase() === String(roleId || '').toLowerCase())?.skills || []
+);
+
+const getEmbeddingScoreForSkill = (skillGap = {}, skillName) => {
+  const detail = findDetailBySkill(skillGap, skillName);
+  return Number.isFinite(Number(detail?.similarity)) ? toPercentScore(detail.similarity) : 0;
+};
+
+const buildCanonicalRoleSkillItems = ({ roleId = '', category = '', skillGap = {} } = {}) => {
+  const roleSkills = getRoleCatalogSkills(roleId);
+  const items = [];
+  for (const skillName of roleSkills) {
+    const embeddingScore = getEmbeddingScoreForSkill(skillGap, skillName);
+    const finalScore = embeddingScore;
+    const finalState = finalScore > 0
+      ? (finalScore >= SKILL_PRESENT_THRESHOLD ? 'present' : 'weak')
+      : 'missing';
+    const level = finalState === 'present' ? 'strong' : finalState;
+    const dev2vecStatus = toArray(skillGap.matchedSkillNames).includes(skillName)
+      ? 'matched'
+      : toArray(skillGap.weakSkillNames).includes(skillName)
+        ? 'weak'
+        : toArray(skillGap.missingSkillNames).includes(skillName)
+          ? 'missing'
+          : '';
+    items.push({
+      skill: skillName,
+      canonicalSkillName: skillName,
+      category,
+      priority: finalState === 'missing' ? 'medium' : 'matched',
+      score: finalScore,
+      level,
+      similarity: (() => {
+        const detail = findDetailBySkill(skillGap, skillName);
+        return Number.isFinite(Number(detail?.similarity)) ? Number(detail.similarity) : null;
+      })(),
+      dev2vecStatus,
+      evidenceDetected: finalScore > 0,
+      evidenceStatus: finalScore > 0 ? 'dev2vec_score_present' : 'not_detected',
+      evidence: [],
+      evidenceDetails: [],
+      reason: finalScore > 0
+        ? 'Dev2Vec returned a non-zero skill score.'
+        : 'Dev2Vec returned zero or missing skill score.',
+      deterministicEvidenceCount: 0,
+      matchedSignals: [],
+      sourceTypes: [],
+      embeddingScore,
+      finalScore,
+      scoreScale: SKILL_SCORE_SCALE,
+      weakThreshold: SKILL_WEAK_THRESHOLD,
+      presentThreshold: SKILL_PRESENT_THRESHOLD,
+      finalState,
+    });
+  }
+  return items;
+};
+
 const buildSkillItem = ({ skillName, skillGap, category, status, repoFeatureEvidence }) => {
   return buildDev2VecSkillItem({ skillName, skillGap, category, dev2vecStatus: status, priority: 'matched', repoFeatureEvidence });
 };
@@ -241,31 +315,90 @@ const buildMissingSkillItem = ({ skillName, skillGap, category, priority, repoFe
 };
 
 const buildAnalysisSkillsFromDev2Vec = (dev2vecOutput = {}, options = {}) => {
+  if (Object.prototype.hasOwnProperty.call(options, 'roleId') && !options.roleId) {
+    return {
+      topSkills: [],
+      missingSkills: [],
+      strengths: [],
+      weaknesses: [],
+      recommendations: [],
+      debug: {
+        skillMappingVersion: SKILL_MAPPING_VERSION,
+        scoreScale: SKILL_SCORE_SCALE,
+        weakThreshold: SKILL_WEAK_THRESHOLD,
+        presentThreshold: SKILL_PRESENT_THRESHOLD,
+        evidenceRecordCount: 0,
+        canonicalSkills: [],
+      },
+    };
+  }
   const topPrediction = getPredictionForRole(dev2vecOutput, options.roleId);
   const roleId = topPrediction?.roleId || '';
   const category = options.category || roleId;
   const repoFeatureEvidence = options.repoFeatureEvidence || dev2vecOutput.repoFeatureEvidence || dev2vecOutput.evidencePreview?.repoFeatures || {};
   const skillGap = topPrediction ? getSkillGapForPrediction(dev2vecOutput, topPrediction) : {};
+  const canonicalRoleSkillItems = buildCanonicalRoleSkillItems({
+    roleId,
+    category,
+    skillGap,
+  });
 
-  const matchedSkills = toArray(skillGap.matchedSkillNames).map((skillName) => (
-    buildSkillItem({ skillName, skillGap, category, status: 'matched', repoFeatureEvidence })
-  ));
-  const weakSkills = toArray(skillGap.weakSkillNames).map((skillName) => (
-    buildSkillItem({ skillName, skillGap, category, status: 'weak', repoFeatureEvidence })
-  ));
-  const missingCandidates = toArray(skillGap.missingSkillNames).map((skillName) => (
-    buildMissingSkillItem({ skillName, skillGap, category, priority: 'medium', repoFeatureEvidence })
-  ));
-  const topSkills = [...matchedSkills, ...weakSkills];
-  const missingSkills = [];
-
-  for (const item of missingCandidates) {
-    if (item.evidenceDetected) {
-      topSkills.push({ ...item, priority: 'matched' });
-    } else {
-      missingSkills.push(item);
-    }
+  if (canonicalRoleSkillItems.length > 0) {
+    const topSkills = canonicalRoleSkillItems.filter((item) => item.finalState !== 'missing');
+    const missingSkills = canonicalRoleSkillItems.filter((item) => item.finalState === 'missing');
+    return {
+      topSkills,
+      missingSkills,
+      strengths: topSkills.map((item) => item.canonicalSkillName),
+      weaknesses: topSkills.filter((item) => item.level === 'weak'),
+      recommendations: [
+        ...missingSkills.map((item) => item.canonicalSkillName),
+        ...topSkills.filter((item) => item.level === 'weak').map((item) => item.canonicalSkillName),
+      ],
+      debug: {
+        skillMappingVersion: SKILL_MAPPING_VERSION,
+        scoreScale: SKILL_SCORE_SCALE,
+        weakThreshold: SKILL_WEAK_THRESHOLD,
+        presentThreshold: SKILL_PRESENT_THRESHOLD,
+        evidenceRecordCount: 0,
+        canonicalSkills: canonicalRoleSkillItems.map((item) => ({
+          skillId: item.canonicalSkillName,
+          skillName: item.canonicalSkillName,
+          matchedSignals: item.matchedSignals,
+          matchedFiles: item.evidence,
+          sourceTypes: item.sourceTypes,
+          deterministicEvidenceCount: item.deterministicEvidenceCount,
+          embeddingScore: item.embeddingScore,
+          finalScore: item.finalScore,
+          scoreScale: item.scoreScale,
+          weakThreshold: item.weakThreshold,
+          presentThreshold: item.presentThreshold,
+          finalState: item.finalState,
+        })),
+      },
+    };
   }
+
+  const bySkill = new Map();
+  const addSkill = (skillName, status, priority = status === 'missing' ? 'medium' : 'matched') => {
+    const key = String(skillName || '').toLowerCase();
+    if (!key || bySkill.has(key)) return;
+    const item = status === 'missing'
+      ? buildMissingSkillItem({ skillName, skillGap, category, priority, repoFeatureEvidence })
+      : buildSkillItem({ skillName, skillGap, category, status, repoFeatureEvidence });
+    bySkill.set(key, {
+      ...item,
+      priority: item.score > 0 ? 'matched' : 'medium',
+      level: getLevelFromScore(item.score),
+    });
+  };
+
+  toArray(skillGap.matchedSkillNames).forEach((skillName) => addSkill(skillName, 'matched'));
+  toArray(skillGap.weakSkillNames).forEach((skillName) => addSkill(skillName, 'weak'));
+  toArray(skillGap.missingSkillNames).forEach((skillName) => addSkill(skillName, 'missing'));
+  const allSkills = [...bySkill.values()];
+  const topSkills = allSkills.filter((item) => Number(item.score || 0) > 0);
+  const missingSkills = allSkills.filter((item) => Number(item.score || 0) === 0);
 
   return {
     topSkills,
@@ -280,6 +413,10 @@ const buildAnalysisSkillsFromDev2Vec = (dev2vecOutput = {}, options = {}) => {
 };
 
 module.exports = {
+  SKILL_MAPPING_VERSION,
+  SKILL_PRESENT_THRESHOLD,
+  SKILL_WEAK_THRESHOLD,
+  buildCanonicalRoleSkillItems,
   mapDev2VecOutputToRoleMatches,
   mapPredictionToRoleMatch,
   getDev2VecMatchLevel,
