@@ -665,12 +665,18 @@ const pickRepository = (source) => ({
   fullName: source.fullName,
 });
 
+const toDisplaySkillScore = (value) => {
+  const score = Number(value) || 0;
+  const scaled = score <= 1 ? score * 100 : score;
+  return Math.round(scaled * 100) / 100;
+};
+
 const formatSkill = (item) => ({
   skill: item.skill,
   canonicalSkillName: item.canonicalSkillName,
   category: item.category,
-  score: item.score,
-  level: item.level,
+  score: toDisplaySkillScore(item.score),
+  level: item.level === 'missing' ? 'weak' : item.level,
 });
 
 const getTopSkills = (skillVector, limit = 5) =>
@@ -685,8 +691,13 @@ const formatDebugSkill = (item) => ({
   canonicalSkillName: item.canonicalSkillName,
   normalizedSkillName: item.normalizedSkillName,
   category: item.category,
-  score: item.score,
+  score: toDisplaySkillScore(item.score),
   level: item.level,
+  rawSimilarity: Number.isFinite(Number(item.similarity)) ? Number(item.similarity) : Number(item.score || 0),
+  dev2vecStatus: item.dev2vecStatus,
+  evidenceDetected: item.evidenceDetected,
+  evidenceStatus: item.evidenceStatus,
+  reason: item.reason,
   evidence: Array.isArray(item.evidence) ? item.evidence : [],
   sources: Array.isArray(item.sources) ? item.sources : [],
   lastCalculatedAt: item.lastCalculatedAt,
@@ -723,7 +734,7 @@ const getMissingSkills = (source, limit = 5) => {
 const contributionWording = (sentence, kind) => {
   const text = String(sentence || '').trim();
   if (!text) return '';
-  if (/^(Hệ thống|Chưa thấy|Bạn nên)\b/i.test(text)) return text;
+  if (/^(H\u1ec7 th\u1ed1ng|\u0110\u00e3 th\u1ea5y|Dev2Vec|Ch\u01b0a th\u1ea5y|B\u1ea1n n\u00ean)\b/i.test(text)) return text;
   let updated = text
     .replace(/^Repo\s+(thể hiện|có)/i, 'Phần commit của bạn cho thấy')
     .replace(/^Repository\s+(shows|has)/i, 'Your contribution shows')

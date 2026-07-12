@@ -18,7 +18,7 @@ const router = express.Router();
  *   post:
  *     tags: [Snapshots]
  *     summary: Compare two user-contribution snapshots
- *     description: Compare two user-contribution snapshots owned by the current user. snapshotAId/snapshotBId are deprecated aliases for backward compatibility.
+ *     description: Compare two user-contribution snapshots owned by the current user. Skill-level comparison is only reliable when both snapshots use the same scoring method. snapshotAId/snapshotBId are deprecated aliases for backward compatibility.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -37,6 +37,14 @@ const router = express.Router();
  *               toSnapshotId:
  *                 type: string
  *                 example: 665f1f000000000000000002
+ *               snapshotAId:
+ *                 type: string
+ *                 description: Deprecated alias for fromSnapshotId.
+ *                 example: 665f1f000000000000000001
+ *               snapshotBId:
+ *                 type: string
+ *                 description: Deprecated alias for toSnapshotId.
+ *                 example: 665f1f000000000000000002
  *           example:
  *             fromSnapshotId: 665f1f000000000000000001
  *             toSnapshotId: 665f1f000000000000000002
@@ -52,11 +60,31 @@ const router = express.Router();
  *                 repoName: WDP_G3
  *                 analysisScopeType: user_contribution
  *                 enoughData: true
+ *                 comparisonMode: score_only
+ *                 comparableSkillScores: false
+ *                 fromSnapshot:
+ *                   snapshotId: 665f1f000000000000000001
+ *                   userReadinessScore: 66
+ *                   userLevel: intermediate
+ *                   scoringMethod: legacy_weighted_scoring
+ *                 toSnapshot:
+ *                   snapshotId: 665f1f000000000000000002
+ *                   userReadinessScore: 78.14
+ *                   userLevel: intermediate
+ *                   scoringMethod: dev2vec_doc2vec_classifier
  *                 delta:
- *                   userReadinessScore: 21
- *                   levelChanged: true
- *                   fromLevel: beginner
+ *                   userReadinessScore: 12.14
+ *                   levelChanged: false
+ *                   fromLevel: intermediate
  *                   toLevel: intermediate
+ *                 skillChanges: []
+ *                 newSkills: []
+ *                 improvedSkills: []
+ *                 weakerSkills: []
+ *                 resolvedMissingSkills: []
+ *                 newMissingSkills: []
+ *                 warnings:
+ *                   - Snapshots use different scoring methods, so skill-level comparison is not reliable.
  *       400:
  *         description: Invalid request or snapshots belong to different repositories
  *       401:

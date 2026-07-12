@@ -79,8 +79,13 @@ const fetchGithubRepositories = async (accessToken) => {
   }
 };
 
+const encodeGithubContentPath = (path) => String(path || '')
+  .split('/')
+  .map((part) => encodeURIComponent(part))
+  .join('/');
+
 const fetchGithubContent = async (owner, repo, path, accessToken) => {
-  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeGithubContentPath(path)}`;
 
   try {
     const response = await axios.get(url, {

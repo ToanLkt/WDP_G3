@@ -11,6 +11,7 @@ const {
 const { createSnapshotFromAnalysisResult } = require('./snapshot.service');
 const { createStatusError } = require('./github/github.utils');
 const { resolveUserContributionSource } = require('./analysisSource.service');
+const { fetchRepositoryPackages } = require('./github/github.package.service');
 const {
   buildDev2VecInputFromAnalysisSource,
   buildDev2VecInputFromRepositoryAnalysis,
@@ -87,22 +88,74 @@ const uniqueStrings = (values = [], limit = 20) => {
 const buildDev2VecStrengths = (dev2vecInput = {}) => {
   const sourceStats = dev2vecInput.sourceStats || {};
   return [
-    `Hệ thống đã phân tích ${Number(sourceStats.commitCount || 0)} commits và ${Number(sourceStats.apiTokenCount || 0)} API/dependency tokens bằng Dev2Vec.`,
+    `H\u1ec7 th\u1ed1ng \u0111\u00e3 ph\u00e2n t\u00edch ${Number(sourceStats.commitCount || 0)} commits, ${Number(sourceStats.apiTokenCount || 0)} API/dependency tokens v\u00e0 ${Number(sourceStats.sourceFileCount || 0)} source files b\u1eb1ng Dev2Vec.`,
   ];
 };
 
 const buildDev2VecWeaknesses = (skillMapping = {}) => (
-  uniqueStrings([
-    ...(skillMapping.weaknesses || []),
-    ...(skillMapping.missingSkills || []).map((item) => item.canonicalSkillName),
-  ], 10).map((skillName) => `Chưa thấy đóng góp rõ về ${skillName}`)
+  [
+    ...(skillMapping.weaknesses || []).map((item) => (
+      item && typeof item === 'object' ? item : { canonicalSkillName: item }
+    )),
+    ...(skillMapping.missingSkills || []),
+  ]
+    .reduce((items, item) => {
+      const skillName = item.canonicalSkillName || item.skill || item;
+      const key = String(skillName || '').toLowerCase();
+      if (!key || items.some((existing) => String(existing.skillName || '').toLowerCase() === key) || items.length >= 10) {
+        return items;
+      }
+      items.push({ ...item, skillName });
+      return items;
+    }, [])
+    .map((item) => (
+      item.evidenceDetected || item.evidenceStatus === 'detected_but_low_similarity'
+        ? `\u0110\u00e3 th\u1ea5y evidence v\u1ec1 ${item.skillName} trong source code, nh\u01b0ng Dev2Vec similarity hi\u1ec7n c\u00f2n th\u1ea5p. B\u1ea1n n\u00ean l\u00e0m r\u00f5 h\u01a1n b\u1eb1ng docs/tests/validation.`
+        : `Ch\u01b0a th\u1ea5y \u0111\u1ee7 evidence r\u00f5 v\u1ec1 ${item.skillName} trong d\u1eef li\u1ec7u ph\u00e2n t\u00edch hi\u1ec7n t\u1ea1i.`
+    ))
 );
 
-const buildDev2VecRecommendations = (skillMapping = {}) => (
-  uniqueStrings(skillMapping.recommendations || [], 10)
-    .map((skillName) => `Bạn nên học ${skillName}`)
-);
+const SKILL_EVIDENCE_EXAMPLES = {
+  'REST API': 'route, controller, validation, error handling v\u00e0 API docs',
+  Database: 'schema, model, query, indexing v\u00e0 transaction n\u1ebfu c\u1ea7n',
+  Authentication: 'JWT, middleware, RBAC, refresh token v\u00e0 protected routes',
+  'Docker Basics': 'Dockerfile t\u1ed1i \u01b0u, docker-compose, healthcheck v\u00e0 h\u01b0\u1edbng d\u1eabn ch\u1ea1y',
+  'API Testing': 'Jest/Supertest, integration tests v\u00e0 test script',
+};
 
+const SKILL_RECOMMENDATIONS = {
+  'REST API': 'B\u1ea1n n\u00ean b\u1ed5 sung ho\u1eb7c l\u00e0m r\u00f5 route/controller, validation, error handling v\u00e0 API docs.',
+  Database: 'B\u1ea1n n\u00ean l\u00e0m r\u00f5 schema, model, query, indexing v\u00e0 transaction n\u1ebfu c\u1ea7n.',
+  Authentication: 'B\u1ea1n n\u00ean l\u00e0m r\u00f5 JWT, middleware, RBAC, refresh token v\u00e0 protected routes.',
+  'Docker Basics': 'B\u1ea1n n\u00ean b\u1ed5 sung healthcheck, bi\u1ebfn m\u00f4i tr\u01b0\u1eddng production v\u00e0 h\u01b0\u1edbng d\u1eabn ch\u1ea1y Docker.',
+  'API Testing': 'B\u1ea1n n\u00ean b\u1ed5 sung Jest/Supertest, integration tests v\u00e0 npm test script.',
+};
+
+const buildDev2VecRecommendations = (skillMapping = {}) => {
+  const items = [
+    ...(skillMapping.missingSkills || []),
+    ...(skillMapping.recommendations || []).map((skillName) => ({ canonicalSkillName: skillName })),
+  ];
+  const seen = new Set();
+  const recommendations = [];
+
+  for (const item of items) {
+    const skillName = item.canonicalSkillName || item.skill || item;
+    const key = String(skillName || '').toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+
+    recommendations.push(SKILL_RECOMMENDATIONS[skillName] || (
+      item.evidenceStatus === 'detected_but_low_similarity'
+        ? `B\u1ea1n n\u00ean th\u1ec3 hi\u1ec7n r\u00f5 h\u01a1n ${skillName} qua ${SKILL_EVIDENCE_EXAMPLES[skillName] || 'source code, t\u00e0i li\u1ec7u v\u00e0 v\u00ed d\u1ee5 s\u1eed d\u1ee5ng'}.`
+        : `B\u1ea1n n\u00ean b\u1ed5 sung ${skillName} v\u00e0o d\u1ef1 \u00e1n.`
+    ));
+
+    if (recommendations.length >= 10) break;
+  }
+
+  return recommendations;
+};
 const buildSkillVectorFromDev2VecSkills = ({ topSkills = [], missingSkills = [] }) => {
   const now = new Date();
   const entries = [];
@@ -116,9 +169,14 @@ const buildSkillVectorFromDev2VecSkills = ({ topSkills = [], missingSkills = [] 
       normalizedSkillName: normalizeSkillText(canonicalSkillName),
       category: item.category || getCanonicalSkillCategory(canonicalSkillName),
       score: Math.min(1, Math.max(0, Number(item.score || 0) / 100)),
-      level: item.level === 'strong' ? 'strong' : 'developing',
-      evidence: ['Dev2Vec matched skill prototype'],
-      sources: ['dev2vec'],
+      level: item.level || (item.level === 'strong' ? 'strong' : 'developing'),
+      similarity: item.similarity,
+      dev2vecStatus: item.dev2vecStatus,
+      evidenceDetected: item.evidenceDetected,
+      evidenceStatus: item.evidenceStatus,
+      reason: item.reason,
+      evidence: item.evidence?.length ? item.evidence : ['Dev2Vec matched skill prototype'],
+      sources: item.evidence?.length ? ['dev2vec', 'source_evidence'] : ['dev2vec'],
       lastCalculatedAt: now,
     });
   }
@@ -133,10 +191,15 @@ const buildSkillVectorFromDev2VecSkills = ({ topSkills = [], missingSkills = [] 
       canonicalSkillName,
       normalizedSkillName: normalizeSkillText(canonicalSkillName),
       category: item.category || getCanonicalSkillCategory(canonicalSkillName),
-      score: item.priority === 'medium' ? 0.25 : 0,
-      level: item.priority === 'medium' ? 'weak' : 'missing',
-      evidence: ['Dev2Vec skill gap prototype'],
-      sources: ['dev2vec'],
+      score: Math.min(1, Math.max(0, Number(item.score || (item.priority === 'medium' ? 25 : 0)) / 100)),
+      level: item.level || (item.priority === 'medium' ? 'weak' : 'missing'),
+      similarity: item.similarity,
+      dev2vecStatus: item.dev2vecStatus,
+      evidenceDetected: item.evidenceDetected,
+      evidenceStatus: item.evidenceStatus,
+      reason: item.reason,
+      evidence: item.evidence?.length ? item.evidence : ['Dev2Vec skill gap prototype'],
+      sources: item.evidenceStatus === 'detected_but_low_similarity' ? ['dev2vec', 'source_evidence'] : ['dev2vec'],
       lastCalculatedAt: now,
     });
   }
@@ -160,7 +223,11 @@ const buildDev2VecAnalysisPayload = ({
   dev2vecOutput,
 }) => {
   const summary = buildAnalysisSummaryFromDev2Vec(dev2vecOutput);
-  const skillMapping = buildAnalysisSkillsFromDev2Vec(dev2vecOutput);
+  const repoFeatureEvidence = dev2vecInput.repoFeatureEvidence || dev2vecInput.evidencePreview?.repoFeatures || {};
+  const skillMapping = buildAnalysisSkillsFromDev2Vec({
+    ...dev2vecOutput,
+    repoFeatureEvidence,
+  }, { repoFeatureEvidence });
   const skillVector = buildSkillVectorFromDev2VecSkills(skillMapping);
   const commitSummary = buildCommitSummary(commits);
   const packages = uniqueStrings([
@@ -242,6 +309,7 @@ const buildDev2VecAnalysisPayload = ({
         ...dev2vecInput.sourceStats,
         ...(dev2vecOutput.sourceStats || {}),
       },
+      repoFeatureEvidence,
       skillScore: summary.overallScore,
       contributionScore: 0,
       commitQualityScore: 0,
@@ -279,6 +347,7 @@ const buildDev2VecAnalysisPayload = ({
         ...dev2vecInput.sourceStats,
         ...(dev2vecOutput.sourceStats || {}),
       },
+      repoFeatureEvidence,
       evidencePreview: dev2vecInput.evidencePreview || {},
       rolePredictions: dev2vecOutput.rolePredictions || [],
       skillGaps: dev2vecOutput.skillGaps || {},
@@ -291,7 +360,7 @@ const analyzeRepository = async ({ user, params, query }) => {
   validateAuthUser(user);
 
   const repository = await findRepositoryForUser(user, params.repoId);
-  const [githubAccount, packageRecord, commits] = await Promise.all([
+  let [githubAccount, packageRecord, commits] = await Promise.all([
     GithubAccount.findOne({ userId: user.userId }).lean(),
     RepositoryPackage.findOne({ userId: user.userId, repositoryId: repository._id }).lean(),
     RepositoryCommit.find({ userId: user.userId, repositoryId: repository._id }).sort({ authorDate: -1 }).lean(),
@@ -302,6 +371,13 @@ const analyzeRepository = async ({ user, params, query }) => {
     error.statusCode = 400;
     throw error;
   }
+
+  packageRecord = await ensurePackageSourceEvidence({
+    user,
+    repoId: params.repoId,
+    repository,
+    packageRecord,
+  });
 
   const contributionScope = filterUserContributionCommits(commits, githubAccount);
   const userCommits = contributionScope.userCommits;
@@ -375,6 +451,8 @@ const buildDev2VecOutputFromAnalysis = (analysis = {}) => ({
   skillGaps: analysis.dev2vec?.skillGaps || {},
   vectorSources: analysis.dev2vec?.vectorSources || {},
   sourceStats: analysis.dev2vec?.sourceStats || {},
+  evidencePreview: analysis.dev2vec?.evidencePreview || {},
+  repoFeatureEvidence: analysis.dev2vec?.repoFeatureEvidence || analysis.dev2vec?.evidencePreview?.repoFeatures || {},
   scoringMethod: analysis.dev2vec?.scoringMethod || 'dev2vec_doc2vec_classifier',
 });
 
@@ -400,11 +478,19 @@ const mapRoleMatchesFromDev2Vec = (dev2vecOutput, { includeDetails = false, limi
 };
 
 const buildRepositoryDev2VecInput = async ({ userId, repository, topN }) => {
-  const [githubAccount, packageRecord, commits] = await Promise.all([
+  let [githubAccount, packageRecord, commits] = await Promise.all([
     GithubAccount.findOne({ userId }).lean(),
     RepositoryPackage.findOne({ userId, repositoryId: repository._id }).lean(),
     RepositoryCommit.find({ userId, repositoryId: repository._id }).sort({ authorDate: -1 }).lean(),
   ]);
+  if (githubAccount && !hasSourceEvidenceContent(packageRecord)) {
+    packageRecord = await ensurePackageSourceEvidence({
+      user: { userId },
+      repoId: repository._id,
+      repository,
+      packageRecord,
+    });
+  }
   const contributionScope = githubAccount
     ? filterUserContributionCommits(commits, githubAccount)
     : { userCommits: commits };
@@ -426,6 +512,12 @@ const getDev2VecOutputForSingleRepo = async ({ userId, repository, analysis, top
 
   const dev2vecInput = await buildRepositoryDev2VecInput({ userId, repository, topN });
   const dev2vecOutput = await runDev2VecInference(dev2vecInput);
+  dev2vecOutput.evidencePreview = dev2vecInput.evidencePreview || {};
+  dev2vecOutput.repoFeatureEvidence = dev2vecInput.repoFeatureEvidence || dev2vecInput.evidencePreview?.repoFeatures || {};
+  dev2vecOutput.sourceStats = {
+    ...dev2vecInput.sourceStats,
+    ...(dev2vecOutput.sourceStats || {}),
+  };
 
   if (analysis?._id) {
     await AnalysisResult.findByIdAndUpdate(analysis._id, {
@@ -439,6 +531,7 @@ const getDev2VecOutputForSingleRepo = async ({ userId, repository, analysis, top
             ...dev2vecInput.sourceStats,
             ...(dev2vecOutput.sourceStats || {}),
           },
+          repoFeatureEvidence: dev2vecInput.repoFeatureEvidence || dev2vecInput.evidencePreview?.repoFeatures || {},
           evidencePreview: dev2vecInput.evidencePreview || {},
           rolePredictions: dev2vecOutput.rolePredictions || [],
           skillGaps: dev2vecOutput.skillGaps || {},
@@ -457,7 +550,26 @@ const getDev2VecOutputForAnalysisSource = async ({ analysisSource, topN, userId 
     topN,
     requestId: `role-matches-${userId}-${analysisSource?.sourceMode || 'multi'}-${Date.now()}`,
   });
-  return runDev2VecInference(dev2vecInput);
+  return runDev2VecInference(dev2vecInput).then((dev2vecOutput) => ({
+    ...dev2vecOutput,
+    evidencePreview: dev2vecInput.evidencePreview || {},
+    repoFeatureEvidence: dev2vecInput.repoFeatureEvidence || dev2vecInput.evidencePreview?.repoFeatures || {},
+    sourceStats: {
+      ...dev2vecInput.sourceStats,
+      ...(dev2vecOutput.sourceStats || {}),
+    },
+  }));
+};
+
+const hasSourceEvidenceContent = (packageRecord = {}) => (
+  stringArray(packageRecord?.detectedFiles?.map((file) => file?.sourceContent || '')).length > 0
+);
+
+const ensurePackageSourceEvidence = async ({ user, repoId, repository, packageRecord }) => {
+  if (hasSourceEvidenceContent(packageRecord)) return packageRecord;
+
+  await fetchRepositoryPackages(user, repoId || repository?._id);
+  return RepositoryPackage.findOne({ userId: user.userId, repositoryId: repository._id }).lean();
 };
 
 const formatDetailedRoleMatch = (match) => ({
