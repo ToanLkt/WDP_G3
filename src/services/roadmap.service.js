@@ -102,7 +102,7 @@ const formatSkillGapSummary = (skillGaps = []) => {
         };
       }
       const currentScore = roundScore(gap.currentScore || 0);
-      const fallbackRequiredScore = (gap.currentLevel || 'missing') === 'missing' ? 0.4 : 0.4;
+      const fallbackRequiredScore = (gap.currentLevel || 'missing') === 'missing' ? 70 : 70;
       const requiredScore = roundScore(Number(gap.requiredScore ?? gap.targetMinScore ?? fallbackRequiredScore) || fallbackRequiredScore);
       const rawGap = gap.gap ?? Math.max(0, requiredScore - currentScore);
       const calculatedGap = roundScore(rawGap <= 0 && (gap.currentLevel || 'missing') === 'missing' ? Math.max(0.001, requiredScore - currentScore) : rawGap);
@@ -116,6 +116,8 @@ const formatSkillGapSummary = (skillGaps = []) => {
         requiredScore,
         gap: calculatedGap,
         priority: priorityLabel(gap.priority),
+        gapType: gap.gapType || gap.currentLevel || 'missing',
+        source: gap.source || 'analysis',
         reason: gap.reason || gap.reasonVi || '',
       };
     })
@@ -133,9 +135,35 @@ const sanitizePriority = (value) => {
   return priorityLabel(value || 3);
 };
 
+const TASK_SKILL_RULES = [
+  { pattern: /jest|supertest|api integration test|integration tests?|integration testing|api tests?|test.*api|test.*endpoint|endpoint.*test|kiem thu/i, skill: 'API Testing' },
+  { pattern: /jwt|refresh token|auth|authentication|authorization|rbac|protected route|auth middleware|middleware.*auth|token|login|signin|sign in|xac thuc|phan quyen/i, skill: 'Authentication' },
+  { pattern: /dockerfile|docker compose|docker-compose|docker|container|containerize|healthcheck|env production|production env|environment production/i, skill: 'Docker Basics' },
+  { pattern: /soft delete|schema|model|indexing?|indexes|query|queries|mongodb|mongoose|database|data model|deletedat|deleted at|xoa mem|model du lieu|truy van|co so du lieu/i, skill: 'Database' },
+  { pattern: /swagger|openapi|api docs?|api documentation|validation|validate|error handling|route|router|controller|rest|endpoint|crud|third[\s-]?party|ben thu ba|external service|external api|websocket|web socket|tich hop|integration|webhook|pagination|phan trang|search api|query api|tinh nang moi phuc tap|complex feature/i, skill: 'REST API' },
+  { pattern: /readme|documentation|docs\b|tai lieu|project docs/i, skill: 'Documentation' },
+  { pattern: /conventional commit|commit convention|commit message|linting|eslint|prettier|project setup|setup project/i, skill: 'Project Setup' },
+];
+
+const inferSkillFromTaskText = (task = {}) => {
+  const text = `${task.title || task.name || ''} ${task.description || task.goal || ''}`.toLowerCase();
+  const matchedRule = TASK_SKILL_RULES.find((rule) => rule.pattern.test(text));
+  return matchedRule ? matchedRule.skill : '';
+};
+
+const getRoadmapTaskCategory = (canonicalSkillName, fallbackCategory = '') => {
+  if (['REST API', 'Database', 'Authentication', 'Docker Basics', 'API Testing'].includes(canonicalSkillName)) {
+    return 'backend';
+  }
+  if (canonicalSkillName === 'Documentation' || canonicalSkillName === 'Project Setup') {
+    return 'General';
+  }
+  return fallbackCategory || getCanonicalSkillCategory(canonicalSkillName);
+};
+
 const sanitizeRoadmapTask = (task = {}, fallback = {}) => {
   const canonicalSkillName = canonicalizeSkillName(
-    task.canonicalSkillName || task.skillName || task.skill || fallback.skillName || ''
+    inferSkillFromTaskText(task) || task.canonicalSkillName || task.skillName || task.skill || fallback.skillName || ''
   );
   const title = String(task.title || task.name || 'Roadmap task').trim();
   const itemId = buildTaskItemId({
@@ -150,33 +178,42 @@ const sanitizeRoadmapTask = (task = {}, fallback = {}) => {
     description: String(task.description || task.goal || '').trim(),
     skillName: canonicalSkillName,
     canonicalSkillName,
-    category: getCanonicalSkillCategory(canonicalSkillName),
+    category: getRoadmapTaskCategory(canonicalSkillName),
     targetRole: String(task.targetRole || fallback.targetRole || '').trim(),
-    level: String(task.level || fallback.level || '').trim(),
-    priority: sanitizePriority(task.priority),
-    week: Number.isFinite(Number(task.week)) ? Number(task.week) : Number(fallback.week || 1),
+    level: canonicalSkillName === 'API Testing'
+      ? 'beginner'
+      : String(task.level || fallback.level || '').trim(),
+    priority: canonicalSkillName === 'API Testing' ? 'high' : sanitizePriority(task.priority),
+    week: Math.min(
+      Math.max(1, Number(fallback.durationWeeks || 52)),
+      Number.isFinite(Number(task.week)) ? Number(task.week) : Number(fallback.week || 1)
+    ),
     estimatedHours: Number.isFinite(Number(task.estimatedHours)) ? Number(task.estimatedHours) : 0,
     status: ['not_started', 'in_progress', 'completed'].includes(task.status) ? task.status : 'not_started',
   };
 };
 
 const sanitizeRoadmapPhases = (phases = [], context = {}) =>
-  (Array.isArray(phases) ? phases : []).map((phase, phaseIndex) => ({
-    title: String(phase.title || `Phase ${phaseIndex + 1}`).trim(),
-    goal: String(phase.goal || phase.reason || '').trim(),
-    skills: Array.isArray(phase.skills) ? uniqueStrings(phase.skills.map(canonicalizeSkillName), 12) : [],
-    tasks: (Array.isArray(phase.tasks) ? phase.tasks : []).map((task, taskIndex) =>
+  (Array.isArray(phases) ? phases : []).map((phase, phaseIndex) => {
+    const tasks = (Array.isArray(phase.tasks) ? phase.tasks : []).map((task, taskIndex) =>
       sanitizeRoadmapTask(task, {
         targetRole: context.targetRole,
         level: context.effectiveLevel,
         phaseIndex,
         taskIndex,
         week: phaseIndex + 1,
+        durationWeeks: context.durationWeeks,
         scope: 'main',
       })
-    ),
-    status: ['not_started', 'in_progress', 'completed'].includes(phase.status) ? phase.status : 'not_started',
-  }));
+    );
+    return {
+      title: String(phase.title || `Phase ${phaseIndex + 1}`).trim(),
+      goal: String(phase.goal || phase.reason || '').trim(),
+      skills: uniqueStrings(tasks.map((task) => task.canonicalSkillName).filter(Boolean), 12),
+      tasks,
+      status: ['not_started', 'in_progress', 'completed'].includes(phase.status) ? phase.status : 'not_started',
+    };
+  });
 
 const formatLegacySuggestedTask = (task) => {
   if (typeof task === 'string' || typeof task === 'number') return String(task).trim();
@@ -190,7 +227,17 @@ const parseSuggestedTaskText = (text, fallbackTitle = 'Roadmap task') => {
     return { title: fallbackTitle, description: '' };
   }
 
-  const separatorIndex = value.indexOf(':');
+  let depth = 0;
+  let separatorIndex = -1;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (char === '(') depth += 1;
+    if (char === ')') depth = Math.max(0, depth - 1);
+    if (char === ':' && depth === 0) {
+      separatorIndex = index;
+      break;
+    }
+  }
   if (separatorIndex > 0) {
     const title = value.slice(0, separatorIndex).trim();
     const description = value.slice(separatorIndex + 1).trim();
@@ -214,12 +261,17 @@ const sanitizeAlternativeRoadmaps = (roadmap = {}, context = {}) => {
         sanitizeRoadmapTask(task, {
           targetRole: context.targetRole || item.targetRole,
           level: context.effectiveLevel,
+          skillName: 'REST API',
           phaseIndex: roadmapIndex,
           taskIndex,
           week: taskIndex + 1,
+          durationWeeks: context.durationWeeks,
           scope: 'alt',
         })
       ),
+    })).map((item) => ({
+      ...item,
+      skills: uniqueStrings((item.tasks || []).map((task) => task.canonicalSkillName).filter(Boolean), 12),
     }));
   }
 
@@ -241,9 +293,11 @@ const sanitizeAlternativeRoadmaps = (roadmap = {}, context = {}) => {
           {
             targetRole: context.targetRole,
             level: context.effectiveLevel,
+            skillName: 'REST API',
             phaseIndex: roadmapIndex,
             taskIndex,
             week: taskIndex + 1,
+            durationWeeks: context.durationWeeks,
             scope: 'alt',
           }
         );
@@ -253,7 +307,7 @@ const sanitizeAlternativeRoadmaps = (roadmap = {}, context = {}) => {
       targetRole: String(context.targetRole || '').trim(),
       pathType: 'supporting',
       reason: String(path.reason || '').trim(),
-      skills,
+      skills: uniqueStrings(tasks.map((task) => task.canonicalSkillName).filter(Boolean), 12),
       tasks,
     };
   });
@@ -720,7 +774,11 @@ const inferPrimarySkillForTask = (task, skillGaps = [], phase = {}) => {
     return allowedSkills.find((allowed) => allowed.toLowerCase() === canonicalSkillName.toLowerCase()) || '';
   };
   const explicitSkill = canonicalizeSkillName(task?.canonicalSkillName || task?.skillName || '');
-  if (explicitSkill && allowedSet.has(explicitSkill.toLowerCase())) return explicitSkill;
+  const textRuleSkill = canonicalizeSkillName(inferSkillFromTaskText(task));
+  if (textRuleSkill) {
+    const allowedTextRuleSkill = allowedSkills.length ? findAllowedSkill(textRuleSkill) : textRuleSkill;
+    if (allowedTextRuleSkill) return allowedTextRuleSkill;
+  }
 
   const textMatchedGap = gaps.find((gap) =>
     text.includes(String(gap.canonicalSkillName || gap.skillName || '').toLowerCase())
@@ -739,6 +797,7 @@ const inferPrimarySkillForTask = (task, skillGaps = [], phase = {}) => {
   const matchedAllowedRule = allowedRules.find((rule) => rule.pattern.test(text));
   const allowedRuleSkill = matchedAllowedRule ? findAllowedSkill(matchedAllowedRule.skill) : '';
   if (allowedRuleSkill) return allowedRuleSkill;
+  if (explicitSkill && allowedSet.has(explicitSkill.toLowerCase())) return explicitSkill;
 
   const rules = [
     { pattern: /integration test|api test|test.*endpoint|endpoint.*test|supertest/, skill: 'API Testing' },
@@ -790,8 +849,15 @@ const normalizeTask = (task, index, skillGaps = [], phase = {}, targetRole = '',
   );
   const title = String(task?.title || `Task ${index + 1}`).trim();
   const phaseIndex = Number(context.phaseIndex || 0);
-  const level = context.effectiveLevel || task?.level || '';
   const gapForSkill = skillGaps.find((gap) => canonicalizeSkillName(gap.canonicalSkillName || gap.skillName) === canonicalSkillName);
+  const level = canonicalSkillName === 'API Testing'
+    ? 'beginner'
+    : gapForSkill?.gapType === 'weak'
+      ? (context.effectiveLevel === 'beginner' ? 'intermediate' : context.effectiveLevel || 'intermediate')
+      : context.effectiveLevel || task?.level || '';
+  const priority = canonicalSkillName === 'API Testing'
+    ? 'high'
+    : task?.priority || priorityLabel(gapForSkill?.priority || 3);
   return {
     itemId: buildTaskItemId({
       scope: context.scope || 'main',
@@ -804,11 +870,14 @@ const normalizeTask = (task, index, skillGaps = [], phase = {}, targetRole = '',
     skillTags: normalizedSkillTags,
     skillName: canonicalSkillName,
     canonicalSkillName,
-    category: gapForSkill?.category || getCanonicalSkillCategory(canonicalSkillName),
-    priority: task?.priority || priorityLabel(gapForSkill?.priority || 3),
+    category: getRoadmapTaskCategory(canonicalSkillName, gapForSkill?.category),
+    priority,
     targetRole: String(targetRole || '').trim(),
     level,
-    week: Number.isFinite(Number(task?.week)) ? Number(task.week) : phaseIndex + 1,
+    week: Math.min(
+      Math.max(1, Number(context.durationWeeks || 52)),
+      Number.isFinite(Number(task?.week)) ? Number(task.week) : phaseIndex + 1
+    ),
     status: ['not_started', 'in_progress', 'completed'].includes(task?.status) ? task.status : 'not_started',
     estimatedHours: Number.isFinite(Number(task?.estimatedHours)) ? Number(task.estimatedHours) : 0,
     resources: [],
@@ -852,21 +921,22 @@ const normalizePhase = (phase, index, skillGaps = [], targetRole = '', context =
       ? uniqueStrings(phase.skills.map(canonicalizeSkillName), 12)
       : [],
   };
+  const tasks = Array.isArray(phase?.tasks)
+    ? phase.tasks
+        .slice(0, 4)
+        .map((task, taskIndex) =>
+          normalizeTask(task, taskIndex, skillGaps, normalizedPhase, targetRole, {
+            ...context,
+            phaseIndex: index,
+            scope: 'main',
+          })
+        )
+    : [];
   return {
     title: String(phase?.title || `Phase ${index + 1}`).trim(),
     goal: String(phase?.goal || '').trim(),
-    skills: normalizedPhase.skills,
-    tasks: Array.isArray(phase?.tasks)
-      ? phase.tasks
-          .slice(0, 4)
-          .map((task, taskIndex) =>
-            normalizeTask(task, taskIndex, skillGaps, normalizedPhase, targetRole, {
-              ...context,
-              phaseIndex: index,
-              scope: 'main',
-            })
-          )
-      : [],
+    skills: uniqueStrings(tasks.map((task) => task.canonicalSkillName).filter(Boolean), 12),
+    tasks,
     status: ['not_started', 'in_progress', 'completed'].includes(phase?.status)
       ? phase.status
       : 'not_started',
@@ -890,27 +960,25 @@ const normalizeSupportingPath = (path, index) => ({
 
 const buildAlternativeRoadmaps = (supportingPaths, { targetRole, effectiveLevel, durationWeeks }) =>
   (Array.isArray(supportingPaths) ? supportingPaths : []).slice(0, 2).map((path, pathIndex) => {
-    const skills = uniqueStrings((path.skills || []).map(canonicalizeSkillName), 6);
     const tasks = (path.suggestedTasks || []).slice(0, 4).map((text, taskIndex) => {
-      const skillName = skills[taskIndex % Math.max(1, skills.length)] || skills[0] || 'Clean Code';
       const parsedTask = parseSuggestedTaskText(text, `Alternative task ${taskIndex + 1}`);
       return normalizeTask(
         {
           title: parsedTask.title,
           description: parsedTask.description,
-          skillName,
-          canonicalSkillName: skillName,
+          canonicalSkillName: inferSkillFromTaskText(parsedTask) || 'REST API',
           priority: taskIndex === 0 ? 'medium' : 'low',
           estimatedHours: 4,
           week: Math.min(Number(durationWeeks || 6), taskIndex + 1),
         },
         taskIndex,
         [],
-        { skills },
+        { skills: [] },
         targetRole,
-        { effectiveLevel, phaseIndex: pathIndex, scope: 'alt' }
+        { effectiveLevel, phaseIndex: pathIndex, scope: 'alt', durationWeeks }
       );
     });
+    const skills = uniqueStrings(tasks.map((task) => task.canonicalSkillName).filter(Boolean), 6);
     return {
       title: path.title,
       targetRole,
@@ -920,6 +988,16 @@ const buildAlternativeRoadmaps = (supportingPaths, { targetRole, effectiveLevel,
       tasks,
     };
   });
+
+const buildAnalysisGapReason = (roadmapGapContext = {}) => {
+  const missing = uniqueStrings((roadmapGapContext.missingSkills || []).map(canonicalizeSkillName), 5);
+  const weak = uniqueStrings((roadmapGapContext.weakSkills || []).map(canonicalizeSkillName), 5);
+  if (!missing.length && !weak.length) return '';
+  const parts = [];
+  if (missing.length) parts.push(`${missing.join(', ')} là skill chưa thấy đủ evidence rõ nên cần bổ sung mới`);
+  if (weak.length) parts.push(`${weak.join(', ')} đã có evidence nhưng cần củng cố/làm rõ thêm`);
+  return parts.join('; ') + '.';
+};
 
 const applyRoadmapSkillGapPriorities = (roadmapData, roadmapGapContext) => {
   if (!roadmapGapContext?.prioritySkills?.length || !roadmapData?.mainPath?.phases?.length) {
@@ -1026,7 +1104,7 @@ const normalizeRoadmapPayload = ({
     ? roadmapData.mainPath.phases
         .slice(0, 5)
         .map((phase, index) =>
-          normalizePhase(phase, index, roadmapGapContext?.skillGaps || [], targetRole, { effectiveLevel })
+          normalizePhase(phase, index, roadmapGapContext?.skillGaps || [], targetRole, { effectiveLevel, durationWeeks })
         )
     : [];
   const supportingPaths = Array.isArray(roadmapData.supportingPaths)
@@ -1055,7 +1133,7 @@ const normalizeRoadmapPayload = ({
   const mainRoadmap = {
     title: roadmapData.mainPath?.title || `${targetRole} MVP Path`,
     targetRole,
-    reason: roadmapData.mainPath?.reason || '',
+    reason: roadmapData.mainPath?.reason || buildAnalysisGapReason(roadmapGapContext),
     phases,
   };
   const allTasks = [
@@ -1131,6 +1209,7 @@ const formatGeneratedRoadmapResponse = (roadmapInput) => {
     : Array.isArray(roadmap.skillGapSummary?.items)
       ? roadmap.skillGapSummary.items
       : formatLegacyGapItems(roadmap.skillGapSummary || {});
+  const durationWeekCount = Number(roadmap.durationWeeks || 6);
 
   return {
     roadmapId: roadmap._id,
@@ -1139,7 +1218,7 @@ const formatGeneratedRoadmapResponse = (roadmapInput) => {
     roleId: roadmap.roleId || roadmap.roleMatch?.roleId || '',
     requestedLevel: roadmap.requestedLevel || null,
     effectiveLevel,
-    durationWeeks: roadmap.durationWeeks || 6,
+    durationWeeks: durationWeekCount,
     language: roadmap.language || 'vi',
     roadmapSource: normalizeRoadmapSourceForResponse(roadmap.roadmapSource),
     roleMatch: roadmap.roleMatch || {},
@@ -1148,9 +1227,9 @@ const formatGeneratedRoadmapResponse = (roadmapInput) => {
       title: mainRoadmapSource.title || targetRole,
       targetRole: mainRoadmapSource.targetRole || targetRole,
       reason: mainRoadmapSource.reason || '',
-      phases: sanitizeRoadmapPhases(mainRoadmapSource.phases || [], { targetRole, effectiveLevel }),
+      phases: sanitizeRoadmapPhases(mainRoadmapSource.phases || [], { targetRole, effectiveLevel, durationWeeks: durationWeekCount }),
     },
-    alternativeRoadmaps: sanitizeAlternativeRoadmaps(roadmap, { targetRole, effectiveLevel }),
+    alternativeRoadmaps: sanitizeAlternativeRoadmaps(roadmap, { targetRole, effectiveLevel, durationWeeks: durationWeekCount }),
     progressSummary:
       roadmap.progressSummary || {
         totalItems: 0,

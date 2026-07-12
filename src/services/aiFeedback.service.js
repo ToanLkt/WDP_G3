@@ -105,6 +105,15 @@ const buildDev2VecOutput = (analysis = {}) => ({
   scoringMethod: analysis.dev2vec?.scoringMethod || 'dev2vec_doc2vec_classifier',
 });
 
+const canonicalSkillNameOf = (item) => String(
+  item?.canonicalSkillName || item?.skillName || item?.skill || item || ''
+).trim();
+
+const toDisplayScore = (value) => {
+  const score = Number(value) || 0;
+  return Math.round((score <= 1 ? score * 100 : score) * 100) / 100;
+};
+
 const findLatestDev2VecSource = async (userId, repositoryId) => {
   const query = {
     userId,
@@ -114,7 +123,7 @@ const findLatestDev2VecSource = async (userId, repositoryId) => {
 
   const analysisResult = await AnalysisResult.findOne(query)
     .sort({ analyzedAt: -1, createdAt: -1 })
-    .select('repositoryId githubRepoId repoName fullName projectType careerDirection analyzedAt dev2vec')
+    .select('repositoryId githubRepoId repoName fullName projectType careerDirection analyzedAt summary strengths weaknesses recommendations missingSkills skillVector dev2vec')
     .lean();
 
   if (analysisResult && hasDev2VecAnalysis(analysisResult)) {
@@ -127,7 +136,7 @@ const findLatestDev2VecSource = async (userId, repositoryId) => {
 
   const snapshot = await RepoAnalysisSnapshot.findOne(query)
     .sort({ analyzedAt: -1, createdAt: -1 })
-    .select('repositoryId githubRepoId repoName fullName projectType careerDirection analyzedAt analysisResultId dev2vec')
+    .select('repositoryId githubRepoId repoName fullName projectType careerDirection analyzedAt analysisResultId summary strengths weaknesses recommendations missingSkills skillVector dev2vec')
     .lean();
 
   if (snapshot && hasDev2VecAnalysis(snapshot)) {
@@ -153,6 +162,18 @@ const buildFeedbackContext = ({ repository, dev2vecSource }) => {
   const sourceStats = dev2vecOutput.sourceStats || {};
   const vectorSources = dev2vecOutput.vectorSources || {};
   const hasIssueVector = Boolean(vectorSources.issues || vectorSources.issueVector);
+  const topSkillItems = toArray(analysis.skillVector)
+    .filter((item) => item && item.level !== 'missing' && Number(item.score || 0) > 0)
+    .sort((left, right) => Number(right.score || 0) - Number(left.score || 0));
+  const detectedSkillNames = topSkillItems.map(canonicalSkillNameOf).filter(Boolean);
+  const weakDetectedSkillNames = topSkillItems
+    .filter((item) => item.level === 'weak' || toDisplayScore(item.score) < 45)
+    .map(canonicalSkillNameOf)
+    .filter(Boolean);
+  const missingFromAnalysis = toArray(analysis.missingSkills)
+    .map(canonicalSkillNameOf)
+    .filter((name) => name && !detectedSkillNames.some((skill) => skill.toLowerCase() === name.toLowerCase()));
+  const hasAnalysisSkillContext = detectedSkillNames.length > 0 || missingFromAnalysis.length > 0;
 
   return {
     repositoryId: repository._id,
@@ -176,10 +197,21 @@ const buildFeedbackContext = ({ repository, dev2vecSource }) => {
         }
       : null,
     roleMatches,
-    matchedSkillNames: toArray(selectedSkillGap.matchedSkillNames),
-    weakSkillNames: toArray(selectedSkillGap.weakSkillNames),
-    missingSkillNames: toArray(selectedSkillGap.missingSkillNames),
-    recommendedNextSkills: toArray(selectedSkillGap.recommendedNextSkills),
+    matchedSkillNames: hasAnalysisSkillContext ? detectedSkillNames : toArray(selectedSkillGap.matchedSkillNames),
+    weakSkillNames: hasAnalysisSkillContext ? weakDetectedSkillNames : toArray(selectedSkillGap.weakSkillNames),
+    missingSkillNames: hasAnalysisSkillContext ? missingFromAnalysis : toArray(selectedSkillGap.missingSkillNames),
+    recommendedNextSkills: hasAnalysisSkillContext
+      ? [...missingFromAnalysis, ...weakDetectedSkillNames]
+      : toArray(selectedSkillGap.recommendedNextSkills),
+    topSkills: topSkillItems.map((item) => ({
+      skillName: canonicalSkillNameOf(item),
+      canonicalSkillName: canonicalSkillNameOf(item),
+      score: toDisplayScore(item.score),
+      level: item.level || 'weak',
+    })),
+    strengths: toArray(analysis.strengths),
+    weaknesses: toArray(analysis.weaknesses),
+    recommendations: toArray(analysis.recommendations),
     vectorSources,
     sourceStats,
     evidencePreview: dev2vecOutput.evidencePreview || {},

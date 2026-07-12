@@ -75,6 +75,47 @@ const getSkillGapDetail = (skillGap = {}, skillName, status) => {
   });
 };
 
+const toDisplayScore = (value) => {
+  const score = Number(value) || 0;
+  return Math.round((score <= 1 ? score * 100 : score) * 100) / 100;
+};
+
+const buildRoleMatchSkillObject = (skill, status) => ({
+  skill: skill.canonicalSkillName,
+  skillName: skill.canonicalSkillName,
+  canonicalSkillName: skill.canonicalSkillName,
+  category: skill.category || getCanonicalSkillCategory(skill.canonicalSkillName),
+  score: Number.isFinite(Number(skill.score)) ? skill.score : 0,
+  status,
+});
+
+const getAnalysisSkillContext = (analysis = {}) => {
+  const topSkills = (Array.isArray(analysis.skillVector) ? analysis.skillVector : [])
+    .filter((item) => item && item.level !== 'missing' && Number(item.score || 0) > 0)
+    .map((item) => {
+      const canonicalSkillName = normalizeRoadmapSkillName(item.canonicalSkillName || item.skill);
+      return {
+        skillName: canonicalSkillName,
+        canonicalSkillName,
+        category: item.category || getCanonicalSkillCategory(canonicalSkillName),
+        score: toDisplayScore(item.score),
+        rawScore: Number(item.score || 0),
+        level: item.level || 'weak',
+      };
+    })
+    .filter((item) => item.canonicalSkillName);
+  const detectedSet = new Set(topSkills.map((item) => item.canonicalSkillName.toLowerCase()));
+  const missingSkills = dedupeRoadmapSkills(analysis.missingSkills || [])
+    .map(normalizeRoadmapSkillName)
+    .filter((name) => name && !detectedSet.has(name.toLowerCase()));
+  return {
+    topSkills,
+    weakTopSkills: topSkills.filter((item) => item.level === 'weak' || Number(item.score || 0) < 45),
+    missingSkills,
+    hasAnalysisSkillContext: topSkills.length > 0 || missingSkills.length > 0,
+  };
+};
+
 const priorityForGapType = (gapType) => {
   if (gapType === 'missing') return 'high';
   if (gapType === 'weak') return 'medium';
@@ -169,6 +210,98 @@ const buildDev2VecSkillGapContext = ({ roleMatch, skillGap = {}, requestedRoleId
       ...recommended.map((item) => item.canonicalSkillName),
       ...(roleMatch.recommendedNextSkills || []),
     ].map(normalizeRoadmapSkillName), 12),
+    requestedRoleId: normalizeDev2VecRoleId(requestedRoleId),
+    resolvedRoleId: roleId,
+  };
+};
+
+const buildAnalysisSkillGapContext = ({ analysis = {}, roleMatch, requestedRoleId, requestedTargetRole } = {}) => {
+  const roleId = normalizeDev2VecRoleId(roleMatch?.roleId || requestedRoleId) || roleMatch?.roleId || requestedRoleId || '';
+  const roleName = roleMatch?.roleName || getDev2VecRoleName(roleId) || requestedTargetRole || analysis.careerDirection || '';
+  const context = getAnalysisSkillContext(analysis);
+  const strongTopSkills = context.topSkills.filter((skill) => skill.level === 'strong' || Number(skill.score || 0) >= 45);
+  const missing = context.missingSkills.map((skillName) => ({
+    skillName,
+    canonicalSkillName: skillName,
+    category: roleId || getCanonicalSkillCategory(skillName),
+    gapType: 'missing',
+    priority: 'high',
+    similarity: null,
+    source: 'analysis',
+    currentLevel: 'missing',
+    targetLevel: 'strong',
+    currentScore: 0,
+    requiredScore: 70,
+    gap: 70,
+    reason: `Chưa thấy đủ evidence rõ về ${skillName}; nên bổ sung mới cho ${roleName}.`,
+  }));
+  const weak = context.weakTopSkills.map((skill) => ({
+    skillName: skill.canonicalSkillName,
+    canonicalSkillName: skill.canonicalSkillName,
+    category: skill.category || roleId || getCanonicalSkillCategory(skill.canonicalSkillName),
+    gapType: 'weak',
+    priority: 'medium',
+    similarity: skill.rawScore,
+    source: 'analysis',
+    currentLevel: skill.level || 'weak',
+    targetLevel: 'strong',
+    currentScore: skill.score,
+    requiredScore: 70,
+    gap: Math.max(0, 70 - Number(skill.score || 0)),
+    reason: `Đã thấy evidence về ${skill.canonicalSkillName}, nên củng cố/làm rõ thêm bằng docs/tests/validation.`,
+  }));
+  const matched = context.topSkills
+    .filter((skill) => !context.weakTopSkills.some((weakSkill) => weakSkill.canonicalSkillName === skill.canonicalSkillName))
+    .map((skill) => ({
+      skillName: skill.canonicalSkillName,
+      canonicalSkillName: skill.canonicalSkillName,
+      category: skill.category || roleId || getCanonicalSkillCategory(skill.canonicalSkillName),
+      gapType: 'matched',
+      priority: 'low',
+      similarity: skill.rawScore,
+      source: 'analysis',
+      currentLevel: skill.level || 'strong',
+      targetLevel: 'strong',
+      currentScore: skill.score,
+      requiredScore: 70,
+      gap: 0,
+      reason: `Đã thấy evidence về ${skill.canonicalSkillName} trong repository.`,
+    }));
+  const skillGaps = [...missing, ...weak, ...matched];
+  const matchedSkillNames = strongTopSkills.map((item) => item.canonicalSkillName);
+  const weakSkillNames = weak.map((item) => item.canonicalSkillName);
+  const missingSkillNames = missing.map((item) => item.canonicalSkillName);
+  const recommendedNextSkills = uniqueStrings([...missingSkillNames, ...weakSkillNames], 5);
+  const normalizedRoleMatch = {
+    ...(roleMatch || {}),
+    roleId,
+    roleName,
+    matchedSkillNames,
+    weakSkillNames,
+    missingSkillNames,
+    recommendedNextSkills,
+    matchedSkills: strongTopSkills.map((skill) => buildRoleMatchSkillObject(skill, 'matched')),
+    weakSkills: context.weakTopSkills.map((skill) => buildRoleMatchSkillObject(skill, 'weak')),
+    missingRequiredSkills: missing.map((skill) => ({
+      skill: skill.canonicalSkillName,
+      skillName: skill.canonicalSkillName,
+      canonicalSkillName: skill.canonicalSkillName,
+      category: skill.category,
+      score: 0,
+      status: 'missing',
+    })),
+    missingOptionalSkills: [],
+  };
+  return {
+    source: 'analysis',
+    targetRole: roleName,
+    selectedRoleMatch: normalizedRoleMatch,
+    skillGaps,
+    prioritySkills: [...missing, ...weak].map((item) => item.canonicalSkillName),
+    alreadyStrongSkills: matched.map((item) => item.canonicalSkillName),
+    weakSkills: weakSkillNames,
+    missingSkills: missingSkillNames,
+    recommendedNextSkills,
     requestedRoleId: normalizeDev2VecRoleId(requestedRoleId),
     resolvedRoleId: roleId,
   };
@@ -272,6 +405,15 @@ const buildRoadmapSkillGapFromAnalysis = (analysis, options = {}) => {
 
   const roleMatches = Array.isArray(options.roleMatches) ? options.roleMatches : [];
   const selectedRole = options.selectedRoleMatch || selectRoleMatchForRoadmap(roleMatches, options);
+  const analysisSkillContext = getAnalysisSkillContext(source);
+  if (analysisSkillContext.hasAnalysisSkillContext) {
+    return buildAnalysisSkillGapContext({
+      analysis: source,
+      roleMatch: selectedRole,
+      requestedRoleId: options.roleId,
+      requestedTargetRole: options.targetRole || source.careerDirection,
+    });
+  }
   if (!selectedRole) {
     return buildDev2VecSkillGapContext({
       roleMatch: null,

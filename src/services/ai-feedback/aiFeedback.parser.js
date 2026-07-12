@@ -83,6 +83,7 @@ const buildFallbackFeedback = (context, riskNotes = [DEFAULT_PARSE_RISK_NOTE]) =
     ...(Array.isArray(context.weakSkillNames) ? context.weakSkillNames : []),
     ...(Array.isArray(context.missingSkillNames) ? context.missingSkillNames : []),
   ];
+  const missingSet = new Set((Array.isArray(context.missingSkillNames) ? context.missingSkillNames : []).map((skill) => String(skill).toLowerCase()));
   const recommendedNextSkills = Array.isArray(context.recommendedNextSkills)
     ? context.recommendedNextSkills
     : [];
@@ -101,11 +102,15 @@ const buildFallbackFeedback = (context, riskNotes = [DEFAULT_PARSE_RISK_NOTE]) =
     summary: `Dua tren Dev2Vec analysis tu repository evidence, repo ${context.repoName} dang co xu huong phu hop voi ${topRoleName}${matchScore}.`,
     strengthFeedback:
       matchedSkillNames.length > 0
-        ? matchedSkillNames.map((skill) => `Co tin hieu phu hop voi ${skill} trong Dev2Vec skill prototype.`)
+        ? matchedSkillNames.map((skill) => `Da thay evidence ve ${skill} trong repository.`)
         : [`Tin hieu manh nhat hien tai nam o xu huong ${topRoleName}.`],
     weaknessFeedback:
       weakSkills.length > 0
-        ? weakSkills.map((skill) => `Can bo sung hoac lam ro them ky nang ${skill}.`)
+        ? weakSkills.map((skill) => (
+            missingSet.has(String(skill).toLowerCase())
+              ? `Chua thay du evidence ro ve ${skill} trong du lieu phan tich hien tai.`
+              : `Da co evidence ve ${skill}, nen can cung co hoac lam ro them bang docs/tests/validation.`
+          ))
         : ['Dev2Vec chua ghi nhan skill gap noi bat cho role du doan dau tien.'],
     learningAdvice:
       recommendedNextSkills.length > 0

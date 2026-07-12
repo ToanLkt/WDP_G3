@@ -224,6 +224,12 @@ const mergeMultiRepoAnalysisContext = ({ analyses, targetRole, sourceMode = 'all
     careerDirection,
     projectType: 'Multi-repo portfolio',
   };
+  const mergedSkillVector = mergeUserContributionAnalyses(sources);
+  const detectedSkillSet = new Set(
+    mergedSkillVector
+      .filter((skill) => skill.level !== 'missing' && Number(skill.score || 0) > 0)
+      .map((skill) => canonicalizeSkillName(skill.canonicalSkillName || skill.skill).toLowerCase())
+  );
   const mergedAnalysis = {
     _id: null,
     userId: sources[0]?.userId,
@@ -238,11 +244,14 @@ const mergeMultiRepoAnalysisContext = ({ analyses, targetRole, sourceMode = 'all
       projectType: 'Multi-repo portfolio',
     },
     analysisScope: analysisSource,
-    skillVector: mergeUserContributionAnalyses(sources),
+    skillVector: mergedSkillVector,
     strengths: dedupeText(sources.flatMap((analysis) => analysis.strengths || []), 12),
     weaknesses: dedupeText(sources.flatMap((analysis) => analysis.weaknesses || []), 12),
     missingSkills: uniqueStrings(
-      sources.flatMap((analysis) => analysis.missingSkills || []).map(canonicalizeSkillName),
+      sources
+        .flatMap((analysis) => analysis.missingSkills || [])
+        .map(canonicalizeSkillName)
+        .filter((skill) => !detectedSkillSet.has(skill.toLowerCase())),
       20
     ),
     recommendations: dedupeText(sources.flatMap((analysis) => analysis.recommendations || []), 12),

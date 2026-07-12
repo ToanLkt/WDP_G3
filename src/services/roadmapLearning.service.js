@@ -309,6 +309,8 @@ const generateRoadmapItemLearning = async (authUserOrId, roadmapId, itemId, body
       projectType: personalizedContext.projectType,
       repositoryNames: personalizedContext.repositoryNames,
       skillGapReason: gap?.reason || '',
+      skillGapType: gap?.gapType || gap?.currentLevel || '',
+      learningMode: (gap?.gapType || gap?.currentLevel) === 'missing' ? 'new_learning' : 'reinforcement',
     },
   });
   const includeResources = parseBoolean(body.includeResources, true);

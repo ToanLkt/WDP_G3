@@ -78,6 +78,26 @@ const buildDev2VecOutputFromAnalysis = (analysis = {}) => ({
   scoringMethod: analysis.dev2vec?.scoringMethod || 'dev2vec_doc2vec_classifier',
 });
 
+const canonicalSkillNameOf = (item) => String(
+  item?.canonicalSkillName || item?.skillName || item?.skill || item || ''
+).trim();
+
+const toDisplayScore = (value) => {
+  const score = Number(value) || 0;
+  return Math.round((score <= 1 ? score * 100 : score) * 100) / 100;
+};
+
+const compactAnalysisSkill = (item, levelFallback = 'weak', priority = 'normal') => {
+  const skillName = canonicalSkillNameOf(item);
+  return {
+    skillName,
+    level: item?.level || levelFallback,
+    priority,
+    score: toDisplayScore(item?.score),
+    source: 'analysis_top_skills',
+  };
+};
+
 const findLatestDev2VecAnalysis = async (userId, repositoryId) => {
   const baseQuery = {
     userId,
@@ -90,7 +110,7 @@ const findLatestDev2VecAnalysis = async (userId, repositoryId) => {
       repositoryId,
     })
       .sort(sortByLatest)
-      .select('repositoryId repoName fullName analyzedAt dev2vec')
+      .select('repositoryId repoName fullName analyzedAt summary strengths weaknesses recommendations missingSkills skillVector dev2vec')
       .lean();
 
     if (repoAnalysis && hasDev2VecAnalysis(repoAnalysis)) {
@@ -100,7 +120,7 @@ const findLatestDev2VecAnalysis = async (userId, repositoryId) => {
 
   return AnalysisResult.findOne(baseQuery)
     .sort(sortByLatest)
-    .select('repositoryId repoName fullName analyzedAt dev2vec')
+    .select('repositoryId repoName fullName analyzedAt summary strengths weaknesses recommendations missingSkills skillVector dev2vec')
     .lean();
 };
 
@@ -160,10 +180,26 @@ const buildChatSkillScoreContext = async (userId, options = {}) => {
     .sort((left, right) => Number(left.rank || 999) - Number(right.rank || 999))[0];
   const topSkillGap = dev2vecOutput.skillGaps[topPrediction?.roleId] || {};
   const topRoleMatch = roleMatches[0] || {};
-  const matchedSkillNames = toArray(topSkillGap.matchedSkillNames);
-  const weakSkillNames = toArray(topSkillGap.weakSkillNames);
-  const missingSkillNames = toArray(topSkillGap.missingSkillNames);
-  const recommendedNextSkills = toArray(topSkillGap.recommendedNextSkills);
+  const topSkillItems = toArray(analysis.skillVector)
+    .filter((item) => item && item.level !== 'missing' && Number(item.score || 0) > 0)
+    .sort((left, right) => Number(right.score || 0) - Number(left.score || 0));
+  const missingSkillNamesFromAnalysis = toArray(analysis.missingSkills).map(canonicalSkillNameOf).filter(Boolean);
+  const hasAnalysisSkillContext = topSkillItems.length > 0 || missingSkillNamesFromAnalysis.length > 0;
+  const matchedSkillNames = hasAnalysisSkillContext
+    ? topSkillItems.map(canonicalSkillNameOf).filter(Boolean)
+    : toArray(topSkillGap.matchedSkillNames);
+  const weakSkillNames = hasAnalysisSkillContext
+    ? topSkillItems
+        .filter((item) => item.level === 'weak' || toDisplayScore(item.score) < 45)
+        .map(canonicalSkillNameOf)
+        .filter(Boolean)
+    : toArray(topSkillGap.weakSkillNames);
+  const missingSkillNames = hasAnalysisSkillContext
+    ? missingSkillNamesFromAnalysis.filter((name) => !matchedSkillNames.some((skill) => skill.toLowerCase() === name.toLowerCase()))
+    : toArray(topSkillGap.missingSkillNames);
+  const recommendedNextSkills = hasAnalysisSkillContext
+    ? [...missingSkillNames, ...weakSkillNames]
+    : toArray(topSkillGap.recommendedNextSkills);
 
   return {
     analysisId: analysis._id,
@@ -188,12 +224,25 @@ const buildChatSkillScoreContext = async (userId, options = {}) => {
     sourceStats: dev2vecOutput.sourceStats,
     evidencePreview: dev2vecOutput.evidencePreview,
     roleMatches,
-    weakSkills: [
-      ...weakSkillNames.map((skillName) => compactSkill(skillName, 'weak', 'medium')),
-      ...missingSkillNames.map((skillName) => compactSkill(skillName, 'missing', 'high')),
-    ],
-    strongSkills: matchedSkillNames.map((skillName) => compactSkill(skillName, 'strong')),
+    weakSkills: hasAnalysisSkillContext
+      ? [
+          ...topSkillItems
+            .filter((item) => item.level === 'weak' || toDisplayScore(item.score) < 45)
+            .map((item) => compactAnalysisSkill(item, 'weak', 'medium')),
+          ...missingSkillNames.map((skillName) => compactSkill(skillName, 'missing', 'high')),
+        ]
+      : [
+          ...weakSkillNames.map((skillName) => compactSkill(skillName, 'weak', 'medium')),
+          ...missingSkillNames.map((skillName) => compactSkill(skillName, 'missing', 'high')),
+        ],
+    strongSkills: topSkillItems.length
+      ? topSkillItems.map((item) => compactAnalysisSkill(item, item.level || 'strong'))
+      : matchedSkillNames.map((skillName) => compactSkill(skillName, 'strong')),
     nextSkills: recommendedNextSkills.map((skillName) => compactSkill(skillName, 'next', 'high')),
+    strengths: toArray(analysis.strengths),
+    weaknesses: toArray(analysis.weaknesses),
+    recommendations: toArray(analysis.recommendations),
+    analysisSummary: analysis.summary || {},
     targetCareer: studentProfile?.targetCareer || '',
     currentSkills: studentProfile?.currentSkills || [],
     hasSkillScoreData: true,
