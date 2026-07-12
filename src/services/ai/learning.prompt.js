@@ -31,6 +31,8 @@ Roadmap/task context for better examples:
 ${safeJson(context)}
 
 Use this context to make the content practical for the task, but the output must remain reusable shared learning content for the skill.
+If context.learningMode="reinforcement", write the content as improvement/practice/checklist material for a skill already detected in the repo, not as a beginner introduction from zero.
+If context.learningMode="new_learning", foundation content is acceptable because the skill is truly missing from repo evidence.
 `
     : '';
 

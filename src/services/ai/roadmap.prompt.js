@@ -29,6 +29,11 @@ Important rules:
 - You may suggest missing skills only if they are relevant to the selected target role.
 - If Roadmap Skill Gap Context is available, prioritize its prioritySkills in order.
 - Do not make alreadyStrongSkills the main learning content.
+- Do not treat topSkills/already detected skills as missing.
+- Use missingSkills/gapType="missing" for new learning or adding missing repo evidence.
+- Use weakSkills/gapType="weak" for improvement tasks such as docs, validation, tests, refactor, production config, or clearer implementation evidence.
+- If REST API, Database, Authentication, or Docker Basics are detected but weak, write tasks as "cung co/lam ro/cai thien", not "hoc tu dau".
+- If API Testing is missing, prioritize adding Jest/Supertest or integration tests as new learning/work.
 - Every skill name must use the canonical name from Roadmap Skill Gap Context.
 - mainPath phases and tasks must use only canonical skills from Roadmap Skill Gap Context skillGapSummary/skillGaps.
 - Do not invent a new primary skillName or canonicalSkillName for mainPath tasks.

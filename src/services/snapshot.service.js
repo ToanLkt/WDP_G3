@@ -23,6 +23,10 @@ const objectArray = (values) =>
     : [];
 
 const roundScore = (value) => Number((Number(value || 0)).toFixed(3));
+const toDisplaySkillScore = (value) => {
+  const score = Number(value) || 0;
+  return Number(((score <= 1 ? score * 100 : score)).toFixed(2));
+};
 const parseBoolean = (value) => value === true || value === 'true';
 const normalizeView = (query = {}) => (query.view === 'detail' ? 'detail' : 'summary');
 const isUserContributionSnapshot = (snapshot) => snapshot?.analysisScope?.type === 'user_contribution';
@@ -105,10 +109,10 @@ const buildSnapshotPayload = (analysisResult) => {
     dev2vec: {
       modelVersion: source.dev2vec?.modelVersion || null,
       vectorDims: source.dev2vec?.vectorDims || {},
-      repoVector: source.dev2vec?.repoVector || source.dev2vec?.vectors?.repoVector || [],
-      issueVector: source.dev2vec?.issueVector || source.dev2vec?.vectors?.issueVector || [],
-      apiVector: source.dev2vec?.apiVector || source.dev2vec?.vectors?.apiVector || [],
-      combinedVector: source.dev2vec?.combinedVector || source.dev2vec?.vectors?.combinedVector || [],
+      repoVector: [],
+      issueVector: [],
+      apiVector: [],
+      combinedVector: [],
       vectorSources: source.dev2vec?.vectorSources || {},
       sourceStats: source.dev2vec?.sourceStats || {},
       rolePredictions: objectArray(source.dev2vec?.rolePredictions),
@@ -141,12 +145,17 @@ const mapTopSkills = (skillVector) =>
         skillName: canonicalSkillName,
         canonicalSkillName,
         category: getCanonicalSkillCategory(canonicalSkillName),
-        score: roundScore(skill.score),
+        score: toDisplaySkillScore(skill.score),
         level: skill.level || 'weak',
       };
     });
 
 const mapMissingSkills = (snapshot) => {
+  const detectedSet = new Set(
+    objectArray(snapshot.skillVector)
+      .filter((skill) => skill.level !== 'missing' && Number(skill.score || 0) > 0)
+      .map((skill) => canonicalizeSkillName(skill.canonicalSkillName || skill.skill).toLowerCase())
+  );
   const vectorMissing = objectArray(snapshot.skillVector)
     .filter((skill) => skill.level === 'missing')
     .map((skill) => ({ skillName: canonicalizeSkillName(skill.canonicalSkillName || skill.skill), priority: 'medium' }));
@@ -158,7 +167,7 @@ const mapMissingSkills = (snapshot) => {
   return [...vectorMissing, ...legacyMissing]
     .filter((item) => {
       const key = item.skillName.toLowerCase();
-      if (!key || seen.has(key)) return false;
+      if (!key || seen.has(key) || detectedSet.has(key)) return false;
       seen.add(key);
       return true;
     })
@@ -221,7 +230,11 @@ const formatSnapshotResponse = (snapshotInput, options = {}) => {
             canonicalSkillName,
             normalizedSkillName: skill.normalizedSkillName || canonicalSkillName.toLowerCase(),
             category: getCanonicalSkillCategory(canonicalSkillName),
-            score: roundScore(skill.score),
+            score: toDisplaySkillScore(skill.score),
+            rawSimilarity: Number.isFinite(Number(skill.similarity)) ? Number(skill.similarity) : Number(skill.score || 0),
+            dev2vecStatus: skill.dev2vecStatus || '',
+            evidenceDetected: skill.evidenceDetected,
+            evidenceStatus: skill.evidenceStatus || '',
             level: skill.level || 'missing',
             evidence: skill.evidence || [],
             sources: skill.sources || [],
@@ -341,7 +354,7 @@ const mapSkillVectorByCanonical = (skillVector = []) => {
         skillName: canonicalSkillName,
         canonicalSkillName,
         category: getCanonicalSkillCategory(canonicalSkillName),
-        score: roundScore(skill.score),
+        score: toDisplaySkillScore(skill.score),
       });
     }
   }
@@ -409,6 +422,7 @@ const compareSkillScoreMaps = (fromSkills, toSkills, { commonOnly = false } = {}
       const fromSkill = fromSkills.get(key) || { score: 0, canonicalSkillName: toSkills.get(key)?.canonicalSkillName || '', category: toSkills.get(key)?.category || 'General' };
       const toSkill = toSkills.get(key) || { score: 0, canonicalSkillName: fromSkill.canonicalSkillName, category: fromSkill.category };
       const delta = roundScore(Number(toSkill.score || 0) - Number(fromSkill.score || 0));
+      const trendThreshold = Math.max(Number(fromSkill.score || 0), Number(toSkill.score || 0)) > 1 ? 5 : 0.05;
       return {
         skillName: toSkill.canonicalSkillName || fromSkill.canonicalSkillName,
         canonicalSkillName: toSkill.canonicalSkillName || fromSkill.canonicalSkillName,
@@ -416,7 +430,7 @@ const compareSkillScoreMaps = (fromSkills, toSkills, { commonOnly = false } = {}
         fromScore: roundScore(fromSkill.score),
         toScore: roundScore(toSkill.score),
         delta,
-        trend: delta > 0.05 ? 'improved' : delta < -0.05 ? 'weaker' : 'unchanged',
+        trend: delta > trendThreshold ? 'improved' : delta < -trendThreshold ? 'weaker' : 'unchanged',
       };
     })
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
@@ -439,8 +453,8 @@ const buildSkillComparison = (fromSnapshot, toSnapshot, fromScoringMethod, toSco
 
   if (fromScoringMethod === DEV2VEC_SCORING_METHOD) {
     const skillChanges = compareSkillScoreMaps(
-      mapDev2VecSkillsByCanonical(fromSnapshot),
-      mapDev2VecSkillsByCanonical(toSnapshot),
+      mapSkillVectorByCanonical(fromSnapshot.skillVector),
+      mapSkillVectorByCanonical(toSnapshot.skillVector),
       { commonOnly: true }
     );
     return {
