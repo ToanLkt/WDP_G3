@@ -27,6 +27,10 @@ const toDisplaySkillScore = (value) => {
   const score = Number(value) || 0;
   return Number(((score <= 1 ? score * 100 : score)).toFixed(2));
 };
+const getComparableSkillScore = (value) => {
+  const score = Number(value) || 0;
+  return score > 1 ? score / 100 : score;
+};
 const parseBoolean = (value) => value === true || value === 'true';
 const normalizeView = (query = {}) => (query.view === 'detail' ? 'detail' : 'summary');
 const isUserContributionSnapshot = (snapshot) => snapshot?.analysisScope?.type === 'user_contribution';
@@ -76,6 +80,33 @@ const detectScoringMethod = (snapshot = {}) => {
   return LEGACY_SCORING_METHOD;
 };
 
+const buildSkillVectorSummary = (skillVector = []) => {
+  const skills = objectArray(skillVector);
+  const summary = {
+    totalSkills: skills.length,
+    strongSkills: 0,
+    weakSkills: 0,
+    developingSkills: 0,
+    missingSkills: 0,
+  };
+
+  for (const skill of skills) {
+    const score = getComparableSkillScore(skill.score);
+    const level = String(skill.level || '').toLowerCase();
+    if (level === 'missing' || score === 0) {
+      summary.missingSkills += 1;
+    } else if (level === 'weak' || (score > 0 && score < 0.4)) {
+      summary.weakSkills += 1;
+    } else if (level === 'developing' || score < 0.7) {
+      summary.developingSkills += 1;
+    } else {
+      summary.strongSkills += 1;
+    }
+  }
+
+  return summary;
+};
+
 const buildSnapshotPayload = (analysisResult) => {
   const source = toObject(analysisResult);
 
@@ -119,6 +150,7 @@ const buildSnapshotPayload = (analysisResult) => {
       skillGaps: source.dev2vec?.skillGaps || {},
       evidencePreview: source.dev2vec?.evidencePreview || {},
       scoringMethod: source.dev2vec?.scoringMethod || source.scoreBreakdown?.scoringMethod || '',
+      cacheMetadata: source.dev2vec?.cacheMetadata || source.rawAnalysis?.dev2vecCacheMetadata || {},
     },
     analyzedAt: source.analyzedAt || source.createdAt || new Date(),
     snapshotType: 'after_analysis',
@@ -376,9 +408,12 @@ const findDev2VecSkillDetail = (skillGap = {}, skillName, status) => {
 };
 
 const scoreDev2VecSkill = (detail, status) => {
-  if (Number.isFinite(Number(detail?.similarity))) return Math.min(1, Math.max(0, Number(detail.similarity)));
-  if (status === 'matched') return 1;
-  if (status === 'weak') return 0.5;
+  if (Number.isFinite(Number(detail?.similarity))) {
+    const similarity = Number(detail.similarity);
+    return Math.min(100, Math.max(0, similarity <= 1 ? similarity * 100 : similarity));
+  }
+  if (status === 'matched') return 100;
+  if (status === 'weak') return 50;
   return 0;
 };
 
@@ -611,6 +646,7 @@ module.exports = {
   compareRepositoryProgress,
   buildComparisonResult,
   buildSnapshotPayload,
+  buildSkillVectorSummary,
   formatSnapshotResponse,
   detectScoringMethod,
 };

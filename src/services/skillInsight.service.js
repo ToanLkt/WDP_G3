@@ -103,7 +103,10 @@ const getSkillName = (item) => {
   return canonicalizeSkillName(original);
 };
 
-const getScore = (item) => Math.min(1, Math.max(0, Number(item.score) || 0));
+const getScore = (item) => {
+  const score = Number(item.score) || 0;
+  return Math.min(1, Math.max(0, score > 1 ? score / 100 : score));
+};
 const isStrong = (item) => item.level === 'strong' || getScore(item) >= 0.7;
 const isWeak = (item) => item.level === 'weak' || (getScore(item) > 0 && getScore(item) < 0.4);
 const isMissing = (item) => item.level === 'missing' || getScore(item) === 0;

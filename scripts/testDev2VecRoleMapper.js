@@ -1,6 +1,7 @@
 const assert = require('assert');
 
 const {
+  buildAnalysisSkillsFromDev2Vec,
   buildAnalysisSummaryFromDev2Vec,
   getDev2VecMatchLevel,
   mapDev2VecOutputToRoleMatches,
@@ -86,7 +87,8 @@ assert.strictEqual(backend.matchedSkills.length, 1);
 assert.strictEqual(backend.weakSkills.length, 1);
 assert.strictEqual(backend.missingRequiredSkills.length, 1);
 assert.strictEqual(backend.missingOptionalSkills.length, 0);
-assert.strictEqual(backend.matchedSkills[0].score, 0.612345);
+assert.strictEqual(backend.matchedSkills[0].score, 61.23);
+assert.strictEqual(backend.matchedSkills[0].similarity, 0.612345);
 assert.strictEqual(backend.scoringMethod, 'dev2vec_doc2vec_classifier');
 
 assert.deepStrictEqual(frontend.matchedSkillNames, []);
@@ -120,5 +122,45 @@ const phase6Output = {
 const phase6Matches = mapDev2VecOutputToRoleMatches(phase6Output, { limit: 5 }).matches;
 assert.deepStrictEqual(phase6Matches.map((match) => match.roleId), ['backend', 'devops', 'data_scientist']);
 assert.deepStrictEqual(phase6Matches.map((match) => match.matchScore), [78.13, 7.2, 6.77]);
+
+const rawScoreOutput = {
+  ...dev2vecOutput,
+  rolePredictions: [
+    { roleId: 'backend', roleName: 'Backend Developer', modelLabel: 'Backend', probability: 0.9, rank: 1 },
+  ],
+  skillGaps: {
+    backend: {
+      matchedSkillNames: ['Database', 'Authentication', 'Docker Basics'],
+      weakSkillNames: ['API Testing'],
+      missingSkillNames: ['REST API'],
+      details: [
+        { skillName: 'REST API', canonicalSkillName: 'REST API', similarity: 0, status: 'missing' },
+        { skillName: 'Database', canonicalSkillName: 'Database', similarity: 0.001, status: 'matched' },
+        { skillName: 'Authentication', canonicalSkillName: 'Authentication', similarity: 0.318654, status: 'matched' },
+        { skillName: 'Docker Basics', canonicalSkillName: 'Docker Basics', similarity: 0.85, status: 'matched' },
+        { skillName: 'API Testing', canonicalSkillName: 'API Testing', similarity: null, status: 'weak' },
+      ],
+    },
+  },
+};
+
+const skillMapping = buildAnalysisSkillsFromDev2Vec(rawScoreOutput);
+const byName = (items) => Object.fromEntries(items.map((item) => [item.canonicalSkillName, item]));
+const topByName = byName(skillMapping.topSkills);
+const missingByName = byName(skillMapping.missingSkills);
+
+assert.strictEqual(missingByName['REST API'].score, 0);
+assert.strictEqual(topByName.Database.score, 0.1);
+assert.strictEqual(topByName.Authentication.score, 31.87);
+assert.strictEqual(topByName['Docker Basics'].score, 85);
+assert.strictEqual(missingByName['API Testing'].score, 0);
+assert(!missingByName.Database);
+assert(!missingByName.Authentication);
+assert(!missingByName['Docker Basics']);
+
+const duplicatedSkills = skillMapping.topSkills
+  .map((item) => item.canonicalSkillName)
+  .filter((skillName) => Object.prototype.hasOwnProperty.call(missingByName, skillName));
+assert.deepStrictEqual(duplicatedSkills, []);
 
 console.log('PASS: Dev2Vec role mapper smoke test');

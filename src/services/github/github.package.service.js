@@ -5,24 +5,98 @@ const { fetchGithubContent } = require('./github.api.service');
 const { parsePackageJson, parseRequirementsTxt } = require('./github.parser.service');
 const { findRepositoryForUser } = require('./github.repository.service');
 const { createStatusError } = require('./github.utils');
+const {
+  EVIDENCE_BUILDER_VERSION,
+  SOURCE_USAGE_PARSER_VERSION,
+} = require('../dev2vec/dev2vecPipelineMetadata.service');
+const { parseSourceUsageEvidence } = require('../dev2vec/sourceUsageParser.service');
 
 const DOC_DIRECTORIES = ['docs', 'documentation', 'documentations'];
-const MAX_SOURCE_FILES = 60;
-const MAX_SOURCE_CONTENT_CHARS = 4000;
+const parsePositiveInteger = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+const MAX_SOURCE_FILES = parsePositiveInteger(process.env.DEV2VEC_SOURCE_MAX_FILES, 60);
+const MAX_SOURCE_CONTENT_CHARS = parsePositiveInteger(process.env.DEV2VEC_SOURCE_MAX_CHARS_PER_FILE, 4000);
+const SOURCE_FETCH_CONCURRENCY = Math.min(
+  12,
+  parsePositiveInteger(process.env.DEV2VEC_SOURCE_FETCH_CONCURRENCY, 6)
+);
+const SOURCE_MAX_FILES_PER_CATEGORY = parsePositiveInteger(process.env.DEV2VEC_SOURCE_MAX_FILES_PER_CATEGORY, 6);
 const SOURCE_DIRECTORIES = [
+  'src/components',
+  'src/pages',
+  'src/views',
+  'src/hooks',
+  'src/context',
+  'src/store',
+  'src/layouts',
+  'src/assets',
+  'src/styles',
+  'src/screens',
+  'src/navigation',
+  'src/mobile',
   'src/routes',
   'src/controllers',
   'src/services',
   'src/models',
+  'src/entities',
+  'src/repositories',
   'src/middlewares',
+  'src/guards',
+  'src/modules',
+  'src/api',
   'src/config',
   'src/utils',
+  'public',
+  'android',
+  'ios',
+  'lib',
+  'widgets',
+  'mobile',
+  'notebooks',
+  'data',
+  'datasets',
+  'models',
+  'experiments',
+  'training',
+  'inference',
+  'preprocessing',
+  'features',
+  'pipelines',
+  'terraform',
+  'ansible',
+  'helm',
+  'charts',
+  'k8s',
+  'kubernetes',
+  'deployment',
+  'infrastructure',
+  'monitoring',
   'scripts',
   'ml_service',
 ];
 const SOURCE_ROOT_FILES = [
   'server.js',
   'src/app.js',
+  'app.json',
+  'app.config.js',
+  'app.config.ts',
+  'eas.json',
+  'angular.json',
+  'vite.config.js',
+  'vite.config.ts',
+  'next.config.js',
+  'next.config.mjs',
+  'nuxt.config.js',
+  'tailwind.config.js',
+  'tailwind.config.ts',
+  'postcss.config.js',
+  'compose.yaml',
+  'compose.yml',
+  '.gitlab-ci.yml',
+  'Jenkinsfile',
+  'environment.yml',
   '.dockerignore',
   '.env.production.example',
 ];
@@ -33,6 +107,8 @@ const EXCLUDED_PATH_PATTERNS = [
   /^tmp\//i,
   /^temp\//i,
   /^\.git\//i,
+  /^vendor\//i,
+  /(^|\/)(dist|build|coverage|out|target)\//i,
   /^ml_service\/artifacts\//i,
   /^__pycache__\//i,
   /\/__pycache__\//i,
@@ -40,9 +116,46 @@ const EXCLUDED_PATH_PATTERNS = [
   /(^|\/)\.env$/i,
   /\.model$/i,
   /\.joblib$/i,
+  /\.min\.[a-z0-9]+$/i,
+  /\.map$/i,
   /\.pyc$/i,
 ];
-const TEXT_FILE_PATTERN = /\.(js|mjs|cjs|json|md|yml|yaml|txt|py|toml|env|example|dockerignore)$/i;
+const TEXT_FILE_PATTERN = /\.(js|mjs|cjs|ts|tsx|jsx|vue|svelte|css|scss|sass|less|json|md|yml|yaml|txt|py|ipynb|toml|env|example|dockerignore|dart|swift|kt|kts|gradle|xml|plist|properties|java|cs|go|php|rb|sh|bash|ps1|tf)$/i;
+
+const runWithConcurrency = async (items, limit, worker) => {
+  const output = new Array(items.length);
+  let nextIndex = 0;
+  let active = 0;
+  let maxActive = 0;
+
+  await new Promise((resolve) => {
+    const launch = () => {
+      while (active < limit && nextIndex < items.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        Promise.resolve(worker(items[currentIndex], currentIndex))
+          .then((value) => {
+            output[currentIndex] = value;
+          })
+          .catch(() => {
+            output[currentIndex] = null;
+          })
+          .finally(() => {
+            active -= 1;
+            if (nextIndex >= items.length && active === 0) resolve();
+            else launch();
+          });
+      }
+      if (items.length === 0) resolve();
+    };
+    launch();
+  });
+
+  output.maxActive = maxActive;
+  return output;
+};
 
 const decodeContent = (fileData) => (
   fileData?.content ? Buffer.from(fileData.content, 'base64').toString('utf-8') : ''
@@ -99,6 +212,27 @@ const addDetectedFile = (detectedFiles, entry) => {
   detectedFiles.push(entry);
 };
 
+const getSourceEvidenceCacheKey = (repository = {}) => ({
+  defaultBranch: repository.defaultBranch || '',
+  pushedAt: repository.pushedAt || null,
+  updatedAtGithub: repository.updatedAtGithub || null,
+  evidenceBuilderVersion: EVIDENCE_BUILDER_VERSION,
+  sourceUsageParserVersion: SOURCE_USAGE_PARSER_VERSION,
+});
+
+const isSourceEvidenceCacheCompatible = (record = {}, repository = {}) => {
+  if (!record || !Array.isArray(record.detectedFiles) || !record.detectedFiles.some((file) => file?.sourceContent)) {
+    return false;
+  }
+  const cached = record.rawData?.__sourceEvidenceCache || {};
+  const current = getSourceEvidenceCacheKey(repository);
+  return cached.evidenceBuilderVersion === current.evidenceBuilderVersion
+    && cached.sourceUsageParserVersion === current.sourceUsageParserVersion
+    && String(cached.defaultBranch || '') === String(current.defaultBranch || '')
+    && String(cached.pushedAt || '') === String(current.pushedAt || '')
+    && String(cached.updatedAtGithub || '') === String(current.updatedAtGithub || '');
+};
+
 const fetchTextFileEntry = async ({ owner, repo, accessToken, path, type = 'source' }) => {
   if (!isTextEvidencePath(path)) return null;
 
@@ -114,6 +248,7 @@ const collectDirectoryTextFiles = async ({ owner, repo, accessToken, dirPath, ou
 
   const listing = await fetchGithubContent(owner, repo, dirPath, accessToken);
   if (!Array.isArray(listing)) return;
+  const fileItems = [];
 
   for (const item of listing) {
     if (output.length >= MAX_SOURCE_FILES) return;
@@ -126,18 +261,41 @@ const collectDirectoryTextFiles = async ({ owner, repo, accessToken, dirPath, ou
     }
 
     if (item.type !== 'file' || !isTextEvidencePath(itemPath)) continue;
-    const entry = await fetchTextFileEntry({ owner, repo, accessToken, path: itemPath, type: itemPath.startsWith('ml_service/') ? 'ml_service' : 'source' });
-    if (entry) output.push(entry);
+    fileItems.push(itemPath);
+  }
+
+  const entries = await runWithConcurrency(
+    fileItems.slice(0, Math.max(0, MAX_SOURCE_FILES - output.length)),
+    SOURCE_FETCH_CONCURRENCY,
+    (itemPath) => fetchTextFileEntry({
+      owner,
+      repo,
+      accessToken,
+      path: itemPath,
+      type: itemPath.startsWith('ml_service/') ? 'ml_service' : 'source',
+    })
+  );
+
+  for (const entry of entries.filter(Boolean)) {
+    if (output.length >= MAX_SOURCE_FILES) return;
+    output.push(entry);
   }
 };
 
 const addControlledSourceEvidenceFiles = async ({ owner, repo, accessToken, detectedFiles, packageFiles, rawData }) => {
   const sourceFiles = [];
+  const fetchStats = { maxActive: 0, requested: 0 };
 
-  for (const path of SOURCE_ROOT_FILES) {
+  const rootEntries = await runWithConcurrency(
+    SOURCE_ROOT_FILES.slice(0, MAX_SOURCE_FILES),
+    SOURCE_FETCH_CONCURRENCY,
+    (path) => fetchTextFileEntry({ owner, repo, accessToken, path, type: 'source' })
+  );
+  fetchStats.maxActive = Math.max(fetchStats.maxActive, rootEntries.maxActive || 0);
+  fetchStats.requested += SOURCE_ROOT_FILES.length;
+  for (const entry of rootEntries.filter(Boolean)) {
     if (sourceFiles.length >= MAX_SOURCE_FILES) break;
-    const entry = await fetchTextFileEntry({ owner, repo, accessToken, path, type: 'source' });
-    if (entry) sourceFiles.push(entry);
+    sourceFiles.push(entry);
   }
 
   for (const dirPath of SOURCE_DIRECTORIES) {
@@ -150,6 +308,23 @@ const addControlledSourceEvidenceFiles = async ({ owner, repo, accessToken, dete
     type: file.type,
     contentLength: String(file.sourceContent || '').length,
   }));
+  rawData.__sourceFetchStats = {
+    concurrencyLimit: SOURCE_FETCH_CONCURRENCY,
+    maxActive: fetchStats.maxActive,
+    maxFiles: MAX_SOURCE_FILES,
+    maxFilesPerCategory: SOURCE_MAX_FILES_PER_CATEGORY,
+  };
+  const sourceUsage = parseSourceUsageEvidence(sourceFiles);
+  const parsedSourceUsageFiles = Array.isArray(sourceUsage.files) ? sourceUsage.files : [];
+  const skippedSourceUsageFiles = Array.isArray(sourceUsage.skipped) ? sourceUsage.skipped : [];
+  rawData.__sourceUsageCache = {
+    tokens: sourceUsage.tokens,
+    parsedFileCount: parsedSourceUsageFiles.length,
+    skippedFileCount: skippedSourceUsageFiles.length,
+    totalChars: Number(sourceUsage.totalChars || 0),
+    sourceUsageParserVersion: SOURCE_USAGE_PARSER_VERSION,
+    generatedAt: new Date(),
+  };
 
   for (const file of sourceFiles) {
     addDetectedFile(detectedFiles, file);
@@ -204,6 +379,17 @@ const addMarkdownDocumentationFiles = async ({ owner, repo, accessToken, detecte
 
 const fetchRepositoryPackages = async (authUser, repoId) => {
   const repository = await findRepositoryForUser(authUser, repoId);
+  const existing = await RepositoryPackage.findOne({ userId: authUser.userId, repositoryId: repository._id }).lean();
+  if (isSourceEvidenceCacheCompatible(existing, repository)) {
+    return {
+      repository: { _id: repository._id, name: repository.name, fullName: repository.fullName },
+      packageAnalysis: {
+        ...existing,
+        cacheHit: true,
+        cacheReason: 'source_evidence_cache_compatible',
+      },
+    };
+  }
 
   const githubAccount = await GithubAccount.findOne({ userId: authUser.userId }).select('+accessToken');
   if (!githubAccount) {
@@ -218,14 +404,32 @@ const fetchRepositoryPackages = async (authUser, repoId) => {
   const candidatePaths = [
     'package.json',
     'requirements.txt',
+    'environment.yml',
     'pyproject.toml',
     'Pipfile',
     'pom.xml',
     'build.gradle',
+    'settings.gradle',
     'pubspec.yaml',
+    'schema.prisma',
+    'app.json',
+    'app.config.js',
+    'app.config.ts',
+    'eas.json',
+    'angular.json',
+    'vite.config.js',
+    'vite.config.ts',
+    'next.config.js',
+    'nuxt.config.js',
+    'tailwind.config.js',
+    'postcss.config.js',
     'Dockerfile',
     'docker-compose.yml',
     'docker-compose.yaml',
+    'compose.yaml',
+    'compose.yml',
+    '.gitlab-ci.yml',
+    'Jenkinsfile',
     '.env.example',
     'README.md',
     '.github/workflows',
@@ -328,9 +532,22 @@ const fetchRepositoryPackages = async (authUser, repoId) => {
       fileEntry.parsedData = { content: content.slice(0, 2000) };
       if (/flutter/i.test(content)) frameworksSet.add('Flutter');
       languagesSet.add('dart');
+    } else if (/^(app\.json|app\.config\.(js|ts)|eas\.json)$/i.test(path)) {
+      fileEntry.type = 'mobile_config';
+      configsSet.add(path);
+      frameworksSet.add('Expo');
+    } else if (/^(vite|next|nuxt|tailwind|postcss)\.config\./i.test(path) || path === 'angular.json') {
+      fileEntry.type = 'frontend_config';
+      configsSet.add(path);
     } else if (path.toLowerCase().includes('docker')) {
       fileEntry.type = 'docker';
       configsSet.add('Docker');
+    } else if (/(\.gitlab-ci\.yml|jenkinsfile|compose\.ya?ml)$/i.test(path)) {
+      fileEntry.type = 'devops_config';
+      configsSet.add(path);
+    } else if (/^(schema\.prisma|settings\.gradle|environment\.yml)$/i.test(path)) {
+      fileEntry.type = 'config';
+      configsSet.add(path);
     } else if (path === '.env.example') {
       fileEntry.type = 'env';
     } else if (path === 'README.md') {
@@ -380,6 +597,10 @@ const fetchRepositoryPackages = async (authUser, repoId) => {
     rawData,
     lastFetchedAt,
   };
+  upsert.rawData.__sourceEvidenceCache = {
+    ...getSourceEvidenceCacheKey(repository),
+    generatedAt: lastFetchedAt,
+  };
 
   await RepositoryPackage.findOneAndUpdate(
     { userId: authUser.userId, repositoryId: repository._id },
@@ -413,4 +634,6 @@ const getRepositoryPackagesCached = async (authUser, repoId) => {
 module.exports = {
   fetchRepositoryPackages,
   getRepositoryPackagesCached,
+  isSourceEvidenceCacheCompatible,
+  runWithConcurrency,
 };

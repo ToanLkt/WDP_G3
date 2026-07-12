@@ -1,0 +1,34 @@
+@startuml
+title Learning Content
+actor Client
+participant "Express API" as API
+participant "authMiddleware" as Auth
+participant "learning/roadmapLearning controller" as Controller
+participant "learning.service" as Learning
+database "MongoDB" as DB
+participant "Gemini LLM" as LLM
+participant "YouTube API" as YT
+
+Client -> API: POST /api/roadmaps/:roadmapId/learning/items/:itemId/generate
+API -> Auth: verify JWT
+API -> Controller: generate item learning
+Controller -> Learning: generate or fetch by canonical skill
+Learning -> DB: lookup LearningContent cache
+
+alt cache hit and no force regenerate
+  DB --> Learning: LearningContent
+else cache miss or force regenerate
+  Learning -> LLM: generate learning content
+  LLM --> Learning: content JSON/text
+  Learning -> DB: upsert LearningContent
+end
+
+opt resource search requested and YOUTUBE_API_KEY exists
+  Learning -> YT: search videos/resources
+  YT --> Learning: resources
+  Learning -> DB: cache LearningResource
+end
+
+Learning --> Controller: learning payload
+Controller --> Client: success response
+@enduml

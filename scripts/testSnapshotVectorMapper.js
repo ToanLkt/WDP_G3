@@ -43,7 +43,7 @@ const analysis = {
       canonicalSkillName: 'Express.js',
       normalizedSkillName: 'express.js',
       category: 'Backend',
-      score: 0.97,
+      score: 97,
       level: 'strong',
       evidence: ['Detected package: express'],
       sources: ['package'],

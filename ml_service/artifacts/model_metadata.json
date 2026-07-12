@@ -1,6 +1,15 @@
 {
   "status": "ready",
   "modelVersion": "dev2vec-demo-v1",
+  "modelType": "classifier_ria",
+  "inputDimension": 580,
+  "channels": [
+    "repo",
+    "issue",
+    "api"
+  ],
+  "supportsMissingChannels": false,
+  "trainingStrategy": "full-channel-training-current-artifact",
   "trainedAt": "2026-07-06T07:06:34.458Z",
   "roles": [
     "Backend",
@@ -21,6 +30,20 @@
     "issue": 150,
     "api": 200,
     "combined": 580
+  },
+  "artifactCompatibility": {
+    "requiresInputDimension": 580,
+    "zeroVectorMissingChannelFallback": true,
+    "missingChannelSupportNote": "Runtime can preserve shape with zero placeholders, but this artifact was not trained with missing-channel augmentation."
+  },
+  "roleScoring": {
+    "strategy": "classifier_only",
+    "alpha": 1.0,
+    "beta": 0.0,
+    "calibrationMethod": "none",
+    "scoringVersion": "classifier-only-v1",
+    "validationStrategy": "not_promoted",
+    "metrics": {}
   },
   "dataset": {
     "sampleCount": 75,

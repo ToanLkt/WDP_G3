@@ -209,6 +209,11 @@ SKILL_PROTOTYPES = [
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", type=Path, required=True)
+    parser.add_argument(
+        "--missing-channel-augmentation",
+        action="store_true",
+        help="Augment classifier training with zero issue/API channel variants after dataset loading.",
+    )
     return parser.parse_args()
 
 
@@ -272,6 +277,30 @@ def write_json(path, value):
     with path.open("w", encoding="utf-8") as handle:
         json.dump(value, handle, ensure_ascii=False, indent=2)
         handle.write("\n")
+
+
+def augment_missing_channel_vectors(vectors, labels):
+    augmented_vectors = []
+    augmented_labels = []
+    repo_end = VECTOR_DIMS["repo"]
+    issue_end = VECTOR_DIMS["repo"] + VECTOR_DIMS["issue"]
+    for vector, label in zip(vectors, labels):
+        variants = [
+            vector,
+            np.concatenate([vector[:repo_end], np.zeros(VECTOR_DIMS["issue"], dtype=np.float32), vector[issue_end:]]),
+            np.concatenate([vector[:issue_end], np.zeros(VECTOR_DIMS["api"], dtype=np.float32)]),
+            np.concatenate([
+                vector[:repo_end],
+                np.zeros(VECTOR_DIMS["issue"], dtype=np.float32),
+                np.zeros(VECTOR_DIMS["api"], dtype=np.float32),
+            ]),
+        ]
+        for variant in variants:
+            if variant.shape[0] != VECTOR_DIMS["combined"]:
+                raise ValueError("augmented vector has invalid length")
+            augmented_vectors.append(variant)
+            augmented_labels.append(label)
+    return augmented_vectors, augmented_labels
 
 
 def generate_skill_vectors(repo_model, issue_model, api_model):
@@ -350,12 +379,21 @@ def main():
             combined_vectors.append(combined)
             labels.append(item["label"])
 
+        classifier_vectors = combined_vectors
+        classifier_labels = labels
+        training_strategy = "full-channel-training-current-artifact"
+        supports_missing_channels = False
+        if args.missing_channel_augmentation:
+            classifier_vectors, classifier_labels = augment_missing_channel_vectors(combined_vectors, labels)
+            training_strategy = "missing-channel-augmentation"
+            supports_missing_channels = True
+
         label_encoder = LabelEncoder()
-        encoded_labels = label_encoder.fit_transform(labels)
+        encoded_labels = label_encoder.fit_transform(classifier_labels)
         classifier = LogisticRegression(
             max_iter=2000, random_state=42, solver="lbfgs"
         )
-        classifier.fit(np.vstack(combined_vectors), encoded_labels)
+        classifier.fit(np.vstack(classifier_vectors), encoded_labels)
 
         repo_model.save(str(artifacts / "doc2vec_repo.model"))
         issue_model.save(str(artifacts / "doc2vec_issue.model"))
@@ -372,6 +410,11 @@ def main():
         metadata = {
             "status": "ready",
             "modelVersion": MODEL_VERSION,
+            "modelType": "classifier_ria",
+            "inputDimension": VECTOR_DIMS["combined"],
+            "channels": ["repo", "issue", "api"],
+            "supportsMissingChannels": supports_missing_channels,
+            "trainingStrategy": training_strategy,
             "trainedAt": (
                 datetime.now(timezone.utc).isoformat(timespec="milliseconds")
                 .replace("+00:00", "Z")
@@ -379,8 +422,27 @@ def main():
             "roles": ROLE_ORDER,
             "roleIds": ROLE_IDS,
             "vectorDims": VECTOR_DIMS,
+            "artifactCompatibility": {
+                "requiresInputDimension": VECTOR_DIMS["combined"],
+                "zeroVectorMissingChannelFallback": True,
+                "missingChannelSupportNote": (
+                    "Runtime can preserve shape with zero placeholders, but this training script "
+                    "does not apply missing-channel augmentation yet."
+                ),
+            },
+            "roleScoring": {
+                "strategy": "classifier_only",
+                "alpha": 1.0,
+                "beta": 0.0,
+                "calibrationMethod": "none",
+                "scoringVersion": "classifier-only-v1",
+                "validationStrategy": "not_promoted",
+                "metrics": {},
+            },
             "dataset": {
                 "sampleCount": len(data),
+                "classifierSampleCount": len(classifier_labels),
+                "missingChannelAugmentation": args.missing_channel_augmentation,
                 "samplesPerRole": {
                     role: role_counts.get(role, 0) for role in ROLE_ORDER
                 },

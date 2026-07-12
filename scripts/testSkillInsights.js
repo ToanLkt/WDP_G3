@@ -3,10 +3,9 @@ const {
 } = require('../src/services/skillInsight.service');
 
 const skillVector = [
-  { skill: 'Express.js', canonicalSkillName: 'Express.js', category: 'Backend', score: 0.97, level: 'strong' },
-  { skill: 'REST API', canonicalSkillName: 'REST API', category: 'Backend', score: 0.85, level: 'strong' },
-  { skill: 'JWT Authentication', canonicalSkillName: 'JWT Authentication', category: 'Backend', score: 0.98, level: 'strong' },
-  { skill: 'MongoDB', canonicalSkillName: 'MongoDB', category: 'Database', score: 0.74, level: 'strong' },
+  { skill: 'REST API', canonicalSkillName: 'REST API', category: 'Backend', score: 97, level: 'strong' },
+  { skill: 'Authentication', canonicalSkillName: 'Authentication', category: 'Backend', score: 98, level: 'strong' },
+  { skill: 'Database', canonicalSkillName: 'Database', category: 'Database', score: 74, level: 'strong' },
   { skill: 'Testing', canonicalSkillName: 'Testing', category: 'Testing', score: 0, level: 'missing' },
   { skill: 'CI/CD', canonicalSkillName: 'CI/CD', category: 'DevOps', score: 0, level: 'missing' },
   { skill: 'Clean Code', canonicalSkillName: 'Clean Code', category: 'Code Quality', score: 0, level: 'missing' },
@@ -38,7 +37,7 @@ const hasDuplicates = (values) => new Set(values.map((value) => value.toLowerCas
 try {
   const result = generateAnalysisInsightsFromSkillVector(skillVector, context);
 
-  for (const text of ['Express.js', 'REST API', 'JWT', 'MongoDB']) {
+  for (const text of ['REST API', 'xác thực', 'Database']) {
     if (!contains(result.strengths, text)) fail(`strengths thiếu nội dung ${text}`);
   }
   pass('strengths phản ánh các kỹ năng mạnh');
@@ -48,13 +47,13 @@ try {
   }
   pass('weaknesses phản ánh các kỹ năng thiếu');
 
-  const expectedMissing = ['Testing', 'CI/CD', 'Clean Code'];
+  const expectedMissing = ['CI/CD', 'Clean Code', 'API Testing'];
   if (JSON.stringify(result.missingSkills) !== JSON.stringify(expectedMissing)) {
     fail(`missingSkills không đúng: ${JSON.stringify(result.missingSkills)}`);
   }
   pass('missingSkills dùng canonical name và đúng thứ tự');
 
-  for (const text of ['Jest', 'GitHub Actions', 'code quality']) {
+  for (const text of ['Supertest', 'GitHub Actions', 'code quality']) {
     if (!contains(result.recommendations, text)) fail(`recommendations thiếu nội dung ${text}`);
   }
   pass('recommendations có hành động tương ứng');

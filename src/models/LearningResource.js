@@ -71,6 +71,15 @@ const learningResourceSchema = new mongoose.Schema(
       default: 0,
     },
     cachedAt: { type: Date },
+    youtubeVideoId: { type: String, default: '' },
+    youtubeChannelId: { type: String, default: '' },
+    durationSeconds: { type: Number },
+    privacyStatus: { type: String, default: '' },
+    embeddable: { type: Boolean },
+    safetyStatus: { type: String, default: '' },
+    safetyReasons: { type: [String], default: [] },
+    validatedAt: { type: Date },
+    metadataExpiresAt: { type: Date },
   },
   { timestamps: true }
 );

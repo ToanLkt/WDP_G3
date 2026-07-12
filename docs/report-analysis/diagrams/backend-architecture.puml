@@ -1,0 +1,71 @@
+@startuml
+skinparam componentStyle rectangle
+title Backend Layered Architecture
+
+package "Entry" {
+  [server.js] --> [src/app.js]
+}
+
+package "HTTP Layer" {
+  [Routes]
+  [Controllers]
+  [Middleware]
+  [Validators]
+}
+
+package "Business Layer" {
+  [Auth Service]
+  [GitHub Services]
+  [Analysis Service]
+  [Dev2Vec Adapter]
+  [Roadmap Service]
+  [Learning Service]
+  [Chat Service]
+  [Admin Service]
+}
+
+package "Persistence" {
+  database "MongoDB" as Mongo
+  [Mongoose Models]
+}
+
+package "External / Runtime" {
+  [GitHub API]
+  [Gemini LLM]
+  [YouTube API]
+  [Python infer.py]
+}
+
+[src/app.js] --> [Routes]
+[Routes] --> [Middleware]
+[Routes] --> [Controllers]
+[Controllers] --> [Auth Service]
+[Controllers] --> [GitHub Services]
+[Controllers] --> [Analysis Service]
+[Controllers] --> [Roadmap Service]
+[Controllers] --> [Learning Service]
+[Controllers] --> [Chat Service]
+[Controllers] --> [Admin Service]
+
+[Auth Service] --> [Mongoose Models]
+[GitHub Services] --> [Mongoose Models]
+[Analysis Service] --> [Mongoose Models]
+[Roadmap Service] --> [Mongoose Models]
+[Learning Service] --> [Mongoose Models]
+[Chat Service] --> [Mongoose Models]
+[Admin Service] --> [Mongoose Models]
+[Mongoose Models] --> Mongo
+
+[GitHub Services] --> [GitHub API]
+[Analysis Service] --> [Dev2Vec Adapter]
+[Dev2Vec Adapter] --> [Python infer.py]
+[Roadmap Service] --> [Gemini LLM]
+[Learning Service] --> [Gemini LLM]
+[Learning Service] --> [YouTube API]
+[Chat Service] --> [Gemini LLM]
+
+legend
+Solid arrows show confirmed code calls/layer dependencies.
+External provider names are environment-configurable where code supports it.
+endlegend
+@enduml

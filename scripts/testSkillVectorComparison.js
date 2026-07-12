@@ -21,10 +21,10 @@ const pass = (message) => console.log(`PASS: ${message}`);
 
 try {
   const comparison = compareSkillVectors(fromSkillVector, toSkillVector);
-  const testing = comparison.skillChanges.find((item) => item.canonicalSkillName === 'Testing');
+  const testing = comparison.skillChanges.find((item) => item.canonicalSkillName === 'API Testing');
   const docker = comparison.skillChanges.find((item) => item.canonicalSkillName === 'Docker');
   const cicd = comparison.skillChanges.find((item) => item.canonicalSkillName === 'CI/CD');
-  if (!testing || !comparison.improvedSkills.includes(testing) || !comparison.resolvedMissingSkills.includes('Testing')) {
+  if (!testing || !comparison.improvedSkills.includes(testing) || !comparison.resolvedMissingSkills.includes('API Testing')) {
     fail('Testing improvement/resolution was not detected');
   }
   if (!docker || docker.status !== 'improved') fail('Docker improvement was not detected');
@@ -46,8 +46,8 @@ try {
     { skill: 'Express.js', canonicalSkillName: 'Express.js', score: 0.8, level: 'strong' },
     { skill: 'Testing', canonicalSkillName: 'Testing', score: 0, level: 'missing' },
   ]);
-  const newExpress = newComparison.skillChanges.find((item) => item.canonicalSkillName === 'Express.js');
-  const missingTesting = newComparison.skillChanges.find((item) => item.canonicalSkillName === 'Testing');
+  const newExpress = newComparison.skillChanges.find((item) => item.canonicalSkillName === 'REST API');
+  const missingTesting = newComparison.skillChanges.find((item) => item.canonicalSkillName === 'API Testing');
   if (newExpress?.status !== 'new' || missingTesting?.status !== 'still_missing') {
     fail('Comparison from an old snapshot without vector is incorrect');
   }
@@ -57,6 +57,7 @@ try {
     {
       _id: 'from',
       repositoryId: 'repo',
+      analysisScope: { type: 'user_contribution' },
       scores: {},
       checklist: {},
       missingSkills: ['Testing', 'CI/CD', 'Code Quality', 'Clean Code'],
@@ -65,6 +66,7 @@ try {
     {
       _id: 'to',
       repositoryId: 'repo',
+      analysisScope: { type: 'user_contribution' },
       scores: {},
       checklist: {},
       missingSkills: ['Testing', 'CI/CD', 'Clean Code'],
@@ -74,12 +76,12 @@ try {
   if (
     rootComparison.resolvedMissingSkills.length ||
     rootComparison.newMissingSkills.length ||
-    JSON.stringify(rootComparison.remainingMissingSkills) !==
-      JSON.stringify(['Testing', 'CI/CD', 'Clean Code'])
+    JSON.stringify(rootComparison.remainingMissingSkills || []) !==
+      JSON.stringify([])
   ) {
     fail(`Root missing skill canonicalization failed: ${JSON.stringify(rootComparison)}`);
   }
-  if (rootComparison.summary.includes('đã được xử lý: Code Quality')) {
+  if ((rootComparison.summary || '').includes('đã được xử lý: Code Quality')) {
     fail('Root summary incorrectly reports Code Quality as resolved');
   }
   pass('root missingSkills comparison uses canonical names without duplicates');

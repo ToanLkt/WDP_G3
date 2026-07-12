@@ -14,10 +14,19 @@ const RepositoryCommitSchema = new mongoose.Schema(
     committerName: { type: String, default: '' },
     committerDate: { type: Date },
     htmlUrl: { type: String },
+    branch: { type: String, default: '' },
+    fetchStatus: { type: String, default: 'success' },
+    matchedBy: { type: String, default: '' },
     additions: { type: Number, default: 0 },
     deletions: { type: Number, default: 0 },
     changedFiles: { type: Number, default: 0 },
     files: { type: [Object], default: [] },
+    normalizedFiles: { type: [Object], default: undefined },
+    codeEvidenceStatus: { type: String, default: '' },
+    codeEvidenceAnalyzedAt: { type: Date },
+    detailStatus: { type: String, default: '' },
+    detailFetchedAt: { type: Date },
+    detailErrorCode: { type: String, default: '' },
     rawData: { type: Object },
     lastFetchedAt: { type: Date, default: Date.now },
   },
@@ -27,5 +36,7 @@ const RepositoryCommitSchema = new mongoose.Schema(
 );
 
 RepositoryCommitSchema.index({ userId: 1, repositoryId: 1, sha: 1 }, { unique: true });
+RepositoryCommitSchema.index({ repositoryId: 1, sha: 1 });
+RepositoryCommitSchema.index({ userId: 1, repositoryId: 1, branch: 1, lastFetchedAt: -1 });
 
 module.exports = mongoose.model('RepositoryCommit', RepositoryCommitSchema);
