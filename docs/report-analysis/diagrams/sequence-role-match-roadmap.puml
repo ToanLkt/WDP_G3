@@ -1,0 +1,34 @@
+@startuml
+title Role Match And Roadmap
+actor Client
+participant "Express API" as API
+participant "authMiddleware" as Auth
+participant "analysis.service" as Analysis
+participant "roadmap.service" as Roadmap
+database "MongoDB" as DB
+participant "Dev2Vec Python" as D2V
+participant "Gemini LLM" as LLM
+
+Client -> API: POST /api/analysis/role-matches
+API -> Auth: verify JWT
+API -> Analysis: generateRoleMatches(user, body)
+Analysis -> DB: resolve latest analysis/repository source
+Analysis -> D2V: optional inference for selected source
+D2V --> Analysis: role matches / gaps
+Analysis --> Client: role match response
+
+Client -> API: POST /api/roadmaps/generate
+API -> Auth: verify JWT
+API -> Roadmap: generateRoadmap(user, body)
+Roadmap -> DB: load profile + analysis/gap context
+Roadmap -> LLM: generate roadmap JSON
+LLM --> Roadmap: roadmap text/JSON
+Roadmap -> DB: create Roadmap
+Roadmap -> DB: create RoadmapProgress
+Roadmap --> Client: roadmap response
+
+alt LLM parse/provider failure
+  Roadmap -> Roadmap: fallback/default parsing behavior
+  Roadmap --> Client: generated or error response
+end
+@enduml

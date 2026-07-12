@@ -1,0 +1,171 @@
+Table users {
+  _id objectId [pk]
+  email string
+  role string
+  status string
+  createdAt datetime
+  updatedAt datetime
+}
+
+Table studentprofiles {
+  _id objectId [pk]
+  userId objectId
+  githubUsername string
+  targetCareer string
+}
+
+Table githubaccounts {
+  _id objectId [pk]
+  userId objectId
+  githubId number
+  username string
+  accessToken string
+}
+
+Table repositories {
+  _id objectId [pk]
+  userId objectId
+  githubAccountId objectId
+  githubRepoId number
+  fullName string
+  language string
+}
+
+Table repositorypackages {
+  _id objectId [pk]
+  userId objectId
+  repositoryId objectId
+  packages json
+  configs json
+}
+
+Table repositorycommits {
+  _id objectId [pk]
+  userId objectId
+  repositoryId objectId
+  sha string
+  authorDate datetime
+}
+
+Table analysisresults {
+  _id objectId [pk]
+  userId objectId
+  repositoryId objectId
+  githubRepoId number
+  skillVector json
+  dev2vec json
+  analyzedAt datetime
+}
+
+Table repoanalysissnapshots {
+  _id objectId [pk]
+  userId objectId
+  repositoryId objectId
+  analysisResultId objectId
+  scores json
+  skillVector json
+  createdAt datetime
+}
+
+Table aifeedbacks {
+  _id objectId [pk]
+  userId objectId
+  repositoryId objectId
+  analysisSnapshotId objectId
+  generatedAt datetime
+}
+
+Table roadmaps {
+  _id objectId [pk]
+  userId objectId
+  targetRole string
+  status string
+  phases json [note: "embedded phases/tasks/resources"]
+}
+
+Table roadmapprogresses {
+  _id objectId [pk]
+  userId objectId
+  roadmapId objectId
+  items json [note: "embedded progress items"]
+}
+
+Table learningcontents {
+  _id objectId [pk]
+  canonicalSkillName string
+  language string
+  examples json [note: "embedded"]
+  exercises json [note: "embedded"]
+}
+
+Table learningresources {
+  _id objectId [pk]
+  canonicalSkillName string
+  url string
+  source string
+}
+
+Table chatsessions {
+  _id objectId [pk]
+  userId objectId
+  mode string
+  status string
+}
+
+Table chatmessages {
+  _id objectId [pk]
+  sessionId objectId
+  userId objectId
+  sender string
+  content string
+}
+
+Table notifications {
+  _id objectId [pk]
+  user objectId
+  type string
+  isRead boolean
+}
+
+Table reports {
+  _id objectId [pk]
+  userId objectId
+  status string
+}
+
+Table reportstatuslogs {
+  _id objectId [pk]
+  reportId objectId
+  adminId objectId
+  status string
+}
+
+Table githubauthstates {
+  _id objectId [pk]
+  state string
+  expiresAt datetime [note: "TTL"]
+}
+
+Table githuboauthstates {
+  _id objectId [pk]
+  state string
+  expiresAt datetime [note: "TTL"]
+}
+
+Ref: studentprofiles.userId > users._id
+Ref: githubaccounts.userId > users._id
+Ref: repositories.userId > users._id
+Ref: repositories.githubAccountId > githubaccounts._id
+Ref: repositorypackages.repositoryId > repositories._id
+Ref: repositorycommits.repositoryId > repositories._id
+Ref: analysisresults.repositoryId > repositories._id
+Ref: repoanalysissnapshots.repositoryId > repositories._id
+Ref: repoanalysissnapshots.analysisResultId > analysisresults._id
+Ref: aifeedbacks.repositoryId > repositories._id
+Ref: roadmaps.userId > users._id
+Ref: roadmapprogresses.roadmapId > roadmaps._id
+Ref: chatsessions.userId > users._id
+Ref: chatmessages.sessionId > chatsessions._id
+Ref: notifications.user > users._id
+Ref: reports.userId > users._id
+Ref: reportstatuslogs.reportId > reports._id

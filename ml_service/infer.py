@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+import time
 from pathlib import Path
 
 import joblib
@@ -24,6 +26,21 @@ ROLE_MAPPING = {
         "roleId": "data_scientist", "roleName": "Data Scientist"
     },
 }
+DEFAULT_ROLE_SCORING = {
+    "strategy": "classifier_only",
+    "alpha": 1.0,
+    "beta": 0.0,
+    "calibrationMethod": "none",
+    "scoringVersion": "classifier-only-v1",
+}
+
+
+def timing_enabled():
+    return os.environ.get("DEV2VEC_TIMING_DEBUG") in {"true", "1"}
+
+
+def now_ms():
+    return int(time.perf_counter() * 1000)
 
 
 def parse_args():
@@ -45,6 +62,7 @@ def validate_input(payload):
     repo_document = payload.get("repoDocument", "")
     issue_document = payload.get("issueDocument", "")
     api_tokens = payload.get("apiTokens", [])
+    evidence_channels = payload.get("evidenceChannels", {})
     top_n = payload.get("topN", 3)
     if not isinstance(repo_document, str):
         raise ValueError("repoDocument must be a string")
@@ -56,7 +74,37 @@ def validate_input(payload):
         raise ValueError("apiTokens must be an array of strings")
     if not isinstance(top_n, int) or isinstance(top_n, bool):
         raise ValueError("topN must be an integer")
-    return repo_document, issue_document, api_tokens, max(1, min(top_n, 3))
+    if evidence_channels is None:
+        evidence_channels = {}
+    if not isinstance(evidence_channels, dict):
+        raise ValueError("evidenceChannels must be an object when provided")
+    return repo_document, issue_document, api_tokens, evidence_channels, max(1, min(top_n, 3))
+
+
+def resolve_channel_availability(repo_document, issue_document, api_tokens, evidence_channels):
+    available = evidence_channels.get("availableChannels", {})
+    status = evidence_channels.get("channelStatus", {})
+    if not isinstance(available, dict):
+        available = {}
+    if not isinstance(status, dict):
+        status = {}
+    fallback = {
+        "repo": bool(repo_document.strip()),
+        "issue": bool(issue_document.strip()),
+        "api": bool(api_tokens),
+    }
+    return {
+        "availableChannels": {
+            "repo": bool(available.get("repo", fallback["repo"])),
+            "issue": bool(available.get("issue", fallback["issue"])),
+            "api": bool(available.get("api", fallback["api"])),
+        },
+        "channelStatus": {
+            "repo": str(status.get("repo") or ("available" if fallback["repo"] else "insufficient_metadata")),
+            "issue": str(status.get("issue") or ("available" if fallback["issue"] else "not_fetched")),
+            "api": str(status.get("api") or ("available" if fallback["api"] else "no_usage_tokens")),
+        },
+    }
 
 
 def infer_source(model, text, size, seed):
@@ -69,12 +117,120 @@ def infer_source(model, text, size, seed):
     return np.asarray(model.infer_vector(tokens, epochs=30), dtype=np.float32)
 
 
+def assert_vector(name, vector, size):
+    if vector.shape[0] != size:
+        raise ValueError("%s vector has invalid length" % name)
+    if not np.all(np.isfinite(vector)):
+        raise ValueError("%s vector contains NaN or Infinity" % name)
+
+
+def validate_artifact_metadata(metadata, classifier):
+    vector_dims = metadata.get("vectorDims") or {}
+    if vector_dims and vector_dims != VECTOR_DIMS:
+        raise ValueError("Model metadata vectorDims do not match runtime VECTOR_DIMS")
+    expected_dim = int(metadata.get("inputDimension") or metadata.get("model", {}).get("inputDimension") or VECTOR_DIMS["combined"])
+    if expected_dim != VECTOR_DIMS["combined"]:
+        raise ValueError("Model metadata inputDimension is incompatible")
+    classifier_dim = getattr(classifier, "n_features_in_", VECTOR_DIMS["combined"])
+    if int(classifier_dim) != VECTOR_DIMS["combined"]:
+        raise ValueError("Classifier input dimension is incompatible")
+
+
 def cosine_similarity(left, right):
     left_norm = float(np.linalg.norm(left))
     right_norm = float(np.linalg.norm(right))
     if left_norm == 0.0 or right_norm == 0.0:
         return 0.0
     return float(np.dot(left, right) / (left_norm * right_norm))
+
+
+def normalize_cosine(value):
+    if not np.isfinite(value):
+        return 0.0
+    return max(0.0, min(1.0, (float(value) + 1.0) / 2.0))
+
+
+def validate_role_scoring_config(metadata):
+    config = metadata.get("roleScoring") or DEFAULT_ROLE_SCORING
+    if not isinstance(config, dict):
+        return DEFAULT_ROLE_SCORING
+    strategy = str(config.get("strategy") or "classifier_only")
+    alpha = float(config.get("alpha", 1.0))
+    beta = float(config.get("beta", 0.0))
+    if (
+        not np.isfinite(alpha)
+        or not np.isfinite(beta)
+        or alpha < 0.0
+        or beta < 0.0
+        or alpha > 1.0
+        or beta > 1.0
+        or abs((alpha + beta) - 1.0) > 1e-6
+    ):
+        return DEFAULT_ROLE_SCORING
+    if strategy not in {"classifier_only", "hybrid"}:
+        return DEFAULT_ROLE_SCORING
+    if strategy == "classifier_only":
+        alpha, beta = 1.0, 0.0
+    return {
+        "strategy": strategy,
+        "alpha": alpha,
+        "beta": beta,
+        "calibrationMethod": str(config.get("calibrationMethod") or "none"),
+        "scoringVersion": str(config.get("scoringVersion") or DEFAULT_ROLE_SCORING["scoringVersion"]),
+    }
+
+
+def role_prototype_similarity(role_id, combined_vector, skill_vectors, top_k=3):
+    similarities = []
+    missing = 0
+    for skill in skill_vectors.get(role_id, []):
+        prototype = np.asarray(skill["combinedVector"], dtype=np.float32)
+        if prototype.shape[0] != VECTOR_DIMS["combined"] or not np.all(np.isfinite(prototype)):
+            missing += 1
+            continue
+        similarities.append(cosine_similarity(combined_vector, prototype))
+    if not similarities:
+        return {
+            "rawPrototypeSimilarity": 0.0,
+            "normalizedPrototypeSimilarity": 0.0,
+            "validSkillPrototypeCount": 0,
+            "missingPrototypeCount": missing,
+        }
+    ranked = sorted(similarities, reverse=True)
+    selected = ranked[: max(1, min(top_k, len(ranked)))]
+    raw = float(np.mean(selected))
+    return {
+        "rawPrototypeSimilarity": raw,
+        "normalizedPrototypeSimilarity": normalize_cosine(raw),
+        "validSkillPrototypeCount": len(similarities),
+        "missingPrototypeCount": missing,
+    }
+
+
+def rank_roles(probabilities, label_encoder, classifier, combined_vector, skill_vectors, scoring_config):
+    rows = []
+    for class_index, probability in enumerate(probabilities):
+        encoded_class = classifier.classes_[class_index]
+        model_label = str(label_encoder.inverse_transform([encoded_class])[0])
+        mapping = ROLE_MAPPING[model_label]
+        prototype = role_prototype_similarity(mapping["roleId"], combined_vector, skill_vectors)
+        classifier_score = float(probability)
+        final_score = (
+            scoring_config["alpha"] * classifier_score
+            + scoring_config["beta"] * prototype["normalizedPrototypeSimilarity"]
+        )
+        if not np.isfinite(final_score):
+            final_score = classifier_score
+        rows.append({
+            "classIndex": class_index,
+            "modelLabel": model_label,
+            "mapping": mapping,
+            "classifierProbability": classifier_score,
+            "prototype": prototype,
+            "finalRoleScore": float(final_score),
+        })
+    rows.sort(key=lambda item: (-item["finalRoleScore"], item["modelLabel"]))
+    return rows
 
 
 def build_skill_gap(role_id, combined_vector, skill_vectors):
@@ -112,7 +268,11 @@ def build_skill_gap(role_id, combined_vector, skill_vectors):
 
 
 def run_inference(payload, artifacts):
-    repo_document, issue_document, api_tokens, top_n = validate_input(payload)
+    timings = {}
+    started = now_ms()
+    repo_document, issue_document, api_tokens, evidence_channels, top_n = validate_input(payload)
+    timings["validateInputMs"] = now_ms() - started
+    load_started = now_ms()
     repo_model = Doc2Vec.load(str(artifacts / "doc2vec_repo.model"))
     issue_model = Doc2Vec.load(str(artifacts / "doc2vec_issue.model"))
     api_model = Doc2Vec.load(str(artifacts / "doc2vec_api.model"))
@@ -122,37 +282,56 @@ def run_inference(payload, artifacts):
         skill_vectors = json.load(handle)
     with (artifacts / "model_metadata.json").open(encoding="utf-8") as handle:
         metadata = json.load(handle)
+    timings["modelLoadMs"] = now_ms() - load_started
+    validate_started = now_ms()
+    validate_artifact_metadata(metadata, classifier)
+    scoring_config = validate_role_scoring_config(metadata)
+    channel_info = resolve_channel_availability(
+        repo_document, issue_document, api_tokens, evidence_channels
+    )
+    available_channels = channel_info["availableChannels"]
+    timings["metadataValidateMs"] = now_ms() - validate_started
 
+    vector_started = now_ms()
     repo_vector = infer_source(
-        repo_model, repo_document, VECTOR_DIMS["repo"], 1101
+        repo_model, repo_document if available_channels["repo"] else "", VECTOR_DIMS["repo"], 1101
     )
     issue_vector = infer_source(
-        issue_model, issue_document, VECTOR_DIMS["issue"], 1102
+        issue_model, issue_document if available_channels["issue"] else "", VECTOR_DIMS["issue"], 1102
     )
-    api_text = " ".join(api_tokens)
+    api_text = " ".join(api_tokens) if available_channels["api"] else ""
     api_vector = infer_source(api_model, api_text, VECTOR_DIMS["api"], 1103)
+    assert_vector("repo", repo_vector, VECTOR_DIMS["repo"])
+    assert_vector("issue", issue_vector, VECTOR_DIMS["issue"])
+    assert_vector("api", api_vector, VECTOR_DIMS["api"])
     combined_vector = np.concatenate([repo_vector, issue_vector, api_vector])
-    if combined_vector.shape[0] != VECTOR_DIMS["combined"]:
-        raise ValueError("Combined vector has invalid length")
+    assert_vector("combined", combined_vector, VECTOR_DIMS["combined"])
+    timings["vectorInferenceMs"] = now_ms() - vector_started
 
+    classifier_started = now_ms()
     probabilities = classifier.predict_proba(combined_vector.reshape(1, -1))[0]
-    ranked = np.argsort(probabilities)[::-1][:top_n]
+    ranked_roles = rank_roles(
+        probabilities, label_encoder, classifier, combined_vector, skill_vectors, scoring_config
+    )[:top_n]
     predictions = []
     skill_gaps = {}
-    for rank, class_index in enumerate(ranked, start=1):
-        encoded_class = classifier.classes_[class_index]
-        model_label = str(label_encoder.inverse_transform([encoded_class])[0])
-        mapping = ROLE_MAPPING[model_label]
+    for rank, row in enumerate(ranked_roles, start=1):
+        mapping = row["mapping"]
+        model_label = row["modelLabel"]
         predictions.append({
             "roleId": mapping["roleId"],
             "roleName": mapping["roleName"],
             "modelLabel": model_label,
-            "probability": round(float(probabilities[class_index]), 6),
+            "probability": round(float(row["finalRoleScore"]), 6),
             "rank": rank,
         })
         skill_gaps[mapping["roleId"]] = build_skill_gap(
             mapping["roleId"], combined_vector, skill_vectors
         )
+    timings["classifierPredictMs"] = now_ms() - classifier_started
+    timings["totalPythonMs"] = now_ms() - started
+    if timing_enabled():
+        print("[Dev2VecTimingPython] %s" % json.dumps(timings, separators=(",", ":")), file=sys.stderr)
 
     return {
         "success": True,
@@ -167,9 +346,9 @@ def run_inference(payload, artifacts):
         "rolePredictions": predictions,
         "skillGaps": skill_gaps,
         "vectorSources": {
-            "repos": bool(repo_document.strip()),
-            "issues": bool(issue_document.strip()),
-            "apis": bool(api_tokens),
+            "repos": available_channels["repo"],
+            "issues": available_channels["issue"],
+            "apis": available_channels["api"],
         },
         "sourceStats": {
             "repoTextLength": len(repo_document),
@@ -183,7 +362,11 @@ def main():
     args = parse_args()
     artifacts = Path(__file__).resolve().parent / "artifacts"
     try:
-        output = run_inference(read_input(args.input), artifacts)
+        read_started = now_ms()
+        payload = read_input(args.input)
+        if timing_enabled():
+            print("[Dev2VecTimingPython] %s" % json.dumps({"readInputMs": now_ms() - read_started}, separators=(",", ":")), file=sys.stderr)
+        output = run_inference(payload, artifacts)
         exit_code = 0
     except Exception as exc:
         print("Dev2Vec inference failed: %s" % exc, file=sys.stderr)

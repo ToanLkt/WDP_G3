@@ -12,11 +12,24 @@ const { createSnapshotFromAnalysisResult } = require('./snapshot.service');
 const { createStatusError } = require('./github/github.utils');
 const { resolveUserContributionSource } = require('./analysisSource.service');
 const { fetchRepositoryPackages } = require('./github/github.package.service');
+const { getRepositoryIssueEvidence } = require('./github/github.issue.service');
+const {
+  fetchAndCacheRepositoryCommits,
+  fetchAndCacheCommitDetailsForUserCommits,
+} = require('./github/github.commit.service');
 const {
   buildDev2VecInputFromAnalysisSource,
   buildDev2VecInputFromRepositoryAnalysis,
 } = require('./dev2vec/dev2vecInputBuilder.service');
 const { runDev2VecInference } = require('./dev2vec/dev2vec.service');
+const {
+  getCurrentDev2VecPipelineMetadata,
+} = require('./dev2vec/dev2vecPipelineMetadata.service');
+const {
+  getRepositoryFingerprint,
+  hasCachedDev2VecResult,
+  shouldUseCachedDev2Vec,
+} = require('./dev2vec/dev2vecCachePolicy.service');
 const {
   buildAnalysisSkillsFromDev2Vec,
   buildAnalysisSummaryFromDev2Vec,
@@ -28,9 +41,38 @@ const {
   normalizeSkillText,
 } = require('../utils/skillCanonicalizer');
 const { buildDocumentationRecommendation } = require('../utils/documentationEvidence');
+const { createDev2VecTimer } = require('../utils/dev2vecTiming');
+const { resolveEffectiveRole, roleKey } = require('./analysis/effectiveRoleResolver');
 
 const shouldIncludeEvidence = (query = {}) => query.includeEvidence === true || query.includeEvidence === 'true';
 const getView = (query = {}) => (query.view === 'detail' ? 'detail' : 'summary');
+const isDev2VecDebugEnabled = () => process.env.DEV2VEC_DEBUG === 'true' || process.env.DEV2VEC_DEBUG === '1';
+const isAnalysisRoleDebugEnabled = () => process.env.ANALYSIS_ROLE_DEBUG === 'true' || process.env.ANALYSIS_ROLE_DEBUG === '1';
+const isContributionCodeDebugEnabled = () => process.env.ANALYSIS_CONTRIBUTION_CODE_DEBUG === 'true' || process.env.ANALYSIS_CONTRIBUTION_CODE_DEBUG === '1';
+const isAnalysisSkillDebugEnabled = () => process.env.ANALYSIS_SKILL_DEBUG === 'true' || process.env.ANALYSIS_SKILL_DEBUG === '1';
+
+const logDev2VecDebug = (event, details = {}) => {
+  if (!isDev2VecDebugEnabled()) return;
+  console.log('[dev2vec][debug]', event, {
+    repoId: details.repoId ? String(details.repoId) : undefined,
+    analysisId: details.analysisId ? String(details.analysisId) : undefined,
+    cacheHit: details.cacheHit,
+    cacheReason: details.cacheReason,
+    forceRegenerate: details.forceRegenerate,
+    pipelineVersion: details.pipelineVersion,
+    modelArtifactVersion: details.modelArtifactVersion,
+    scoringVersion: details.scoringVersion,
+    availableChannels: details.availableChannels,
+    issueStatus: details.issueStatus,
+    repoTokenCount: details.repoTokenCount,
+    apiTokenCount: details.apiTokenCount,
+    issueTokenCount: details.issueTokenCount,
+    sourceFileCount: details.sourceFileCount,
+    skippedFileCount: details.skippedFileCount,
+    inferenceDurationMs: details.inferenceDurationMs,
+    topRoles: details.topRoles,
+  });
+};
 
 const validateAuthUser = (authUser) => {
   if (!authUser || !authUser.userId) {
@@ -159,6 +201,11 @@ const buildDev2VecRecommendations = (skillMapping = {}) => {
 const buildSkillVectorFromDev2VecSkills = ({ topSkills = [], missingSkills = [] }) => {
   const now = new Date();
   const entries = [];
+  const toSkillScore100 = (value, fallback = 0) => {
+    const numeric = Number.isFinite(Number(value)) ? Number(value) : Number(fallback || 0);
+    const scaled = numeric <= 1 ? numeric * 100 : numeric;
+    return Math.min(100, Math.max(0, Math.round(scaled * 100) / 100));
+  };
 
   for (const item of topSkills) {
     const canonicalSkillName = canonicalizeSkillName(item.canonicalSkillName || item.skill);
@@ -168,7 +215,7 @@ const buildSkillVectorFromDev2VecSkills = ({ topSkills = [], missingSkills = [] 
       canonicalSkillName,
       normalizedSkillName: normalizeSkillText(canonicalSkillName),
       category: item.category || getCanonicalSkillCategory(canonicalSkillName),
-      score: Math.min(1, Math.max(0, Number(item.score || 0) / 100)),
+      score: toSkillScore100(item.score),
       level: item.level || (item.level === 'strong' ? 'strong' : 'developing'),
       similarity: item.similarity,
       dev2vecStatus: item.dev2vecStatus,
@@ -191,7 +238,7 @@ const buildSkillVectorFromDev2VecSkills = ({ topSkills = [], missingSkills = [] 
       canonicalSkillName,
       normalizedSkillName: normalizeSkillText(canonicalSkillName),
       category: item.category || getCanonicalSkillCategory(canonicalSkillName),
-      score: Math.min(1, Math.max(0, Number(item.score || (item.priority === 'medium' ? 25 : 0)) / 100)),
+      score: toSkillScore100(item.score, item.priority === 'medium' ? 25 : 0),
       level: item.level || (item.priority === 'medium' ? 'weak' : 'missing'),
       similarity: item.similarity,
       dev2vecStatus: item.dev2vecStatus,
@@ -221,13 +268,69 @@ const buildDev2VecAnalysisPayload = ({
   githubAccount,
   dev2vecInput,
   dev2vecOutput,
+  issueEvidence,
 }) => {
-  const summary = buildAnalysisSummaryFromDev2Vec(dev2vecOutput);
+  let summary = buildAnalysisSummaryFromDev2Vec(dev2vecOutput);
   const repoFeatureEvidence = dev2vecInput.repoFeatureEvidence || dev2vecInput.evidencePreview?.repoFeatures || {};
+  const repositoryProjectType = inferProjectTypeFromRepositoryContext(dev2vecInput, summary.projectType);
+  if (repositoryProjectType) summary.projectType = repositoryProjectType;
+  const contributionCareerDirection = inferCareerDirectionFromUserContribution(dev2vecInput, summary.projectType);
+  const contributionKey = roleKey(contributionCareerDirection);
+  const contributionCounts = {
+    frontend: Number(dev2vecInput.sourceStats?.userContributionFrontendFileCount || 0),
+    backend: Number(dev2vecInput.sourceStats?.userContributionBackendFileCount || 0),
+    mobile: Number(dev2vecInput.sourceStats?.userContributionMobileFileCount || 0),
+    devops: Number(dev2vecInput.sourceStats?.userContributionDevopsFileCount || 0),
+    data: Number(dev2vecInput.sourceStats?.userContributionDataFileCount || 0),
+  };
+  const effectiveRole = resolveEffectiveRole({
+    repositoryRole: summary.projectType,
+    userContributionRole: contributionCareerDirection,
+    classifierRole: summary.careerDirection,
+    classifierConfidence: Number(dev2vecOutput.rolePredictions?.[0]?.probability || 0),
+    userContributionEvidence: {
+      topFileCount: contributionCounts[contributionKey] || 0,
+      competingFileCount: Math.max(0, ...Object.entries(contributionCounts)
+        .filter(([key]) => key !== contributionKey)
+        .map(([, count]) => count)),
+    },
+  });
+  const repositoryRole = summary.projectType;
+  const classifierRole = dev2vecOutput.rolePredictions?.[0]?.roleName || summary.careerDirection;
+  const effectiveSummary = buildAnalysisSummaryFromDev2Vec(dev2vecOutput, { roleId: effectiveRole.effectiveRoleId });
+  summary = {
+    ...effectiveSummary,
+    projectType: repositoryRole,
+    careerDirection: effectiveRole.effectiveRoleName || effectiveSummary.careerDirection,
+  };
   const skillMapping = buildAnalysisSkillsFromDev2Vec({
     ...dev2vecOutput,
     repoFeatureEvidence,
-  }, { repoFeatureEvidence });
+  }, { repoFeatureEvidence, roleId: effectiveRole.effectiveRoleId });
+  if (isAnalysisRoleDebugEnabled()) {
+    console.log('[analysis-role][debug]', {
+      repositoryRole,
+      repositoryRoleConfidence: null,
+      userContributionRole: contributionCareerDirection || 'unknown',
+      frontendChangedFileCount: contributionCounts.frontend,
+      backendChangedFileCount: contributionCounts.backend,
+      mobileChangedFileCount: contributionCounts.mobile,
+      devopsChangedFileCount: contributionCounts.devops,
+      dataChangedFileCount: contributionCounts.data,
+      classifierRole,
+      classifierConfidence: Number(dev2vecOutput.rolePredictions?.[0]?.probability || 0),
+      classifierProbabilities: (dev2vecOutput.rolePredictions || []).map((prediction) => ({
+        roleId: prediction.roleId,
+        probability: prediction.probability,
+      })),
+      effectiveRole: effectiveRole.effectiveRoleName,
+      effectiveRoleReason: effectiveRole.reason,
+      roleCatalogLookupKey: effectiveRole.effectiveRoleId,
+      selectedSkillGapRole: effectiveRole.effectiveRoleId,
+      responseCareerDirection: summary.careerDirection,
+      responseProjectType: summary.projectType,
+    });
+  }
   const skillVector = buildSkillVectorFromDev2VecSkills(skillMapping);
   const commitSummary = buildCommitSummary(commits);
   const packages = uniqueStrings([
@@ -247,6 +350,10 @@ const buildDev2VecAnalysisPayload = ({
   const topProbability = Number(dev2vecOutput.rolePredictions?.[0]?.probability || 0);
   const docsEvidence = dev2vecInput.evidencePreview?.docs || {};
   const docsRecommendation = buildDocumentationRecommendation(docsEvidence);
+  const cacheMetadata = {
+    ...getCurrentDev2VecPipelineMetadata(),
+    repositoryFingerprint: getRepositoryFingerprint(repository),
+  };
   const recommendations = buildDev2VecRecommendations(skillMapping);
   if (
     docsRecommendation
@@ -332,6 +439,13 @@ const buildDev2VecAnalysisPayload = ({
     rawAnalysis: {
       scoringMethod: 'dev2vec_doc2vec_classifier',
       requestId: dev2vecInput.requestId,
+      evidenceChannels: dev2vecInput.evidenceChannels || {},
+      pipelineMetadata: cacheMetadata,
+      dev2vecCacheMetadata: cacheMetadata,
+      issueEvidence: {
+        metadata: issueEvidence?.metadata || {},
+        issues: Array.isArray(issueEvidence?.issues) ? issueEvidence.issues : [],
+      },
     },
     skillEvidence: [],
     skillVector,
@@ -352,19 +466,105 @@ const buildDev2VecAnalysisPayload = ({
       rolePredictions: dev2vecOutput.rolePredictions || [],
       skillGaps: dev2vecOutput.skillGaps || {},
       scoringMethod: 'dev2vec_doc2vec_classifier',
+      cacheMetadata,
     },
   };
 };
 
+const unwrapSettled = (result, fallback = null) => (
+  result && result.status === 'fulfilled' ? result.value : fallback
+);
+
+const getCommitBranch = (repository = {}) => String(repository.defaultBranch || repository.rawData?.default_branch || 'main').trim();
+
+const inferProjectTypeFromRepositoryContext = (dev2vecInput = {}, fallback = '') => {
+  const stats = dev2vecInput.sourceStats || {};
+  const features = dev2vecInput.repoFeatureEvidence || {};
+  const detected = (name) => features[name]?.detected === true;
+  const frontendScore = Number(stats.frontendFileCount || 0)
+    + (detected('Frontend') ? 4 : 0)
+    + (dev2vecInput.apiTokens || []).filter((token) => /^(react|react-dom|react-router|react-router-dom|vite|tailwindcss|next|vue|angular|svelte)$/.test(token)).length;
+  const backendScore = Number(stats.backendFileCount || 0)
+    + Number(stats.restApiFileCount || 0)
+    + Number(stats.databaseFileCount || 0)
+    + (detected('Backend') ? 4 : 0)
+    + (detected('REST API') ? 3 : 0)
+    + (detected('Database') ? 2 : 0);
+  const mobileScore = Number(stats.mobileFileCount || 0) + (detected('Mobile') ? 4 : 0);
+  const devopsScore = Number(stats.devopsFileCount || 0) + (detected('DevOps') ? 4 : 0);
+  const dataScore = Number(stats.dataFileCount || 0) + (detected('Data Science') ? 4 : 0);
+  const scores = [
+    ['Frontend', frontendScore],
+    ['Backend', backendScore],
+    ['Mobile', mobileScore],
+    ['DevOps', devopsScore],
+    ['Data Science', dataScore],
+  ].sort((left, right) => right[1] - left[1]);
+
+  if (!scores[0] || scores[0][1] <= 0) return fallback;
+  if (scores[0][1] >= scores[1][1] + 2) return scores[0][0];
+  return fallback;
+};
+
+const inferCareerDirectionFromUserContribution = (dev2vecInput = {}, projectType = '') => {
+  const stats = dev2vecInput.sourceStats || {};
+  const roles = [
+    ['Frontend Developer', Number(stats.userContributionFrontendFileCount || 0), 'Frontend'],
+    ['Backend Developer', Number(stats.userContributionBackendFileCount || 0), 'Backend'],
+    ['Mobile Developer', Number(stats.userContributionMobileFileCount || 0), 'Mobile'],
+    ['DevOps Engineer', Number(stats.userContributionDevopsFileCount || 0), 'DevOps'],
+    ['Data Scientist', Number(stats.userContributionDataFileCount || 0), 'Data Science'],
+  ].sort((left, right) => right[1] - left[1]);
+  const top = roles[0];
+  const second = roles[1];
+  if (!top || top[1] < 2 || top[1] < second[1] + 2) return '';
+  if (projectType && projectType !== top[2] && top[1] < 4) return '';
+  return top[0];
+};
+
+const loadRepositoryCommitsForAnalysis = async ({ user, repository, githubAccount, existingCommits = [] }) => {
+  const branch = getCommitBranch(repository);
+  const branchCommits = (Array.isArray(existingCommits) ? existingCommits : [])
+    .filter((commit) => !commit.branch || commit.branch === branch);
+  const cacheFresh = branchCommits.some((commit) => (
+    commit.lastFetchedAt
+    && Date.now() - new Date(commit.lastFetchedAt).getTime() < 15 * 60 * 1000
+  ));
+  if (branchCommits.length && cacheFresh) {
+    return { commits: branchCommits, metadata: { source: 'cache', branch } };
+  }
+
+  const result = await fetchAndCacheRepositoryCommits({
+    authUser: user,
+    repository,
+    githubAccount,
+    query: { sha: branch, perPage: 100 },
+    forceRefresh: branchCommits.length === 0,
+  });
+  return { commits: result.commits || branchCommits, metadata: result.metadata || { branch } };
+};
+
 const analyzeRepository = async ({ user, params, query }) => {
   validateAuthUser(user);
+  if (isAnalysisRoleDebugEnabled()) {
+    const metadata = getCurrentDev2VecPipelineMetadata();
+    console.log('[analysis-role][debug] flow-version', {
+      functionName: 'analysis.service.analyzeRepository',
+      analysisPipelineVersion: metadata.analysisPipelineVersion,
+      roleResolverVersion: metadata.roleResolverVersion,
+    });
+  }
+  const timer = createDev2VecTimer({
+    repoId: params.repoId,
+    requestId: `analysis-${user.userId}-${params.repoId}`,
+  });
 
-  const repository = await findRepositoryForUser(user, params.repoId);
-  let [githubAccount, packageRecord, commits] = await Promise.all([
+  const repository = await timer.measure('metadataMs', () => findRepositoryForUser(user, params.repoId));
+  let [githubAccount, packageRecord, cachedCommits] = await timer.measure('loadRepositoryContextMs', () => Promise.all([
     GithubAccount.findOne({ userId: user.userId }).lean(),
     RepositoryPackage.findOne({ userId: user.userId, repositoryId: repository._id }).lean(),
     RepositoryCommit.find({ userId: user.userId, repositoryId: repository._id }).sort({ authorDate: -1 }).lean(),
-  ]);
+  ]));
 
   if (!githubAccount) {
     const error = new Error('GitHub account is not connected');
@@ -372,27 +572,111 @@ const analyzeRepository = async ({ user, params, query }) => {
     throw error;
   }
 
-  packageRecord = await ensurePackageSourceEvidence({
+  const commitLoad = await timer.measure('commitFetchMs', () => loadRepositoryCommitsForAnalysis({
     user,
-    repoId: params.repoId,
     repository,
-    packageRecord,
+    githubAccount,
+    existingCommits: cachedCommits,
+  }));
+  const commits = commitLoad.commits || [];
+  const contributionScope = filterUserContributionCommits(commits, githubAccount);
+  let userCommits = contributionScope.userCommits;
+  const commitDetailLoad = await timer.measure('commitDetailFetchMs', () => fetchAndCacheCommitDetailsForUserCommits({
+    authUser: user,
+    repository,
+    githubAccount,
+    commits: userCommits,
+    forceRefresh: false,
+    includeCodeEvidence: true,
+  }));
+  userCommits = commitDetailLoad.commits || userCommits;
+  if (isContributionCodeDebugEnabled() || isAnalysisSkillDebugEnabled()) {
+    const code = commitDetailLoad.metadata?.codeEvidence || {};
+    console.log('[analysis-contribution-code][debug]', {
+      matchedUserCommitCount: userCommits.length,
+      commitDetailsFetched: Number(commitDetailLoad.metadata?.fetchedDetailCount || 0),
+      totalCommitFiles: Number(code.eligibleFiles || 0) + Number(code.ignoredFiles || 0),
+      ignoredFiles: Number(code.ignoredFiles || 0),
+      eligibleFiles: Number(code.eligibleFiles || 0),
+      selectedFiles: Number(code.selectedFiles || 0),
+      filesConsidered: Number(code.filesConsidered || 0),
+      patchFilesParsed: Number(code.patchFilesParsed || code.patchFilesUsed || 0),
+      fullFilesFetched: Number(code.fullFilesFetched || 0),
+      pathOnlyFiles: Number(code.pathOnlyFiles || 0),
+      skippedLargeFiles: Number(code.skippedLargeFiles || 0),
+      timedOutFiles: Number(code.timedOutFiles || 0),
+      normalizedFilesSaved: Number(code.normalizedFilesSaved || 0),
+      totalPatchChars: Number(code.totalPatchChars || 0),
+      totalContentBytes: Number(code.totalContentBytes || 0),
+      countLimitApplied: Boolean(code.countLimitApplied),
+      groupCounts: code.groupCounts || {},
+      cacheHits: Number(commitDetailLoad.metadata?.reusedDetailCount || 0),
+      cacheMisses: Number(commitDetailLoad.metadata?.fetchedDetailCount || 0),
+    });
+  }
+  if (isAnalysisRoleDebugEnabled()) {
+    const fileCount = (items) => items.reduce((sum, commit) => sum + (Array.isArray(commit.files) ? commit.files.length : 0), 0);
+    console.log('[analysis-role][debug] commit-flow', {
+      loadedCommitCount: commits.length,
+      commitsWithDetailStatusAvailable: commits.filter((commit) => ['available', 'success'].includes(commit.detailStatus)).length,
+      commitsWithFilesArray: commits.filter((commit) => Array.isArray(commit.files) && commit.files.length > 0).length,
+      totalLoadedChangedFiles: fileCount(commits),
+      sampleChangedPaths: commits.flatMap((commit) => (commit.files || []).map((file) => file.filename || file.path)).filter(Boolean).slice(0, 10),
+      allCommitsWithFiles: commits.filter((commit) => commit.files?.length).length,
+      matchedUserCommits: userCommits.length,
+      matchedUserCommitsWithFiles: userCommits.filter((commit) => commit.files?.length).length,
+      matchedTotalFiles: fileCount(userCommits),
+    });
+  }
+  const [packageResult, issueResult] = await Promise.allSettled([
+    timer.measure('packageSourceMs', () => ensurePackageSourceEvidence({
+      user,
+      repoId: params.repoId,
+      repository,
+      packageRecord,
+    })),
+    timer.measure('issueMs', () => getRepositoryIssueEvidence({
+      user,
+      repository,
+      repoId: params.repoId,
+    })),
+  ]);
+  packageRecord = unwrapSettled(packageResult, packageRecord);
+  const issueEvidence = unwrapSettled(issueResult, {
+    issues: [],
+    metadata: { attempted: true, succeeded: false, unavailable: true, errorCode: 'ISSUE_EVIDENCE_UNAVAILABLE' },
   });
 
-  const contributionScope = filterUserContributionCommits(commits, githubAccount);
-  const userCommits = contributionScope.userCommits;
-  const dev2vecInput = buildDev2VecInputFromRepositoryAnalysis({
+  const dev2vecInput = await timer.measure('inputBuilderMs', () => Promise.resolve(buildDev2VecInputFromRepositoryAnalysis({
     repository,
     packages: packageRecord ? [packageRecord] : [],
     commits: userCommits,
-    issues: [],
-    topN: 3,
+    issues: getModelIssues(issueEvidence),
+    channelStatus: {
+      issue: getIssueChannelStatus(issueEvidence),
+    },
+    // Keep every catalog role available internally so an evidence-selected
+    // effective role always has its own classifier-generated skill gap.
+    topN: 5,
     requestId: `analysis-${user.userId}-${repository._id}-${Date.now()}`,
-  });
+  })));
+  if (isAnalysisRoleDebugEnabled()) {
+    console.log('[analysis-role][debug] top-n-input', {
+      requestedTopN: 5,
+      builderTopN: dev2vecInput.topN,
+    });
+  }
 
   let dev2vecOutput;
   try {
-    dev2vecOutput = await runDev2VecInference(dev2vecInput);
+    dev2vecOutput = await timer.measure('inferenceTotalMs', () => runDev2VecInference(dev2vecInput));
+    if (isAnalysisRoleDebugEnabled()) {
+      console.log('[analysis-role][debug] top-n-output', {
+        inferenceTopN: dev2vecInput.topN,
+        returnedPredictionCount: dev2vecOutput.rolePredictions?.length || 0,
+        returnedRoleIds: (dev2vecOutput.rolePredictions || []).map((prediction) => prediction.roleId),
+      });
+    }
   } catch (error) {
     console.error('[dev2vec] analysis inference failed:', {
       errorCode: error.errorCode,
@@ -411,14 +695,28 @@ const analyzeRepository = async ({ user, params, query }) => {
     githubAccount,
     dev2vecInput,
     dev2vecOutput,
+    issueEvidence,
   });
 
-  const analysisResult = await AnalysisResult.create({
+  const analysisResult = await timer.measure('mongoSaveMs', () => AnalysisResult.create({
     userId: user.userId,
     repositoryId: repository._id,
     ...analysisPayload,
+  }));
+  const repoSnapshot = await timer.measure('snapshotSaveMs', () => createSnapshotFromAnalysisResult(analysisResult));
+  timer.log({
+    sourceFileCount: Number(dev2vecInput.sourceStats?.sourceFileCount || 0),
+    apiTokenCount: Number(dev2vecInput.sourceStats?.apiTokenCount || 0),
+      issueStatus: dev2vecInput.evidenceChannels?.channelStatus?.issue,
+      commitSource: commitLoad.metadata?.source,
+      commitBranch: commitLoad.metadata?.branch,
+      fetchedCommitCount: commitLoad.metadata?.fetchedCommitCount,
+      normalizedCommitCount: commitLoad.metadata?.normalizedCommitCount,
+      commitDetailSource: commitDetailLoad.metadata?.source,
+      fetchedCommitDetailCount: commitDetailLoad.metadata?.fetchedDetailCount,
+      reusedCommitDetailCount: commitDetailLoad.metadata?.reusedDetailCount,
+      matchedUserCommitCount: contributionScope.userCommits.length,
   });
-  const repoSnapshot = await createSnapshotFromAnalysisResult(analysisResult);
 
   return {
     message: 'Repository analyzed successfully',
@@ -434,13 +732,6 @@ const analyzeRepository = async ({ user, params, query }) => {
 const isTrue = (value) => value === true || value === 'true';
 
 const getTopN = (limit) => Math.min(Number(limit) || 3, 3);
-
-const hasCachedDev2VecResult = (analysis = {}) => (
-  Array.isArray(analysis?.dev2vec?.rolePredictions)
-  && analysis.dev2vec.rolePredictions.length > 0
-  && analysis.dev2vec.skillGaps
-  && typeof analysis.dev2vec.skillGaps === 'object'
-);
 
 const buildDev2VecOutputFromAnalysis = (analysis = {}) => ({
   success: true,
@@ -477,8 +768,23 @@ const mapRoleMatchesFromDev2Vec = (dev2vecOutput, { includeDetails = false, limi
   return filterMatchesByTargetRole(mapped.matches || [], targetRole).slice(0, limit);
 };
 
+const getIssueChannelStatus = (issueEvidence = {}) => {
+  const metadata = issueEvidence.metadata || {};
+  if (metadata.succeeded === true && Number(metadata.relevantCount || 0) > 0) return 'available';
+  if (metadata.succeeded === true && Number(metadata.selectedCount || 0) > 0) return 'no_user_related_issues';
+  if (metadata.succeeded === true && Number(metadata.selectedCount || 0) === 0) return 'no_issues';
+  if (metadata.status === 403 && String(metadata.errorCode || '').toLowerCase().includes('rate')) return 'rate_limited';
+  if (metadata.unavailable === true || metadata.succeeded === false) return 'fetch_failed';
+  if (metadata.attempted === false) return 'not_fetched';
+  return 'not_fetched';
+};
+
+const getModelIssues = (issueEvidence = {}) => (
+  getIssueChannelStatus(issueEvidence) === 'available' ? issueEvidence.issues || [] : []
+);
+
 const buildRepositoryDev2VecInput = async ({ userId, repository, topN }) => {
-  let [githubAccount, packageRecord, commits] = await Promise.all([
+  let [githubAccount, packageRecord, cachedCommits] = await Promise.all([
     GithubAccount.findOne({ userId }).lean(),
     RepositoryPackage.findOne({ userId, repositoryId: repository._id }).lean(),
     RepositoryCommit.find({ userId, repositoryId: repository._id }).sort({ authorDate: -1 }).lean(),
@@ -491,33 +797,109 @@ const buildRepositoryDev2VecInput = async ({ userId, repository, topN }) => {
       packageRecord,
     });
   }
+  const commitLoad = await loadRepositoryCommitsForAnalysis({
+    user: { userId },
+    repository,
+    githubAccount,
+    existingCommits: cachedCommits,
+  });
+  const commits = commitLoad.commits || [];
   const contributionScope = githubAccount
     ? filterUserContributionCommits(commits, githubAccount)
     : { userCommits: commits };
+  const detailLoad = githubAccount
+    ? await fetchAndCacheCommitDetailsForUserCommits({
+        authUser: { userId },
+        repository,
+        githubAccount,
+        commits: contributionScope.userCommits,
+        forceRefresh: false,
+        includeCodeEvidence: true,
+      })
+    : { commits: contributionScope.userCommits };
+  const issueEvidence = githubAccount
+    ? await getRepositoryIssueEvidence({
+        user: { userId },
+        repository,
+      })
+    : { issues: [], metadata: { attempted: false, unavailable: true } };
 
   return buildDev2VecInputFromRepositoryAnalysis({
     repository,
     packages: packageRecord ? [packageRecord] : [],
-    commits: contributionScope.userCommits,
-    issues: [],
+    commits: detailLoad.commits || contributionScope.userCommits,
+    issues: getModelIssues(issueEvidence),
+    channelStatus: {
+      issue: getIssueChannelStatus(issueEvidence),
+    },
     topN,
     requestId: `role-matches-${userId}-${repository._id}-${Date.now()}`,
   });
 };
 
-const getDev2VecOutputForSingleRepo = async ({ userId, repository, analysis, topN }) => {
-  if (hasCachedDev2VecResult(analysis)) {
+const getTopRolesForDebug = (dev2vecOutput = {}) => (
+  (dev2vecOutput.rolePredictions || []).slice(0, 3).map((role) => ({
+    roleId: role.roleId || role.modelLabel || role.label,
+    probability: role.probability,
+  }))
+);
+
+const getDev2VecOutputForSingleRepo = async ({ userId, repository, analysis, topN, forceRegenerate = false }) => {
+  const currentMetadata = getCurrentDev2VecPipelineMetadata();
+  const cacheDecision = shouldUseCachedDev2Vec({
+    analysis,
+    repository,
+    forceRegenerate,
+    currentMetadata,
+  });
+  logDev2VecDebug('cache_decision', {
+    repoId: repository?._id,
+    analysisId: analysis?._id,
+    cacheHit: cacheDecision.useCache,
+    cacheReason: cacheDecision.reason,
+    forceRegenerate,
+    pipelineVersion: currentMetadata.analysisPipelineVersion,
+    modelArtifactVersion: currentMetadata.modelArtifactVersion,
+    scoringVersion: currentMetadata.scoringVersion,
+  });
+
+  if (cacheDecision.useCache) {
     return buildDev2VecOutputFromAnalysis(analysis);
   }
 
   const dev2vecInput = await buildRepositoryDev2VecInput({ userId, repository, topN });
+  const startedAt = Date.now();
   const dev2vecOutput = await runDev2VecInference(dev2vecInput);
+  const inferenceDurationMs = Date.now() - startedAt;
   dev2vecOutput.evidencePreview = dev2vecInput.evidencePreview || {};
   dev2vecOutput.repoFeatureEvidence = dev2vecInput.repoFeatureEvidence || dev2vecInput.evidencePreview?.repoFeatures || {};
   dev2vecOutput.sourceStats = {
     ...dev2vecInput.sourceStats,
     ...(dev2vecOutput.sourceStats || {}),
   };
+  const cacheMetadata = {
+    ...getCurrentDev2VecPipelineMetadata(),
+    repositoryFingerprint: getRepositoryFingerprint(repository),
+  };
+  logDev2VecDebug('inference_complete', {
+    repoId: repository?._id,
+    analysisId: analysis?._id,
+    cacheHit: false,
+    cacheReason: cacheDecision.reason,
+    forceRegenerate,
+    pipelineVersion: cacheMetadata.analysisPipelineVersion,
+    modelArtifactVersion: cacheMetadata.modelArtifactVersion,
+    scoringVersion: cacheMetadata.scoringVersion,
+    availableChannels: dev2vecInput.evidenceChannels?.availableChannels || [],
+    issueStatus: dev2vecInput.evidenceChannels?.channelStatus?.issue,
+    repoTokenCount: Number(dev2vecInput.sourceStats?.repoTokenCount || 0),
+    apiTokenCount: Number(dev2vecInput.sourceStats?.apiTokenCount || 0),
+    issueTokenCount: Number(dev2vecInput.sourceStats?.issueTokenCount || 0),
+    sourceFileCount: Number(dev2vecInput.sourceStats?.sourceFileCount || 0),
+    skippedFileCount: Number(dev2vecInput.sourceStats?.skippedFileCount || 0),
+    inferenceDurationMs,
+    topRoles: getTopRolesForDebug(dev2vecOutput),
+  });
 
   if (analysis?._id) {
     await AnalysisResult.findByIdAndUpdate(analysis._id, {
@@ -536,6 +918,13 @@ const getDev2VecOutputForSingleRepo = async ({ userId, repository, analysis, top
           rolePredictions: dev2vecOutput.rolePredictions || [],
           skillGaps: dev2vecOutput.skillGaps || {},
           scoringMethod: 'dev2vec_doc2vec_classifier',
+          cacheMetadata,
+        },
+        rawAnalysis: {
+          ...(analysis.rawAnalysis || {}),
+          evidenceChannels: dev2vecInput.evidenceChannels || {},
+          pipelineMetadata: cacheMetadata,
+          dev2vecCacheMetadata: cacheMetadata,
         },
       },
     });
@@ -559,6 +948,22 @@ const getDev2VecOutputForAnalysisSource = async ({ analysisSource, topN, userId 
       ...(dev2vecOutput.sourceStats || {}),
     },
   }));
+};
+
+const logMultiRepoCacheDecisions = (source = {}) => {
+  if (!isDev2VecDebugEnabled()) return;
+  for (const item of source.analyses || []) {
+    const analysis = item.analysis || item;
+    const repository = item.repository || {};
+    const decision = shouldUseCachedDev2Vec({ analysis, repository });
+    logDev2VecDebug('multi_repo_cache_decision', {
+      repoId: analysis?.repositoryId || repository?._id,
+      analysisId: analysis?._id,
+      cacheHit: decision.useCache,
+      cacheReason: decision.reason,
+      forceRegenerate: false,
+    });
+  }
 };
 
 const hasSourceEvidenceContent = (packageRecord = {}) => (
@@ -750,6 +1155,7 @@ const getRepositoryRoleMatches = async ({ user, params, query = {} }) => {
       repository,
       analysis,
       topN: limit,
+      forceRegenerate: false,
     });
   } catch (error) {
     throw createDev2VecRoleMatchError(error);
@@ -788,6 +1194,7 @@ const generateRoleMatches = async ({ user, body = {}, query = {} }) => {
 
   const limit = getTopN(body.limit);
   const includeDetails = isTrue(body.includeDetails) || isTrue(query.includeDetails) || body.view === 'detail' || query.view === 'detail';
+  const forceRegenerate = isTrue(body.forceRegenerate);
   const source = await resolveUserContributionSource({
     userId: user.userId,
     sourceMode: body.sourceMode,
@@ -816,8 +1223,10 @@ const generateRoleMatches = async ({ user, body = {}, query = {} }) => {
         repository: source.repository,
         analysis: source.analysisForGap,
         topN: limit,
+        forceRegenerate,
       });
     } else {
+      logMultiRepoCacheDecisions(source);
       dev2vecOutput = await getDev2VecOutputForAnalysisSource({
         analysisSource: {
           ...source.analysisSource,
@@ -851,6 +1260,7 @@ const generateRoleMatches = async ({ user, body = {}, query = {} }) => {
 
 module.exports = {
   analyzeRepository,
+  buildDev2VecAnalysisPayload,
   getAnalysisResults,
   getMyAnalysisResults,
   getRepositoryRoleMatches,

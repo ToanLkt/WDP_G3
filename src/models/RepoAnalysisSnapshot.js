@@ -76,7 +76,7 @@ const skillVectorSchema = new mongoose.Schema(
     canonicalSkillName: { type: String, required: true, trim: true },
     normalizedSkillName: { type: String, required: true, trim: true, lowercase: true },
     category: { type: String, default: 'General', trim: true },
-    score: { type: Number, default: 0, min: 0, max: 1 },
+    score: { type: Number, default: 0, min: 0, max: 100 },
     level: {
       type: String,
       enum: ['missing', 'weak', 'developing', 'moderate', 'strong'],

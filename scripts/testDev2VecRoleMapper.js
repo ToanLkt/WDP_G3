@@ -86,7 +86,8 @@ assert.strictEqual(backend.matchedSkills.length, 1);
 assert.strictEqual(backend.weakSkills.length, 1);
 assert.strictEqual(backend.missingRequiredSkills.length, 1);
 assert.strictEqual(backend.missingOptionalSkills.length, 0);
-assert.strictEqual(backend.matchedSkills[0].score, 0.612345);
+assert.strictEqual(backend.matchedSkills[0].score, 61.23);
+assert.strictEqual(backend.matchedSkills[0].similarity, 0.612345);
 assert.strictEqual(backend.scoringMethod, 'dev2vec_doc2vec_classifier');
 
 assert.deepStrictEqual(frontend.matchedSkillNames, []);

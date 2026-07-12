@@ -1,0 +1,30 @@
+flowchart LR
+  web[Web Client]
+  mobile[Mobile Client]
+  admin[Admin Client]
+
+  api[Express REST API]
+  mongo[(MongoDB)]
+  github[GitHub API]
+  llm[Gemini LLM]
+  youtube[YouTube API]
+  dev2vec[Dev2Vec Python]
+
+  web -->|REST /api| api
+  mobile -->|REST /api| api
+  admin -->|Admin REST| api
+
+  api -->|Mongoose| mongo
+  api -->|OAuth + REST| github
+  api -->|Generate text| llm
+  api -->|Search resources| youtube
+  api -->|execFile local| dev2vec
+
+  classDef client fill:#e8f2ff,stroke:#2b6cb0,color:#111;
+  classDef service fill:#fff8e6,stroke:#b7791f,color:#111;
+  classDef data fill:#e8fff1,stroke:#2f855a,color:#111;
+  classDef external fill:#f8e8ff,stroke:#805ad5,color:#111;
+  class web,mobile,admin client;
+  class api,dev2vec service;
+  class mongo data;
+  class github,llm,youtube external;

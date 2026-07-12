@@ -20,7 +20,10 @@ const NEXT_SKILL_PRIORITY = [
   'Swagger',
 ];
 
-const clamp01 = (value) => Math.min(1, Math.max(0, Number(value) || 0));
+const clamp01 = (value) => {
+  const score = Number(value) || 0;
+  return Math.min(1, Math.max(0, score > 1 ? score / 100 : score));
+};
 const round = (value, digits = 2) => Number(Number(value || 0).toFixed(digits));
 const toArray = (value) => (Array.isArray(value) ? value : []);
 

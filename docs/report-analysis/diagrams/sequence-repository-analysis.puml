@@ -1,0 +1,32 @@
+@startuml
+title Repository Analysis
+actor Client
+participant "Express API" as API
+participant "authMiddleware" as Auth
+participant "analysisController" as Controller
+participant "analysis.service" as Service
+database "MongoDB" as DB
+participant "Dev2Vec Python" as D2V
+
+Client -> API: POST /api/analysis/repositories/:repoId
+API -> Auth: verify Bearer JWT
+Auth --> API: req.user
+API -> Controller: analyzeRepository(req)
+Controller -> Service: analyzeRepository(user, params, query)
+Service -> DB: read Repository, GithubAccount, packages, commits
+DB --> Service: repo evidence
+Service -> Service: build repository evidence + skill vector input
+Service -> D2V: execFile ml_service/infer.py
+D2V --> Service: role/skill inference JSON
+Service -> DB: create AnalysisResult
+Service -> DB: create RepoAnalysisSnapshot
+DB --> Service: persisted records
+Service --> Controller: compact analysis response
+Controller --> Client: success response
+
+alt Dev2Vec unavailable or invalid
+  D2V --> Service: error/invalid output
+  Service --> Controller: status error
+  Controller --> Client: error response
+end
+@enduml

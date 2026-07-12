@@ -1,0 +1,36 @@
+@startuml
+title User And Admin Chat
+actor User
+actor Admin
+participant "Express API" as API
+participant "authMiddleware" as Auth
+participant "adminMiddleware" as AdminAuth
+participant "chat.service" as Chat
+database "MongoDB" as DB
+participant "Gemini LLM" as LLM
+
+User -> API: POST /api/chat/sessions/:sessionId/messages
+API -> Auth: verify JWT
+API -> Chat: sendMessage(user, params, body)
+Chat -> DB: verify owned ChatSession
+Chat -> DB: create user ChatMessage
+Chat -> DB: load profile/repo/package/snapshot/skill context
+Chat -> DB: load recent messages + chat mode
+
+alt AI mode
+  Chat -> LLM: generate chat response
+  LLM --> Chat: assistant response
+  Chat -> DB: create assistant ChatMessage
+else Admin/manual mode
+  Chat -> DB: keep session for admin response
+end
+Chat --> User: messages/session response
+
+Admin -> API: POST /api/admin/chat/sessions/:sessionId/messages
+API -> Auth: verify JWT
+API -> AdminAuth: verify admin role
+API -> Chat: sendAdminChatMessage(admin, params, body)
+Chat -> DB: create admin ChatMessage
+Chat -> DB: update ChatSession latest/status
+Chat --> Admin: success response
+@enduml

@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
 const { promisify } = require('util');
+const { createDev2VecTimer } = require('../../utils/dev2vecTiming');
 
 const execFileAsync = promisify(execFile);
 
@@ -29,7 +30,7 @@ const clampTopN = (value) => {
   if (!Number.isFinite(parsed)) {
     return 3;
   }
-  return Math.max(1, Math.min(parsed, 3));
+  return Math.max(1, Math.min(parsed, 5));
 };
 
 const normalizeRequestId = (requestId) => {
@@ -62,6 +63,32 @@ const normalizeApiTokens = (value) => {
     .map((item) => (typeof item === 'string' ? item : String(item)));
 };
 
+const normalizeEvidenceChannels = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  const available = value.availableChannels && typeof value.availableChannels === 'object'
+    ? value.availableChannels
+    : {};
+  const status = value.channelStatus && typeof value.channelStatus === 'object'
+    ? value.channelStatus
+    : {};
+
+  return {
+    availableChannels: {
+      repo: available.repo === true,
+      issue: available.issue === true,
+      api: available.api === true,
+    },
+    channelStatus: {
+      repo: normalizeString(status.repo),
+      issue: normalizeString(status.issue),
+      api: normalizeString(status.api),
+    },
+  };
+};
+
 const normalizeDev2VecInput = (input = {}) => {
   const requestId = normalizeRequestId(input.requestId);
 
@@ -70,6 +97,7 @@ const normalizeDev2VecInput = (input = {}) => {
     repoDocument: normalizeString(input.repoDocument),
     issueDocument: normalizeString(input.issueDocument),
     apiTokens: normalizeApiTokens(input.apiTokens),
+    evidenceChannels: normalizeEvidenceChannels(input.evidenceChannels),
     topN: clampTopN(input.topN),
   };
 };
@@ -206,15 +234,16 @@ const runDev2VecInference = async (input = {}, options = {}) => {
   );
 
   let tmpFile;
+  const timer = createDev2VecTimer({ requestId: payload.requestId });
   try {
-    tmpFile = await writeTempInput(payload);
-    const result = await runPythonInference({
+    tmpFile = await timer.measure('writeTempInputMs', () => writeTempInput(payload));
+    const result = await timer.measure('pythonProcessMs', () => runPythonInference({
       pythonBin,
       inferPath,
       tmpFile,
       timeoutMs,
       maxBuffer,
-    });
+    }));
 
     if (result.stderr) {
       console.warn('[dev2vec] infer.py stderr:', result.stderr.trim());
@@ -236,9 +265,15 @@ const runDev2VecInference = async (input = {}, options = {}) => {
       );
     }
 
-    return validateDev2VecOutput(parseStdoutJson(result.stdout));
+    const output = validateDev2VecOutput(parseStdoutJson(result.stdout));
+    timer.log({
+      apiTokenCount: payload.apiTokens.length,
+      repoTextLength: payload.repoDocument.length,
+      issueTextLength: payload.issueDocument.length,
+    });
+    return output;
   } finally {
-    await removeTempInput(tmpFile);
+    await timer.measure('removeTempInputMs', () => removeTempInput(tmpFile));
   }
 };
 

@@ -12,6 +12,11 @@ const roundPercent = (probability) => (
   Math.round((Number(probability) || 0) * 10000) / 100
 );
 
+const toPercentScore = (value) => {
+  const numeric = Number(value) || 0;
+  return Math.round((numeric <= 1 ? numeric * 100 : numeric) * 100) / 100;
+};
+
 const getDev2VecMatchLevel = (matchScore) => {
   const score = Number(matchScore) || 0;
   if (score >= 85) return 'excellent';
@@ -43,7 +48,7 @@ const normalizeSkillDetail = (detail = {}) => {
     canonicalSkillName: detail.canonicalSkillName || skillName,
     similarity,
     status: detail.status || '',
-    score: similarity,
+    score: similarity === null ? 0 : toPercentScore(similarity),
   };
 };
 
@@ -118,8 +123,17 @@ const getTopPrediction = (dev2vecOutput = {}) => (
     .sort((left, right) => Number(left.rank || 999) - Number(right.rank || 999))[0] || null
 );
 
+const getPredictionForRole = (dev2vecOutput = {}, roleId = '') => {
+  const target = String(roleId || '').toLowerCase();
+  if (!target) return getTopPrediction(dev2vecOutput);
+  return toArray(dev2vecOutput.rolePredictions).find((prediction) => (
+    String(prediction.roleId || '').toLowerCase() === target
+    || String(prediction.roleName || '').toLowerCase() === target
+  )) || null;
+};
+
 const buildAnalysisSummaryFromDev2Vec = (dev2vecOutput = {}, options = {}) => {
-  const topPrediction = getTopPrediction(dev2vecOutput);
+  const topPrediction = getPredictionForRole(dev2vecOutput, options.roleId);
   if (!topPrediction) {
     return {
       careerDirection: '',
@@ -172,7 +186,7 @@ const getRepoFeatureForSkill = (repoFeatureEvidence = {}, skillName) => {
   return feature?.detected ? feature : null;
 };
 
-const roundScore = (value) => Math.round((Number(value) || 0) * 10000) / 100;
+const roundScore = (value) => toPercentScore(value);
 
 const getLevelFromScore = (score, evidenceDetected) => {
   const displayScore = Number(score) || 0;
@@ -227,7 +241,7 @@ const buildMissingSkillItem = ({ skillName, skillGap, category, priority, repoFe
 };
 
 const buildAnalysisSkillsFromDev2Vec = (dev2vecOutput = {}, options = {}) => {
-  const topPrediction = getTopPrediction(dev2vecOutput);
+  const topPrediction = getPredictionForRole(dev2vecOutput, options.roleId);
   const roleId = topPrediction?.roleId || '';
   const category = options.category || roleId;
   const repoFeatureEvidence = options.repoFeatureEvidence || dev2vecOutput.repoFeatureEvidence || dev2vecOutput.evidencePreview?.repoFeatures || {};

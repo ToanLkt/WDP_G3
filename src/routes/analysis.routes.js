@@ -113,6 +113,10 @@ router.post('/repositories/:repoId', authMiddleware, analysisController.analyzeR
  *               includeDetails:
  *                 type: boolean
  *                 default: false
+ *               forceRegenerate:
+ *                 type: boolean
+ *                 default: false
+ *                 description: Optional internal cache bypass for single_repo mode. Response schema is unchanged.
  *           examples:
  *             singleRepo:
  *               summary: Single repo

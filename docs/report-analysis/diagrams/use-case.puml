@@ -1,0 +1,59 @@
+@startuml
+left to right direction
+actor "Student/User" as User
+actor Admin
+actor GitHub
+actor "AI Provider" as AI
+actor YouTube
+actor "Dev2Vec Runtime" as D2V
+
+rectangle "Career Roadmap Backend" {
+  usecase "Register / Login" as UCAuth
+  usecase "Connect GitHub" as UCGH
+  usecase "Import Repositories" as UCRepo
+  usecase "Analyze Repository" as UCAnalysis
+  usecase "View Role Matches" as UCRole
+  usecase "Generate Roadmap" as UCRoadmap
+  usecase "Track Progress" as UCProgress
+  usecase "Generate Learning Content" as UCLearning
+  usecase "Search Learning Resources" as UCResources
+  usecase "Chat with AI/Admin" as UCChat
+  usecase "Create Report" as UCReport
+  usecase "Manage Users" as AUUsers
+  usecase "Review Platform Data" as AUData
+  usecase "Manage Chat" as AUChat
+  usecase "Manage Reports" as AUReports
+  usecase "Check Dev2Vec Status" as AUD2V
+}
+
+User --> UCAuth
+User --> UCGH
+User --> UCRepo
+User --> UCAnalysis
+User --> UCRole
+User --> UCRoadmap
+User --> UCProgress
+User --> UCLearning
+User --> UCResources
+User --> UCChat
+User --> UCReport
+
+Admin --> AUUsers
+Admin --> AUData
+Admin --> AUChat
+Admin --> AUReports
+Admin --> AUD2V
+Admin --> UCChat
+
+UCGH --> GitHub
+UCRepo --> GitHub
+UCAnalysis --> D2V
+UCRoadmap --> AI
+UCLearning --> AI
+UCChat --> AI
+UCResources --> YouTube
+
+legend
+Use cases describe capabilities, not route/controller internals.
+endlegend
+@enduml

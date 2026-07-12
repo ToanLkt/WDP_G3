@@ -9,7 +9,10 @@ const STATUS_PRIORITY = {
 };
 
 const toVector = (value) => (Array.isArray(value) ? value.filter((item) => item && typeof item === 'object') : []);
-const clampScore = (value) => Math.min(1, Math.max(0, Number(value) || 0));
+const clampScore = (value) => {
+  const score = Number(value) || 0;
+  return Math.min(1, Math.max(0, score > 1 ? score / 100 : score));
+};
 const round = (value, digits = 4) => Number(Number(value || 0).toFixed(digits));
 const stringArray = (value) =>
   Array.isArray(value) ? [...new Set(value.map((item) => String(item || '').trim()).filter(Boolean))] : [];

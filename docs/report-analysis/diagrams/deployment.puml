@@ -1,0 +1,41 @@
+@startuml
+title Deployment View
+
+node "Local Docker" {
+  node "api container" {
+    component "Node Express API" as LocalAPI
+    component "Python venv\nml_service" as LocalPy
+  }
+  database "mongo:7\nlocal volume" as LocalMongo
+}
+
+cloud "Production Host\n(Render not confirmed in repo)" as Prod {
+  node "Node runtime/container" {
+    component "Express API" as ProdAPI
+    component "Python Dev2Vec" as ProdPy
+  }
+}
+
+database "MongoDB\nprovider unknown/Atlas compatible" as ProdMongo
+cloud "GitHub API" as GitHub
+cloud "Gemini-compatible LLM" as Gemini
+cloud "YouTube API" as YT
+
+LocalAPI --> LocalMongo : MONGO_URI
+LocalAPI --> LocalPy : execFile
+ProdAPI --> ProdMongo : MONGO_URI or MONGODB_URI
+ProdAPI --> ProdPy : execFile
+ProdAPI --> GitHub : OAuth/REST
+ProdAPI --> Gemini : HTTPS
+ProdAPI --> YT : HTTPS
+
+note right of Prod
+No render.yaml was found.
+Render deployment is UNKNOWN from source only.
+end note
+
+legend
+Local Docker is confirmed by Dockerfile/docker-compose.
+Production details need external deployment evidence.
+endlegend
+@enduml

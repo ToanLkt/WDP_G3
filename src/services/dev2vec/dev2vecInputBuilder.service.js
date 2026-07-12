@@ -1,10 +1,13 @@
 const crypto = require('crypto');
 const { detectDocumentationEvidence } = require('../../utils/documentationEvidence');
+const { parseSourceUsageEvidence } = require('./sourceUsageParser.service');
+const { SOURCE_USAGE_PARSER_VERSION } = require('./dev2vecPipelineMetadata.service');
 
 const DEFAULT_TOP_N = 3;
 const DEFAULT_REPO_TEXT_LIMIT = 50000;
 const DEFAULT_ISSUE_TEXT_LIMIT = 30000;
 const DEFAULT_TOKEN_LIMIT = 100;
+const DEFAULT_ISSUE_BODY_LIMIT = 1200;
 const PREVIEW_LIMITS = {
   commits: 10,
   issues: 10,
@@ -19,41 +22,177 @@ const SOURCE_LIMITS = {
   maxMlServiceFiles: 8,
   maxScriptsFiles: 10,
 };
+const ROLE_CATEGORY_GROUPS = {
+  backend: [
+    'backend_route',
+    'backend_controller',
+    'backend_service',
+    'backend_model',
+    'backend_database',
+    'backend_authentication',
+    'backend_middleware',
+    'backend_api',
+    'backend_testing',
+  ],
+  frontend: [
+    'frontend_component',
+    'frontend_page',
+    'frontend_hook',
+    'frontend_state',
+    'frontend_routing',
+    'frontend_style',
+    'frontend_asset',
+    'frontend_config',
+    'frontend_testing',
+    'frontend_api_client',
+  ],
+  mobile: [
+    'mobile_screen',
+    'mobile_navigation',
+    'mobile_widget',
+    'mobile_state',
+    'mobile_native_android',
+    'mobile_native_ios',
+    'mobile_config',
+    'mobile_testing',
+    'mobile_api_client',
+  ],
+  devops: [
+    'devops_container',
+    'devops_ci_cd',
+    'devops_infrastructure',
+    'devops_orchestration',
+    'devops_cloud',
+    'devops_monitoring',
+    'devops_proxy',
+    'devops_automation',
+  ],
+  data: [
+    'data_notebook',
+    'data_preprocessing',
+    'data_analysis',
+    'data_visualization',
+    'data_ml_training',
+    'data_model',
+    'data_nlp',
+    'data_cv',
+    'data_pipeline',
+    'data_experiment',
+  ],
+};
 const CATEGORY_QUOTAS = {
-  rest_api: { min: 0, max: 15 },
-  database: { min: 3, max: 8 },
-  authentication: { min: 3, max: 8 },
-  docker: { min: 2, max: 4 },
-  documentation: { min: 3, max: 8 },
-  testing: { min: 2, max: 5 },
+  ...Object.fromEntries(Object.values(ROLE_CATEGORY_GROUPS).flat().map((category) => [category, { min: 0, max: 4 }])),
+  documentation: { min: 1, max: 6 },
+  testing: { min: 0, max: 4 },
   ml_service: { min: 0, max: 8 },
-  devops_ci: { min: 0, max: 5 },
   config: { min: 0, max: 5 },
-  general_source: { min: 0, max: 10 },
+  generic_source: { min: 0, max: 8 },
 };
 const CATEGORY_PRIORITY = [
-  'rest_api',
-  'database',
-  'authentication',
-  'docker',
-  'testing',
+  'backend_route',
+  'frontend_component',
+  'mobile_screen',
+  'devops_container',
+  'data_notebook',
+  'backend_controller',
+  'frontend_page',
+  'mobile_navigation',
+  'devops_ci_cd',
+  'data_ml_training',
+  'backend_service',
+  'frontend_hook',
+  'mobile_widget',
+  'devops_infrastructure',
+  'data_preprocessing',
+  'backend_model',
+  'frontend_state',
+  'mobile_state',
+  'devops_orchestration',
+  'data_model',
+  'backend_database',
+  'frontend_routing',
+  'mobile_native_android',
+  'devops_cloud',
+  'data_analysis',
+  'backend_authentication',
+  'frontend_style',
+  'mobile_native_ios',
+  'devops_monitoring',
+  'data_visualization',
+  'backend_middleware',
+  'frontend_asset',
+  'mobile_config',
+  'devops_proxy',
+  'data_nlp',
+  'backend_api',
+  'frontend_config',
+  'mobile_testing',
+  'devops_automation',
+  'data_cv',
+  'backend_testing',
+  'frontend_testing',
+  'mobile_api_client',
+  'data_pipeline',
+  'frontend_api_client',
+  'data_experiment',
   'documentation',
-  'devops_ci',
+  'testing',
   'ml_service',
   'config',
-  'general_source',
+  'generic_source',
 ];
 const KEYWORDS_BY_CATEGORY = {
-  rest_api: ['express', 'Router', 'router.get', 'router.post', 'router.put', 'router.patch', 'router.delete', 'req', 'res', 'status', 'json', 'swagger', 'openapi', 'middleware', 'endpoint', 'controller'],
-  database: ['mongoose', 'Schema', 'model', 'connect', 'find', 'findOne', 'findById', 'create', 'save', 'update', 'delete', 'populate', 'aggregate', 'index', 'ObjectId'],
-  authentication: ['jwt', 'jsonwebtoken', 'bcrypt', 'hash', 'compare', 'login', 'register', 'auth', 'authenticate', 'authorize', 'token', 'Bearer', 'role', 'admin', 'revoked'],
-  docker: ['FROM', 'WORKDIR', 'COPY', 'RUN', 'CMD', 'EXPOSE', 'docker compose', 'services', 'ports', 'environment', 'volumes', 'healthcheck', 'Render', 'DEV2VEC'],
+  backend_route: ['express.Router', 'router.get', 'router.post', '@Controller', 'Fastify', 'koa-router'],
+  backend_controller: ['@Controller', 'req', 'res', 'Request', 'Response', 'controller'],
+  backend_service: ['@Injectable', 'service', 'repository', 'business logic'],
+  backend_model: ['mongoose.Schema', '@Entity', 'model', 'schema', 'entity'],
+  backend_database: ['mongoose', 'prisma', 'sequelize', 'typeorm', 'migration', 'database', 'repository'],
+  backend_authentication: ['jwt', 'jsonwebtoken', 'passport', 'bcrypt', 'auth', 'middleware', 'guard'],
+  backend_middleware: ['middleware', 'next()', 'req', 'res', 'guard', 'interceptor'],
+  backend_api: ['express', 'nestjs', 'fastify', 'openapi', 'swagger', 'endpoint'],
+  backend_testing: ['supertest', 'request(app)', 'api test', 'controller test'],
+  frontend_component: ['React', 'component', 'props', 'jsx', 'tsx', '<template', 'useState'],
+  frontend_page: ['page', 'view', 'route component', 'NextPage'],
+  frontend_hook: ['useEffect', 'useMemo', 'useCallback', 'hook'],
+  frontend_state: ['redux', 'zustand', 'pinia', 'context', 'store'],
+  frontend_routing: ['react-router', 'router-link', 'routes', 'BrowserRouter', 'Route'],
+  frontend_style: ['tailwind', 'className', 'scss', 'css', 'styled-components'],
+  frontend_asset: ['asset', 'public', 'image', 'svg'],
+  frontend_config: ['vite', 'next', 'nuxt', 'angular', 'tailwind', 'postcss'],
+  frontend_testing: ['vitest', 'cypress', 'playwright', 'testing-library', 'component test'],
+  frontend_api_client: ['axios', 'fetch(', 'api client', 'baseURL', 'interceptor'],
+  mobile_screen: ['screen', 'React Native', 'SafeAreaView', 'View', 'Text'],
+  mobile_navigation: ['react-navigation', 'NavigationContainer', 'Stack', 'Tab'],
+  mobile_widget: ['Widget', 'StatelessWidget', 'StatefulWidget', 'Scaffold'],
+  mobile_state: ['AppState', 'AsyncStorage', 'provider', 'bloc', 'riverpod'],
+  mobile_native_android: ['AndroidManifest', 'Gradle', 'MainActivity', 'kotlin'],
+  mobile_native_ios: ['Info.plist', 'Podfile', 'AppDelegate', 'swift'],
+  mobile_config: ['expo', 'eas', 'app.json', 'pubspec'],
+  mobile_testing: ['detox', 'flutter_test', 'react-native-testing-library'],
+  mobile_api_client: ['axios', 'fetch(', 'api client', 'react-native'],
+  devops_container: ['FROM', 'WORKDIR', 'COPY', 'docker compose', 'image', 'container'],
+  devops_ci_cd: ['workflow', 'actions', 'gitlab-ci', 'jenkins', 'pipeline'],
+  devops_infrastructure: ['terraform', 'ansible', 'infrastructure', 'provision'],
+  devops_orchestration: ['kubernetes', 'helm', 'deployment', 'service', 'ingress'],
+  devops_cloud: ['aws', 'azure', 'gcp', 'cloud'],
+  devops_monitoring: ['prometheus', 'grafana', 'metrics', 'logging', 'alert'],
+  devops_proxy: ['nginx', 'reverse proxy', 'load balancer'],
+  devops_automation: ['script', 'deploy', 'automation', 'release'],
+  data_notebook: ['ipynb', 'jupyter', 'notebook'],
+  data_preprocessing: ['preprocess', 'clean', 'feature', 'transform'],
+  data_analysis: ['pandas', 'numpy', 'analysis', 'dataset', 'dataframe'],
+  data_visualization: ['matplotlib', 'seaborn', 'plotly', 'chart', 'visualization'],
+  data_ml_training: ['fit(', 'train', 'epoch', 'loss', 'sklearn', 'tensorflow', 'torch'],
+  data_model: ['model.pkl', 'joblib', 'predict', 'classifier', 'regressor'],
+  data_nlp: ['transformers', 'tokenizer', 'nltk', 'spacy', 'nlp'],
+  data_cv: ['opencv', 'cv2', 'image', 'vision'],
+  data_pipeline: ['pipeline', 'dag', 'airflow', 'mlflow'],
+  data_experiment: ['experiment', 'metrics', 'tracking', 'mlflow'],
   documentation: ['setup', 'install', 'run', 'deploy', 'API', 'Swagger', 'roadmap', 'Dev2Vec', 'Docker'],
   testing: ['jest', 'supertest', 'vitest', 'mocha', 'describe', 'it', 'test', 'expect', 'request(app)', 'npm test', 'integration', 'e2e'],
-  devops_ci: ['workflow', 'actions', 'npm test', 'docker build', 'deploy', 'render'],
   ml_service: ['infer', 'train', 'Doc2Vec', 'classifier', 'vector', 'artifact'],
   config: ['config', 'env', 'PORT', 'MONGO', 'JWT', 'DEV2VEC'],
-  general_source: [],
+  generic_source: [],
 };
 const EXCLUDED_SOURCE_PATTERNS = [
   /^node_modules\//i,
@@ -105,7 +244,7 @@ const uniqueByLower = (values) => {
 const clampTopN = (value) => {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) return DEFAULT_TOP_N;
-  return Math.max(1, Math.min(parsed, 3));
+  return Math.max(1, Math.min(parsed, 5));
 };
 
 const normalizeRequestId = (requestId) => {
@@ -194,6 +333,62 @@ const normalizeTextParts = (parts, options = {}) => {
   return text.slice(0, maxLength).replace(/\s+\S*$/, '').trim();
 };
 
+const sanitizeIssueText = (value = '', maxLength = DEFAULT_ISSUE_BODY_LIMIT) => {
+  const text = String(value || '')
+    .replace(/```[\s\S]*?```/g, (block) => block.slice(0, 400))
+    .replace(/!\[[^\]]*]\([^)]*\)/g, ' ')
+    .replace(/\[[^\]]*]\((https?:\/\/[^)\s]+)\)/gi, ' ')
+    .replace(/https?:\/\/\S+/gi, ' ')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, ' ')
+    .replace(/data:[^;\s]+;base64,\S+/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/\b(null|undefined)\b/gi, ' ');
+
+  return compactString(text).slice(0, maxLength).trim();
+};
+
+const getIssueLabelNames = (issue = {}) => toArray(issue.labels)
+  .map((label) => (typeof label === 'string' ? label : label?.name || label?.label || ''))
+  .map(compactString)
+  .filter(Boolean);
+
+const buildIssueDocument = (issues = [], options = {}) => {
+  const maxLength = Number(options.issueMaxLength || DEFAULT_ISSUE_TEXT_LIMIT);
+  const bodyMaxLength = Number(options.issueBodyMaxLength || DEFAULT_ISSUE_BODY_LIMIT);
+  const seen = new Set();
+  const lines = [];
+
+  for (const issue of toArray(issues)) {
+    if (!issue || typeof issue !== 'object') continue;
+    if (issue.sourceType === 'pull_request' || issue.pull_request) continue;
+
+    const title = sanitizeIssueText(issue.title, 300);
+    const labels = uniqueByLower(getIssueLabelNames(issue)).slice(0, 12);
+    const body = sanitizeIssueText(issue.body, bodyMaxLength);
+    const comments = uniqueByLower(getIssueComments(issue).map((comment) => sanitizeIssueText(comment, 300))).slice(0, 3);
+    if (!title && !labels.length && !body && !comments.length) continue;
+
+    const key = issue.number
+      ? `${issue.repositoryFullName || issue.fullName || ''}#${issue.number}`
+      : `${title}:${labels.join(',')}:${body.slice(0, 80)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    lines.push([
+      title ? `issue title: ${title}` : '',
+      labels.length ? `labels: ${labels.join(' ')}` : '',
+      issue.state ? `state: ${sanitizeIssueText(issue.state, 40)}` : '',
+      body ? `body: ${body}` : '',
+      comments.length ? `comments: ${comments.join(' ')}` : '',
+    ].filter(Boolean).join('\n'));
+
+    if (lines.join('\n\n').length >= maxLength) break;
+  }
+
+  return lines.join('\n\n').slice(0, maxLength).trim().toLowerCase();
+};
+
 const normalizeToken = (value, maxLength = DEFAULT_TOKEN_LIMIT) => {
   const token = compactString(value)
     .toLowerCase()
@@ -276,6 +471,41 @@ const normalizeApiTokens = (tokens, options = {}) => {
   return output;
 };
 
+const normalizeChannelStatus = (value, fallback) => {
+  const text = compactString(value).toLowerCase();
+  return text || fallback;
+};
+
+const buildChannelAvailability = ({ repoDocument, issueDocument, apiTokens, sourceUsage, availableFiles, overrides = {} }) => {
+  const repoStatus = normalizeChannelStatus(
+    overrides.repo,
+    repoDocument && repoDocument.trim() ? 'available' : 'insufficient_metadata',
+  );
+  const issueStatus = normalizeChannelStatus(
+    overrides.issue,
+    issueDocument && issueDocument.trim() ? 'available' : 'not_fetched',
+  );
+  const apiStatus = normalizeChannelStatus(
+    overrides.api,
+    apiTokens.length
+      ? 'available'
+      : (availableFiles.length ? (sourceUsage?.files?.some((file) => file.error) ? 'parse_failed' : 'no_usage_tokens') : 'no_source_content'),
+  );
+
+  return {
+    availableChannels: {
+      repo: repoStatus === 'available',
+      issue: issueStatus === 'available',
+      api: apiStatus === 'available',
+    },
+    channelStatus: {
+      repo: repoStatus,
+      issue: issueStatus,
+      api: apiStatus,
+    },
+  };
+};
+
 const getRepositoryReadmeParts = (repository = {}) => [
   repository.readme,
   repository.readmeContent,
@@ -309,77 +539,175 @@ const getMatchedKeywords = (content, category, secondaryCategories = []) => {
   )));
 };
 
-const inferSourceCategory = (file = {}) => {
-  const path = normalizePath(file.path || file.fileName || file.name);
-  const lower = path.toLowerCase();
+const categoryRole = (category) => (
+  Object.entries(ROLE_CATEGORY_GROUPS).find(([, categories]) => categories.includes(category))?.[0] || ''
+);
 
-  if (lower === 'dockerfile' || lower.includes('docker-compose') || lower === '.dockerignore') return 'docker';
-  if (lower === 'readme.md' || lower.endsWith('.md') || lower.startsWith('docs/')) return 'documentation';
-  if (lower === 'src/config/database.js' || lower.startsWith('src/models/')) {
-    if (lower === 'src/models/user.js' || lower === 'src/models/revokedtoken.js') return 'authentication';
-    return 'database';
-  }
-  if (
-    lower.startsWith('src/middlewares/auth')
-    || lower.startsWith('src/middlewares/admin')
-    || lower.startsWith('src/services/auth')
-    || lower.startsWith('src/routes/auth')
-    || lower.startsWith('src/controllers/auth')
-    || lower === 'src/utils/generatetoken.js'
-  ) return 'authentication';
-  if (/(^|\/)(tests?|__tests__)\//i.test(path) || /\.(test|spec)\.js$/i.test(path) || lower.startsWith('scripts/test')) return 'testing';
-  if (lower.startsWith('.github/workflows/')) return 'devops_ci';
-  if (lower.startsWith('ml_service/')) return 'ml_service';
-  if (lower.endsWith('.env.example') || lower.endsWith('.env.production.example')) return 'config';
-  if (lower === 'src/app.js' || lower.startsWith('src/routes/') || lower.startsWith('src/controllers/') || lower === 'src/config/swagger.js') return 'rest_api';
-  if (lower.startsWith('src/services/')) return 'database';
-  if (lower.startsWith('src/config/') || lower.startsWith('src/utils/')) return 'config';
-  return lower.startsWith('src/') || lower === 'server.js' ? 'general_source' : 'config';
+const extensionOf = (path) => {
+  const normalized = normalizePath(path).toLowerCase();
+  const match = normalized.match(/(\.[a-z0-9]+)$/i);
+  return match ? match[1] : '';
 };
 
-const inferSecondaryCategories = (file = {}, category) => {
+const buildProjectSignals = (files = []) => {
+  const combined = files.map((file) => `${normalizePath(file.path || file.fileName || file.name)}\n${getFileContent(file)}`).join('\n').toLowerCase();
+  const paths = files.map((file) => normalizePath(file.path || file.fileName || file.name).toLowerCase()).join('\n');
+  const has = (patterns) => patterns.some((pattern) => pattern.test(combined));
+  return {
+    backend: has([/express|fastify|koa|@nestjs|nestjs|mongoose|sequelize|typeorm|prisma|jsonwebtoken|passport|bcrypt/, /router\.(get|post|put|patch|delete)/, /@controller/]),
+    frontend: has([/react-dom|react-router|@vitejs|vite|next\.config|"next"\s*:|vue|@angular|svelte|tailwindcss|zustand|redux|pinia/, /src\/(components|pages|views|hooks|layouts|styles)\//, /\.(jsx|tsx|vue|svelte|scss|sass|less)\b/]),
+    mobile: /react-native|@react-navigation|flutter|native-base|react-native-paper/.test(combined)
+      || /\bexpo\b/.test(combined)
+      || /(^|\/)(android|ios|screens|navigation|mobile|widgets)\//m.test(paths)
+      || /(^|\/)(app\.json|app\.config\.(js|ts)|eas\.json|pubspec\.yaml|podfile|androidmanifest\.xml)$/m.test(paths),
+    devops: has([/dockerfile|docker-compose|compose\.ya?ml|\.github\/workflows|\.gitlab-ci|jenkinsfile|terraform|kubernetes|helm|ansible|prometheus|grafana|nginx/]),
+    data: has([/pandas|numpy|scikit-learn|sklearn|tensorflow|keras|torch|pytorch|transformers|xgboost|lightgbm|matplotlib|plotly|jupyter|mlflow|opencv|spacy|nltk/, /(^|\/)(notebooks|data|datasets|experiments|training|preprocessing|features|pipelines)\//, /\.ipynb\b/]),
+  };
+};
+
+const addUnique = (items, value) => {
+  if (value && !items.includes(value)) items.push(value);
+};
+
+const makeClassification = (category, secondaryCategories = [], matchedSignals = [], specificityLevel = 'generic') => ({
+  category,
+  secondaryCategories: uniqueByLower(secondaryCategories.filter((item) => item && item !== category)),
+  roleHints: uniqueByLower([categoryRole(category), ...secondaryCategories.map(categoryRole)].filter(Boolean)),
+  matchedSignals: uniqueByLower(matchedSignals),
+  specificityLevel,
+});
+
+const hasBackendServerSignal = (lower, content) => (
+  /express|fastify|koa|hapi|@nestjs|nestjs|spring-boot|django|flask|laravel|rails|asp\.net/.test(content)
+  || /router\.(get|post|put|patch|delete)|express\.router|@controller|@injectable|req\.|res\.|request\(|response\(/.test(content)
+  || /(^|\/)(server|api|migrations|prisma|database)\//.test(lower)
+);
+
+const hasDatabaseSignal = (lower, content) => (
+  /mongoose|sequelize|typeorm|prisma|schema\.prisma|mongodb|postgres|mysql|migration|repository/.test(content)
+  || /(^|\/)(migrations|prisma|database)\//.test(lower)
+);
+
+const hasFrontendSignal = (lower, ext, content, projectSignals) => (
+  /\.(jsx|tsx|vue|svelte|css|scss|sass|less)$/.test(ext)
+  || /react-dom|react-router|vue|angular|vite|next\.config|"next"\s*:|nuxt|svelte|tailwind|redux|zustand|pinia|jsx|tsx|classname|useeffect|usestate/.test(content)
+  || /(^|\/)(components|pages|views|hooks|context|store|layouts|assets|styles|public)\//.test(lower)
+  || (projectSignals.frontend && !projectSignals.mobile && /(^|\/)src\/(features|services|api|lib)\//.test(lower) && /axios|fetch\(|api client|baseurl|interceptor|createcontext|provider/.test(content))
+);
+
+const hasMobileSignal = (lower, ext, content, projectSignals) => (
+  projectSignals.mobile
+  || /\.(dart|swift|kt|kts)$/.test(ext)
+  || /react-native|expo|flutter|@react-navigation|navigationcontainer|androidmanifest|podfile|info\.plist|safeareaview|statelesswidget|statefulwidget/.test(content)
+  || /(^|\/)(screens|navigation|mobile|android|ios|widgets)\//.test(lower)
+);
+
+const inferSourceClassification = (file = {}, projectSignals = {}) => {
   const path = normalizePath(file.path || file.fileName || file.name);
   const lower = path.toLowerCase();
+  const ext = extensionOf(path);
+  const content = getFileContent(file).toLowerCase();
   const secondary = [];
-  const add = (value) => {
-    if (value && value !== category && !secondary.includes(value)) secondary.push(value);
-  };
+  const signals = [];
 
-  if (lower.startsWith('src/routes/') || lower.startsWith('src/controllers/') || lower === 'src/app.js' || lower === 'src/config/swagger.js') {
-    add('rest_api');
+  if (lower === 'readme.md' || lower.endsWith('.md') || lower.startsWith('docs/')) return makeClassification('documentation', [], ['markdown-doc'], 'generic');
+  if (lower.startsWith('ml_service/')) return makeClassification('ml_service', ['data_pipeline', 'data_ml_training'], ['ml_service-path'], 'strong');
+  if (/(^|\/)(tests?|__tests__)\//i.test(path) || /\.(test|spec)\.[cm]?[jt]sx?$/i.test(path)) {
+    if (/supertest|request\(app\)|controller|route|endpoint/.test(content)) return makeClassification('backend_testing', ['testing'], ['backend-test'], 'strong');
+    if (/testing-library|component|render\(|cypress|playwright/.test(content) || projectSignals.frontend) return makeClassification('frontend_testing', ['testing'], ['frontend-test'], 'strong');
+    if (/detox|react-native|flutter_test/.test(content) || projectSignals.mobile) return makeClassification('mobile_testing', ['testing'], ['mobile-test'], 'strong');
+    return makeClassification('testing', [], ['generic-test'], 'generic');
   }
-  if (lower === 'src/config/database.js' || lower.startsWith('src/models/') || lower.startsWith('src/services/')) {
-    add('database');
-  }
-  if (
-    lower.startsWith('src/middlewares/auth')
-    || lower.startsWith('src/middlewares/admin')
-    || lower.startsWith('src/services/auth')
-    || lower.startsWith('src/routes/auth')
-    || lower.startsWith('src/controllers/auth')
-    || lower === 'src/models/user.js'
-    || lower === 'src/models/revokedtoken.js'
-    || lower === 'src/utils/generatetoken.js'
-  ) {
-    add('authentication');
-  }
-  if (lower === 'dockerfile' || lower.includes('docker-compose') || lower === '.dockerignore') add('docker');
-  if (lower === 'readme.md' || lower.endsWith('.md') || lower.startsWith('docs/')) add('documentation');
-  if (/(^|\/)(tests?|__tests__)\//i.test(path) || /\.(test|spec)\.js$/i.test(path) || lower.startsWith('scripts/test')) add('testing');
-  if (lower.startsWith('.github/workflows/')) add('devops_ci');
-  if (lower.startsWith('ml_service/')) add('ml_service');
 
-  return secondary;
+  if (lower === 'dockerfile' || lower.includes('docker-compose') || lower.includes('compose.yaml') || lower.includes('compose.yml') || lower === '.dockerignore') {
+    return makeClassification('devops_container', [], ['container-file'], lower === 'dockerfile' ? 'strong' : 'exact');
+  }
+  if (lower.startsWith('.github/workflows/') || lower.endsWith('.gitlab-ci.yml') || lower.endsWith('jenkinsfile')) return makeClassification('devops_ci_cd', [], ['ci-cd-file'], 'exact');
+  if (/terraform|ansible|infrastructure/.test(lower)) return makeClassification('devops_infrastructure', [], ['infrastructure-path'], 'exact');
+  if (/k8s|kubernetes|helm|charts/.test(lower)) return makeClassification('devops_orchestration', [], ['orchestration-path'], 'exact');
+  if (/monitoring|prometheus|grafana/.test(lower)) return makeClassification('devops_monitoring', [], ['monitoring-path'], 'exact');
+  if (/nginx/.test(lower)) return makeClassification('devops_proxy', [], ['proxy-config'], 'exact');
+
+  // Unambiguous client files must be classified before broad data/mobile path
+  // heuristics (for example components/data and src/features/auth).
+  if (hasFrontendSignal(lower, ext, content, projectSignals)
+    && !hasMobileSignal(lower, ext, content, {})
+    && !hasBackendServerSignal(lower, content)) {
+    if (/vite\.config|next\.config|nuxt\.config|angular\.json|tailwind\.config|postcss\.config/.test(lower)) return makeClassification('frontend_config', [], ['frontend-config'], 'exact');
+    if (/axios|fetch\(|api client|baseurl|interceptor/.test(content)) addUnique(secondary, 'frontend_api_client');
+    if (/routes?\//.test(lower) || /react-router|browserrouter|router-link|<route/.test(content)) addUnique(secondary, 'frontend_routing');
+    if (/pages?\/|views?\//.test(lower)) addUnique(secondary, 'frontend_page');
+    if (/components?\//.test(lower) || /\.(jsx|tsx|vue|svelte)$/.test(ext)) addUnique(secondary, 'frontend_component');
+    if (/hooks?\//.test(lower) || /useeffect|usememo|usecallback|function use[A-Z]/.test(content)) addUnique(secondary, 'frontend_hook');
+    if (/context|store|redux|zustand|pinia/.test(lower) || /redux|zustand|pinia|createcontext|provider/.test(content)) addUnique(secondary, 'frontend_state');
+    if (/styles?\/|\.css$|\.scss$|\.sass$|\.less$/.test(lower) || /tailwind|classname|styled-components/.test(content)) addUnique(secondary, 'frontend_style');
+    const primary = secondary[0] || 'frontend_component';
+    return makeClassification(primary, secondary.slice(1), [primary.replace('frontend_', 'frontend-')], 'strong');
+  }
+
+  if (lower.endsWith('.ipynb') || /(^|\/)notebooks\//.test(lower)) return makeClassification('data_notebook', [], ['notebook'], 'exact');
+  if (projectSignals.data && /(^|\/)(preprocessing|features)(\/|$)/.test(lower)) return makeClassification('data_preprocessing', [], ['data-preprocessing-path'], 'strong');
+  if (/experiments/.test(lower)) return makeClassification('data_experiment', [], ['experiment-path'], 'strong');
+    if (/models?\//.test(lower) && /tensorflow|torch|sklearn|predict|classifier|regressor|joblib|pickle/.test(content)) return makeClassification('data_model', [], ['ml-model-signal'], 'strong');
+    if (/training/.test(lower) || /fit\(|epochs?|loss|train_test_split|tensorflow|torch|sklearn|scikit/.test(content)) return makeClassification('data_ml_training', [], ['ml-training-signal'], 'strong');
+  if (/pandas|numpy|dataframe|dataset|csv|parquet/.test(content) || /(^|\/)(data|datasets)\//.test(lower)) return makeClassification('data_analysis', [], ['data-analysis-signal'], 'strong');
+  if (/matplotlib|seaborn|plotly|chart|visualization/.test(content)) return makeClassification('data_visualization', [], ['data-visualization-signal'], 'strong');
+  if (/transformers|tokenizer|nltk|spacy|nlp/.test(content)) return makeClassification('data_nlp', [], ['nlp-signal'], 'strong');
+  if (/opencv|cv2|vision|image/.test(content)) return makeClassification('data_cv', [], ['cv-signal'], 'strong');
+
+  if (/android/.test(lower) || /androidmanifest|gradle|mainactivity|kotlin/.test(content)) return makeClassification('mobile_native_android', [], ['android-signal'], 'exact');
+  if (/(^|\/)ios\//.test(lower) || /podfile|info\.plist|appdelegate|swift/.test(content)) return makeClassification('mobile_native_ios', [], ['ios-signal'], 'exact');
+  if (/^(app\.json|app\.config\.(js|ts)|eas\.json|pubspec\.yaml)$/i.test(lower)) return makeClassification('mobile_config', [], ['mobile-config'], 'exact');
+  if (/screens?\//.test(lower) && hasMobileSignal(lower, ext, content, projectSignals)) return makeClassification('mobile_screen', [], ['mobile-screen-path'], 'strong');
+  if ((/navigation/.test(lower) || /react-navigation|navigationcontainer/.test(content)) && hasMobileSignal(lower, ext, content, projectSignals)) return makeClassification('mobile_navigation', [], ['mobile-navigation'], 'strong');
+  if (projectSignals.mobile && /axios|fetch\(|api client|baseurl/.test(content) && !hasBackendServerSignal(lower, content)) return makeClassification('mobile_api_client', [], ['mobile-api-client'], 'strong');
+
+  const backendContextSignal = hasBackendServerSignal(lower, content) || (
+    projectSignals.backend
+    && /(^|\/)src\/(routes|controllers|services|models|entities|repositories|middleware|middlewares|guards|modules|api)\//.test(lower)
+  );
+
+  if (backendContextSignal) {
+    if (/routes?\//.test(lower) || /router\.(get|post|put|patch|delete)|express\.router/.test(content)) return makeClassification('backend_route', [], ['backend-route'], 'strong');
+    if (/middlewares?|guards?/.test(lower) || /middleware|next\(|canactivate|guard/.test(content)) return makeClassification('backend_middleware', ['backend_authentication'], ['backend-middleware'], 'strong');
+    if (/auth/.test(lower) || /jsonwebtoken|passport|bcrypt|jwt/.test(content)) return makeClassification('backend_authentication', [], ['backend-authentication'], 'strong');
+    if (/controllers?\//.test(lower) || /@controller|req\.|res\.|request|response/.test(content)) return makeClassification('backend_controller', [], ['backend-controller'], 'strong');
+    if (hasDatabaseSignal(lower, content)) return makeClassification('backend_database', ['backend_model'], ['backend-database'], 'strong');
+    if (/models?|entities/.test(lower)) return makeClassification('backend_model', [], ['backend-model'], 'strong');
+    if (/services?|repositories/.test(lower) || /@injectable/.test(content)) return makeClassification('backend_service', [], ['backend-service'], 'strong');
+    return makeClassification('backend_api', [], ['backend-api'], 'strong');
+  }
+
+  if (hasFrontendSignal(lower, ext, content, projectSignals)) {
+    if (/vite\.config|next\.config|nuxt\.config|angular\.json|tailwind\.config|postcss\.config/.test(lower)) return makeClassification('frontend_config', [], ['frontend-config'], 'exact');
+    if (/components?\//.test(lower) || /\.(jsx|tsx|vue|svelte)$/.test(ext) || /component|props|jsx|tsx|<template|usestate/.test(content)) addUnique(secondary, 'frontend_component');
+    if (/pages?\/|views?\//.test(lower)) addUnique(secondary, 'frontend_page');
+    if (/hooks?\//.test(lower) || /useeffect|usememo|usecallback|function use[A-Z]/.test(content)) addUnique(secondary, 'frontend_hook');
+    if (/context|store|redux|zustand|pinia/.test(lower) || /redux|zustand|pinia|createcontext|provider/.test(content)) addUnique(secondary, 'frontend_state');
+    if (/routes?\//.test(lower) || /react-router|browserrouter|router-link|<route/.test(content)) addUnique(secondary, 'frontend_routing');
+    if (/styles?\/|\.css$|\.scss$|\.sass$|\.less$/.test(lower) || /tailwind|classname|styled-components/.test(content)) addUnique(secondary, 'frontend_style');
+    if (/assets?\/|public\//.test(lower)) addUnique(secondary, 'frontend_asset');
+    if (/axios|fetch\(|api client|baseurl|interceptor/.test(content) && !hasBackendServerSignal(lower, content)) addUnique(secondary, 'frontend_api_client');
+    const primary = secondary[0] || 'frontend_component';
+    signals.push(primary.replace('frontend_', 'frontend-'));
+    return makeClassification(primary, secondary.slice(1), signals, primary === 'frontend_api_client' ? 'strong' : 'strong');
+  }
+
+  if (hasMobileSignal(lower, ext, content, projectSignals)) {
+    if (/axios|fetch\(|api client|baseurl/.test(content) && !hasBackendServerSignal(lower, content)) return makeClassification('mobile_api_client', [], ['mobile-api-client'], 'strong');
+    if (/widget|statelesswidget|statefulwidget|scaffold/.test(content) || /\.(dart)$/.test(ext)) return makeClassification('mobile_widget', [], ['mobile-widget'], 'strong');
+    if (/appstate|asyncstorage|provider|bloc|riverpod/.test(content)) return makeClassification('mobile_state', [], ['mobile-state'], 'strong');
+  }
+
+  if (lower.endsWith('.env.example') || lower.endsWith('.env.production.example') || lower.startsWith('src/config/') || lower.startsWith('src/utils/')) return makeClassification('config', [], ['config-file'], 'generic');
+  return lower.startsWith('src/') || lower === 'server.js' ? makeClassification('generic_source', [], ['generic-source'], 'generic') : makeClassification('config', [], ['config-file'], 'generic');
 };
 
 const getCategoryReason = (path, category) => {
-  if (category === 'rest_api') return 'Express route/controller/app evidence';
-  if (category === 'database') return 'Mongoose model/config/service database evidence';
-  if (category === 'authentication') return 'Auth route/service/middleware/token evidence';
-  if (category === 'docker') return 'Docker/deploy configuration evidence';
+  const role = categoryRole(category);
+  if (role) return `${role} role-specific source evidence from ${path}`;
   if (category === 'testing') return 'Test file or test script evidence';
   if (category === 'documentation') return 'README/docs markdown evidence';
-  if (category === 'devops_ci') return 'CI/devops workflow evidence';
   if (category === 'ml_service') return 'Dev2Vec ML service evidence';
   if (category === 'config') return 'Configuration evidence';
   return `Source evidence from ${path}`;
@@ -432,8 +760,11 @@ const selectRepoEvidenceFilesByQuota = (candidates, limits) => {
       path: file.path,
       category: file.category,
       secondaryCategories: file.secondaryCategories,
+      roleHints: file.roleHints,
       reason: file.reason,
       matchedKeywords: file.matchedKeywords,
+      matchedSignals: file.matchedSignals,
+      specificityLevel: file.specificityLevel,
       snippetCharCount: snippet.length,
       snippet,
     });
@@ -449,22 +780,25 @@ const selectRepoEvidenceFilesByQuota = (candidates, limits) => {
     }
   };
 
-  for (const category of ['database', 'authentication', 'docker', 'documentation', 'testing']) {
-    const bucketCount = sortedCandidates.filter((file) => hasSourceCategory(file, category)).length;
-    if (bucketCount === 0) continue;
-    const quota = CATEGORY_QUOTAS[category] || {};
-    selectForCategory(category, Math.min(bucketCount, quota.min || 0));
+  for (const roleCategories of Object.values(ROLE_CATEGORY_GROUPS)) {
+    const roleCandidates = sortedCandidates.filter((file) => roleCategories.some((category) => hasSourceCategory(file, category)));
+    if (!roleCandidates.length) continue;
+    for (const category of roleCategories) {
+      const bucketCount = sortedCandidates.filter((file) => hasSourceCategory(file, category)).length;
+      if (bucketCount === 0) continue;
+      selectForCategory(category, Math.min(bucketCount, 2));
+    }
   }
 
-  for (const category of ['rest_api', 'database', 'authentication', 'docker', 'testing', 'documentation', 'devops_ci', 'ml_service', 'config']) {
+  for (const category of CATEGORY_PRIORITY.filter((item) => item !== 'generic_source')) {
     const quota = CATEGORY_QUOTAS[category] || {};
     const targetCount = Number.isFinite(quota.max) ? quota.max : limits.maxFilesTotal;
     selectForCategory(category, targetCount);
   }
 
   if (selected.length < limits.maxFilesTotal && totalChars < limits.maxTotalSourceChars) {
-    for (const file of sortedCandidates.filter((candidate) => candidate.category === 'general_source')) {
-      if (!canSelect(file, 'general_source')) continue;
+    for (const file of sortedCandidates.filter((candidate) => candidate.category === 'generic_source')) {
+      if (!canSelect(file, 'generic_source')) continue;
       addFile(file);
     }
   }
@@ -485,8 +819,10 @@ const collectRepoEvidenceFiles = (fileTreeOrAvailableFiles = [], options = {}) =
   const seen = new Set();
   const candidates = [];
   let excludedFileCount = 0;
+  const rawFiles = toArray(fileTreeOrAvailableFiles);
+  const projectSignals = buildProjectSignals(rawFiles);
 
-  for (const rawFile of toArray(fileTreeOrAvailableFiles)) {
+  for (const rawFile of rawFiles) {
     const path = normalizePath(rawFile?.path || rawFile?.fileName || rawFile?.name);
     if (!path || seen.has(path.toLowerCase()) || isExcludedSourcePath(path)) {
       if (path) excludedFileCount += 1;
@@ -496,8 +832,9 @@ const collectRepoEvidenceFiles = (fileTreeOrAvailableFiles = [], options = {}) =
     const content = getFileContent(rawFile);
     if (!content) continue;
 
-    const category = inferSourceCategory({ ...rawFile, path });
-    const secondaryCategories = inferSecondaryCategories({ ...rawFile, path }, category);
+    const classification = inferSourceClassification({ ...rawFile, path }, projectSignals);
+    const category = classification.category;
+    const secondaryCategories = classification.secondaryCategories;
 
     seen.add(path.toLowerCase());
 
@@ -505,8 +842,16 @@ const collectRepoEvidenceFiles = (fileTreeOrAvailableFiles = [], options = {}) =
       path,
       category,
       secondaryCategories,
+      roleHints: classification.roleHints,
       reason: getCategoryReason(path, category),
       matchedKeywords: getMatchedKeywords(content, category, secondaryCategories),
+      matchedSignals: classification.matchedSignals,
+      specificityLevel: classification.specificityLevel,
+      status: rawFile.status || '',
+      additions: Number(rawFile.additions || 0),
+      deletions: Number(rawFile.deletions || 0),
+      changes: Number(rawFile.changes || 0),
+      commitSha: rawFile.commitSha || '',
       snippet: content.slice(0, limits.maxCharsPerFile),
     });
   }
@@ -532,6 +877,9 @@ const formatSourceSection = (title, files) => {
       `FILE: ${file.path}`,
       `CATEGORY: ${file.category}`,
       `SECONDARY_CATEGORIES: ${(file.secondaryCategories || []).join(', ') || 'none'}`,
+      `ROLE_HINTS: ${(file.roleHints || []).join(', ') || 'none'}`,
+      `SPECIFICITY: ${file.specificityLevel || 'generic'}`,
+      `SIGNALS: ${(file.matchedSignals || []).join(', ') || 'none'}`,
       `KEYWORDS: ${file.matchedKeywords.join(', ') || 'none'}`,
       'SNIPPET:',
       file.snippet,
@@ -541,12 +889,95 @@ const formatSourceSection = (title, files) => {
   return parts.join('\n');
 };
 
-const buildRepoDocumentWithSourceEvidence = ({ metadataText, apiTokens, commits, sourceFiles }) => {
+const buildUserContributionFiles = ({ commits = [], availableFiles = [], options = {} } = {}) => {
+  const sourceByPath = new Map();
+  for (const file of toArray(availableFiles)) {
+    const path = normalizePath(file.path || file.fileName || file.name);
+    if (path) sourceByPath.set(path.toLowerCase(), file);
+  }
+
+  const rawFiles = [];
+  const seen = new Set();
+  for (const commit of toArray(commits)) {
+    const normalizedEvidence = toArray(commit?.normalizedFiles);
+    const contributionFiles = normalizedEvidence.length ? normalizedEvidence : toArray(commit?.files);
+    for (const file of contributionFiles) {
+      const path = normalizePath(getChangedFilePath(file));
+      if (!path || isExcludedSourcePath(path)) continue;
+      const key = path.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const sourceFile = normalizedEvidence.length ? null : sourceByPath.get(key);
+      const normalizedSignals = normalizedEvidence.length ? [
+        ...toArray(file.detectedLanguages),
+        ...toArray(file.detectedFrameworks),
+        ...toArray(file.detectedLibraries),
+        ...toArray(file.detectedPatterns),
+        ...toArray(file.detectedRoleSignals).map((role) => `role:${role}`),
+        ...toArray(file.skillSignals),
+      ] : [];
+      const syntheticContent = [
+        path,
+        file.status,
+        `additions ${Number(file.additions || 0)}`,
+        `deletions ${Number(file.deletions || 0)}`,
+        ...normalizedSignals,
+        sourceFile ? getFileContent(sourceFile) : '',
+      ].filter(Boolean).join('\n');
+      rawFiles.push({
+        ...sourceFile,
+        path,
+        sourceContent: syntheticContent,
+        status: file.status || '',
+        additions: Number(file.additions || 0),
+        deletions: Number(file.deletions || 0),
+        changes: Number(file.changes || 0),
+        commitSha: commit.sha || '',
+        evidenceSource: file.evidenceSource || (sourceFile ? 'repository_source_match' : 'path_only'),
+      });
+    }
+  }
+
+  return collectRepoEvidenceFiles(rawFiles, {
+    ...options,
+    sourceLimits: {
+      ...SOURCE_LIMITS,
+      maxFilesTotal: Math.min(Number(options.userContributionMaxFiles || 40), SOURCE_LIMITS.maxFilesTotal),
+      maxCharsPerFile: Math.min(Number(options.userContributionMaxCharsPerFile || 1000), SOURCE_LIMITS.maxCharsPerFile),
+      maxTotalSourceChars: Math.min(Number(options.userContributionMaxTotalChars || 12000), SOURCE_LIMITS.maxTotalSourceChars),
+      ...(options.userContributionSourceLimits || {}),
+    },
+  });
+};
+
+const formatUserContributionSection = (files = []) => {
+  const parts = ['## User contribution evidence'];
+  if (!files.length) {
+    parts.push('No changed-file detail evidence found for matched user commits.');
+    return parts.join('\n');
+  }
+
+  for (const file of files) {
+    parts.push(
+      `FILE: ${file.path}`,
+      `CATEGORY: ${file.category}`,
+      `ROLE_HINTS: ${(file.roleHints || []).join(', ') || 'none'}`,
+      `STATUS: ${file.status || 'unknown'}`,
+      `LINES: +${Number(file.additions || 0)} -${Number(file.deletions || 0)}`,
+      `SIGNALS: ${(file.matchedSignals || []).join(', ') || 'none'}`,
+      '',
+    );
+  }
+  return parts.join('\n');
+};
+
+const buildRepoDocumentWithSourceEvidence = ({ metadataText, apiTokens, commits, sourceFiles, userContributionFiles }) => {
   const commitLines = toArray(commits).slice(0, PREVIEW_LIMITS.commits).map((commit) => (
     `- ${commit.sha ? String(commit.sha).slice(0, 12) : 'commit'} ${compactString(commit.message)} ${getCommitChangedFiles(commit).join(', ')}`
   ));
   const hasCategory = (file, category) => file.category === category || toArray(file.secondaryCategories).includes(category);
   const filesByCategory = (category) => sourceFiles.filter((file) => hasCategory(file, category));
+  const filesByRole = (role) => sourceFiles.filter((file) => toArray(file.roleHints).includes(role));
   const docFiles = filesByCategory('documentation');
   const mlFiles = filesByCategory('ml_service');
 
@@ -557,15 +988,18 @@ const buildRepoDocumentWithSourceEvidence = ({ metadataText, apiTokens, commits,
     apiTokens.join(' ') || 'No API/dependency tokens.',
     '## Commit summaries',
     commitLines.join('\n') || 'No commit summaries.',
-    formatSourceSection('Source evidence: REST API', filesByCategory('rest_api')),
-    formatSourceSection('Source evidence: Database', filesByCategory('database')),
-    formatSourceSection('Source evidence: Authentication', filesByCategory('authentication')),
-    formatSourceSection('Source evidence: Docker/Deploy', filesByCategory('docker')),
+    formatSourceSection('Source evidence: Backend', filesByRole('backend')),
+    formatSourceSection('Source evidence: Frontend', filesByRole('frontend')),
+    formatSourceSection('Source evidence: Mobile', filesByRole('mobile')),
+    formatSourceSection('Source evidence: DevOps', filesByRole('devops')),
+    formatSourceSection('Source evidence: Data Science', filesByRole('data')),
     formatSourceSection('Source evidence: Testing', filesByCategory('testing')),
     formatSourceSection('Documentation evidence', docFiles),
     formatSourceSection('ML service evidence', mlFiles),
+    formatUserContributionSection(userContributionFiles),
     formatSourceSection('Additional source/config evidence', sourceFiles.filter((file) => (
-      !['rest_api', 'database', 'authentication', 'docker', 'testing', 'documentation', 'ml_service'].some((category) => hasCategory(file, category))
+      !toArray(file.roleHints).length
+      && !['testing', 'documentation', 'ml_service'].some((category) => hasCategory(file, category))
     ))),
   ].join('\n\n').slice(0, DEFAULT_REPO_TEXT_LIMIT);
 };
@@ -585,7 +1019,10 @@ const buildFeature = (detected, evidenceFiles) => ({
     path: file.path,
     category: file.category,
     secondaryCategories: file.secondaryCategories || [],
+    roleHints: file.roleHints || [],
     matchedKeywords: file.matchedKeywords,
+    matchedSignals: file.matchedSignals || [],
+    specificityLevel: file.specificityLevel || 'generic',
     snippetCharCount: file.snippetCharCount,
   })),
 });
@@ -594,16 +1031,23 @@ const detectRepoFeatureEvidence = ({ apiTokens = [], sourceFiles = [], docsEvide
   const tokenText = apiTokens.join(' ').toLowerCase();
   const hasCategory = (file, category) => file.category === category || toArray(file.secondaryCategories).includes(category);
   const byCategory = (category) => sourceFiles.filter((file) => hasCategory(file, category));
-  const restFiles = sourceFiles.filter((file) => ['rest_api', 'general_source', 'config'].some((category) => hasCategory(file, category)));
-  const databaseFiles = sourceFiles.filter((file) => ['database', 'general_source'].some((category) => hasCategory(file, category)));
-  const authFiles = sourceFiles.filter((file) => ['authentication', 'general_source'].some((category) => hasCategory(file, category)));
-  const dockerFiles = byCategory('docker');
+  const byRole = (role) => sourceFiles.filter((file) => toArray(file.roleHints).includes(role));
+  const backendFiles = byRole('backend');
+  const frontendFiles = byRole('frontend');
+  const mobileFiles = byRole('mobile');
+  const devopsFiles = byRole('devops');
+  const dataFiles = byRole('data');
+  const restFiles = sourceFiles.filter((file) => ['backend_route', 'backend_controller', 'backend_api', 'generic_source', 'config'].some((category) => hasCategory(file, category)));
+  const databaseFiles = sourceFiles.filter((file) => ['backend_database', 'backend_model', 'generic_source'].some((category) => hasCategory(file, category)));
+  const authFiles = sourceFiles.filter((file) => ['backend_authentication', 'backend_middleware', 'generic_source'].some((category) => hasCategory(file, category)));
+  const dockerFiles = byCategory('devops_container');
   const testingFiles = byCategory('testing');
   const docFiles = byCategory('documentation');
 
   return {
     'REST API': buildFeature(
-      /express|router|swagger|openapi/.test(tokenText) || hasAnyKeyword(restFiles, ['express', 'router.', 'controller', 'swagger', 'openapi', 'endpoint']),
+      /(^|\s)(express|@nestjs\/|nestjs|fastify|koa|hapi|swagger|openapi|supertest)(\s|$)/.test(tokenText)
+        || hasAnyKeyword(restFiles, ['express.router', 'router.get', 'router.post', 'router.put', 'router.delete', 'controller', 'swagger', 'openapi', 'endpoint']),
       restFiles,
     ),
     Database: buildFeature(
@@ -625,6 +1069,26 @@ const detectRepoFeatureEvidence = ({ apiTokens = [], sourceFiles = [], docsEvide
     Documentation: buildFeature(
       Boolean(docsEvidence.readmeRootExists || docsEvidence.markdownFileCount > 0 || docsEvidence.hasDocsDirectory || docFiles.length > 0),
       docFiles,
+    ),
+    Frontend: buildFeature(
+      /react|react-dom|vue|angular|vite|next|nuxt|svelte|tailwindcss|redux|zustand|pinia|react-router/.test(tokenText) || frontendFiles.length > 0,
+      frontendFiles,
+    ),
+    Mobile: buildFeature(
+      /react-native|expo|flutter|@react-navigation|native-base/.test(tokenText) || mobileFiles.length > 0,
+      mobileFiles,
+    ),
+    DevOps: buildFeature(
+      /docker|kubernetes|terraform|helm|ansible|github actions|gitlab ci|jenkins|prometheus|grafana/.test(tokenText) || devopsFiles.length > 0,
+      devopsFiles,
+    ),
+    'Data Science': buildFeature(
+      /pandas|numpy|scikit-learn|sklearn|tensorflow|torch|pytorch|transformers|jupyter|mlflow/.test(tokenText) || dataFiles.length > 0,
+      dataFiles,
+    ),
+    Backend: buildFeature(
+      /express|nestjs|fastify|mongoose|sequelize|typeorm|prisma|jsonwebtoken|passport|bcrypt/.test(tokenText) || backendFiles.length > 0,
+      backendFiles,
     ),
   };
 };
@@ -740,18 +1204,26 @@ const buildRepositoryEvidence = (payload = {}, options = {}) => {
 
   repoParts.push(extractAnalysisParts(analysisSource));
 
-  const issueParts = [];
-  for (const issue of issues) {
-    issueParts.push(
-      issue.title,
-      issue.body,
-      getIssueLabels(issue),
-      getIssueComments(issue),
-    );
-  }
+  const issueDocument = buildIssueDocument(issues, options);
+  const availableFiles = packageRecords.flatMap((packageRecord) => toArray(packageRecord?.detectedFiles));
+  const cachedSourceUsage = packageRecords
+    .map((packageRecord) => packageRecord?.rawData?.__sourceUsageCache)
+    .filter((cache) => cache && cache.sourceUsageParserVersion === SOURCE_USAGE_PARSER_VERSION && Array.isArray(cache.tokens));
+  const sourceUsage = cachedSourceUsage.length && cachedSourceUsage.length === packageRecords.length
+    ? {
+        tokens: [...new Set(cachedSourceUsage.flatMap((cache) => cache.tokens || []))],
+        files: [],
+        skipped: [],
+        totalChars: cachedSourceUsage.reduce((sum, cache) => sum + Number(cache.totalChars || 0), 0),
+        fromCache: true,
+      }
+    : parseSourceUsageEvidence(availableFiles, {
+        limits: options.sourceUsageLimits,
+      });
 
   const apiTokens = normalizeApiTokens([
     packageRecords,
+    sourceUsage.tokens,
     analysisSource?.packages,
     analysisSource?.frameworks,
     analysisSource?.detectedFrameworks,
@@ -762,8 +1234,12 @@ const buildRepositoryEvidence = (payload = {}, options = {}) => {
     analysisSource?.latestAnalysis?.packages,
     analysisSource?.latestAnalysis?.frameworks,
   ], options);
-  const availableFiles = packageRecords.flatMap((packageRecord) => toArray(packageRecord?.detectedFiles));
   const sourceEvidence = collectRepoEvidenceFiles(availableFiles, options);
+  const userContributionEvidence = buildUserContributionFiles({
+    commits,
+    availableFiles,
+    options,
+  });
   const metadataDocument = normalizeTextParts(repoParts, {
     maxLength: Math.max(1000, Math.floor((options.repoMaxLength || DEFAULT_REPO_TEXT_LIMIT) / 3)),
   });
@@ -772,20 +1248,32 @@ const buildRepositoryEvidence = (payload = {}, options = {}) => {
     apiTokens,
     commits,
     sourceFiles: sourceEvidence.sourceFiles,
+    userContributionFiles: userContributionEvidence.sourceFiles,
+  });
+  const evidenceChannels = buildChannelAvailability({
+    repoDocument,
+    issueDocument,
+    apiTokens,
+    sourceUsage,
+    availableFiles,
+    overrides: payload.channelStatus || payload.evidenceChannels?.channelStatus || options.channelStatus || {},
   });
 
   return {
     repoDocument,
-    issueDocument: normalizeTextParts(issueParts, {
-      maxLength: options.issueMaxLength || DEFAULT_ISSUE_TEXT_LIMIT,
-    }),
+    issueDocument,
     apiTokens,
+    evidenceChannels,
     commits,
     issues,
     packageRecords,
     sourceFiles: sourceEvidence.sourceFiles,
+    userContributionFiles: userContributionEvidence.sourceFiles,
     excludedSourceFileCount: sourceEvidence.excludedFileCount,
+    excludedUserContributionFileCount: userContributionEvidence.excludedFileCount,
     sourceEvidenceCharCount: sourceEvidence.sourceEvidenceCharCount,
+    issueCount: issues.length,
+    sourceUsage,
   };
 };
 
@@ -824,10 +1312,21 @@ const buildEvidencePreview = (payload = {}, options = {}) => {
       path: file.path,
       category: file.category,
       secondaryCategories: file.secondaryCategories || [],
+      roleHints: file.roleHints || [],
       matchedKeywords: file.matchedKeywords || [],
+      matchedSignals: file.matchedSignals || [],
+      specificityLevel: file.specificityLevel || 'generic',
       snippetCharCount: file.snippetCharCount || 0,
     })),
     repoFeatures: payload.repoFeatureEvidence || {},
+    userContributionFiles: toArray(payload.userContributionFiles).map((file) => ({
+      path: file.path,
+      category: file.category,
+      secondaryCategories: file.secondaryCategories || [],
+      roleHints: file.roleHints || [],
+      matchedSignals: file.matchedSignals || [],
+      specificityLevel: file.specificityLevel || 'generic',
+    })),
   };
 };
 
@@ -872,6 +1371,16 @@ const countSourceFilesByCategory = (sourceFiles, category) => (
   toArray(sourceFiles).filter((file) => file.category === category || toArray(file.secondaryCategories).includes(category)).length
 );
 
+const countSourceFilesByRole = (sourceFiles, role) => (
+  toArray(sourceFiles).filter((file) => toArray(file.roleHints).includes(role)).length
+);
+
+const buildCategoryCounts = (sourceFiles) => CATEGORY_PRIORITY.reduce((counts, category) => {
+  const count = countSourceFilesByCategory(sourceFiles, category);
+  if (count) counts[category] = count;
+  return counts;
+}, {});
+
 const buildDev2VecInputFromRepositoryAnalysis = (payload = {}, options = {}) => {
   const evidence = buildRepositoryEvidence(payload, options);
   const topN = clampTopN(payload.topN ?? options.topN);
@@ -881,6 +1390,7 @@ const buildDev2VecInputFromRepositoryAnalysis = (payload = {}, options = {}) => 
     issues: evidence.issues,
     apiTokens: evidence.apiTokens,
     sourceFiles: evidence.sourceFiles,
+    userContributionFiles: evidence.userContributionFiles,
     docs: detectDocumentationEvidence(collectDocumentationFilePaths({
       packageRecords: evidence.packageRecords,
       commits: evidence.commits,
@@ -899,6 +1409,7 @@ const buildDev2VecInputFromRepositoryAnalysis = (payload = {}, options = {}) => 
     repoDocument: evidence.repoDocument,
     issueDocument: evidence.issueDocument,
     apiTokens: evidence.apiTokens,
+    evidenceChannels: evidence.evidenceChannels,
     topN,
     sourceStats: {
       repoTextLength: evidence.repoDocument.length,
@@ -913,16 +1424,30 @@ const buildDev2VecInputFromRepositoryAnalysis = (payload = {}, options = {}) => 
       hasDocsDirectory: docsEvidence.hasDocsDirectory,
       documentationStatus: docsEvidence.documentationStatus,
       sourceFileCount: evidence.sourceFiles.length,
+      userContributionFileCount: evidence.userContributionFiles.length,
+      userContributionBackendFileCount: countSourceFilesByRole(evidence.userContributionFiles, 'backend'),
+      userContributionFrontendFileCount: countSourceFilesByRole(evidence.userContributionFiles, 'frontend'),
+      userContributionMobileFileCount: countSourceFilesByRole(evidence.userContributionFiles, 'mobile'),
+      userContributionDevopsFileCount: countSourceFilesByRole(evidence.userContributionFiles, 'devops'),
+      userContributionDataFileCount: countSourceFilesByRole(evidence.userContributionFiles, 'data'),
+      sourceUsageFromCache: evidence.sourceUsage?.fromCache === true,
       sourceEvidenceCharCount: evidence.sourceEvidenceCharCount,
-      restApiFileCount: countSourceFilesByCategory(evidence.sourceFiles, 'rest_api'),
-      databaseFileCount: countSourceFilesByCategory(evidence.sourceFiles, 'database'),
-      authFileCount: countSourceFilesByCategory(evidence.sourceFiles, 'authentication'),
-      dockerFileCount: countSourceFilesByCategory(evidence.sourceFiles, 'docker'),
+      backendFileCount: countSourceFilesByRole(evidence.sourceFiles, 'backend'),
+      frontendFileCount: countSourceFilesByRole(evidence.sourceFiles, 'frontend'),
+      mobileFileCount: countSourceFilesByRole(evidence.sourceFiles, 'mobile'),
+      devopsFileCount: countSourceFilesByRole(evidence.sourceFiles, 'devops'),
+      dataFileCount: countSourceFilesByRole(evidence.sourceFiles, 'data'),
+      categoryCounts: buildCategoryCounts(evidence.sourceFiles),
+      restApiFileCount: countSourceFilesByCategory(evidence.sourceFiles, 'backend_route') + countSourceFilesByCategory(evidence.sourceFiles, 'backend_api'),
+      databaseFileCount: countSourceFilesByCategory(evidence.sourceFiles, 'backend_database') + countSourceFilesByCategory(evidence.sourceFiles, 'backend_model'),
+      authFileCount: countSourceFilesByCategory(evidence.sourceFiles, 'backend_authentication') + countSourceFilesByCategory(evidence.sourceFiles, 'backend_middleware'),
+      dockerFileCount: countSourceFilesByCategory(evidence.sourceFiles, 'devops_container'),
       documentationFileCount: countSourceFilesByCategory(evidence.sourceFiles, 'documentation'),
       testingFileCount: countSourceFilesByCategory(evidence.sourceFiles, 'testing'),
-      devopsCiFileCount: countSourceFilesByCategory(evidence.sourceFiles, 'devops_ci'),
+      devopsCiFileCount: countSourceFilesByCategory(evidence.sourceFiles, 'devops_ci_cd'),
       mlServiceFileCount: countSourceFilesByCategory(evidence.sourceFiles, 'ml_service'),
       excludedFileCount: evidence.excludedSourceFileCount,
+      excludedUserContributionFileCount: evidence.excludedUserContributionFileCount,
     },
     repoFeatureEvidence,
     evidencePreview: buildEvidencePreview(evidencePayload, options),
@@ -957,14 +1482,33 @@ const buildDev2VecInputFromAnalysisSource = (analysisSource = {}, options = {}) 
     source.issues,
     source.issueSnapshot?.issues,
     source.analysis?.issues,
+    source.analysis?.rawAnalysis?.issueEvidence?.issues,
     source.latestAnalysis?.issues,
+    source.latestAnalysis?.rawAnalysis?.issueEvidence?.issues,
   ].flatMap(toArray).filter(Boolean);
+  const hasAnalysis = Boolean(source.analysis || source.latestAnalysis);
+  const hasChannelMetadata = Boolean(
+    source.evidenceChannels
+    || source.rawAnalysis?.evidenceChannels
+    || source.analysis?.rawAnalysis?.evidenceChannels
+    || source.latestAnalysis?.rawAnalysis?.evidenceChannels
+  );
+  const channelStatus = hasAnalysis && !hasChannelMetadata
+    ? { issue: 'legacy_snapshot', api: 'legacy_snapshot' }
+    : (
+        source.evidenceChannels?.channelStatus
+        || source.rawAnalysis?.evidenceChannels?.channelStatus
+        || source.analysis?.rawAnalysis?.evidenceChannels?.channelStatus
+        || source.latestAnalysis?.rawAnalysis?.evidenceChannels?.channelStatus
+        || source.channelStatus
+      );
 
   return buildDev2VecInputFromRepositoryAnalysis({
     repository,
     packages,
     commits,
     issues,
+    channelStatus,
     analysisSource: source,
     topN: source.topN ?? options.topN,
     requestId: source.requestId || options.requestId,

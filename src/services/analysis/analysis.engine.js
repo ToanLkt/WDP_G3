@@ -202,26 +202,49 @@ const getCommitCommitterLogin = (commit) =>
 
 const getCommitAuthorId = (commit) => Number(commit?.rawData?.author?.id || commit?.authorGithubId || 0);
 
-const filterUserContributionCommits = (commits, githubAccount = {}) => {
-  const commitList = Array.isArray(commits) ? commits.filter(Boolean) : [];
+const getKnownGithubEmails = (githubAccount = {}) => {
+  const values = [
+    githubAccount.email,
+    githubAccount.primaryEmail,
+    githubAccount.verifiedEmail,
+    ...(Array.isArray(githubAccount.emails) ? githubAccount.emails : []),
+  ];
+  return new Set(values.map(normalizeText).filter(Boolean));
+};
+
+const getCommitUserMatchInfo = (commit = {}, githubAccount = {}) => {
   const githubUsername = githubAccount.username || '';
   const username = normalizeText(githubUsername);
   const githubId = Number(githubAccount.githubId || 0);
-  const userCommits = commitList.filter((commit) => {
-    const authorLogin = getCommitAuthorLogin(commit);
-    const committerLogin = getCommitCommitterLogin(commit);
-    const authorId = getCommitAuthorId(commit);
-    const authorEmail = normalizeText(commit.authorEmail);
-    const authorName = normalizeText(commit.authorName);
-    const committerName = normalizeText(commit.committerName);
+  const knownEmails = getKnownGithubEmails(githubAccount);
+  const authorLogin = getCommitAuthorLogin(commit);
+  const committerLogin = getCommitCommitterLogin(commit);
+  const authorId = getCommitAuthorId(commit);
+  const authorEmail = normalizeText(commit.authorEmail || commit?.rawData?.commit?.author?.email);
+  const committerEmail = normalizeText(commit.committerEmail || commit?.rawData?.commit?.committer?.email);
+  const authorName = normalizeText(commit.authorName || commit?.rawData?.commit?.author?.name);
+  const committerName = normalizeText(commit.committerName || commit?.rawData?.commit?.committer?.name);
 
-    return (
-      (username && (authorLogin === username || committerLogin === username || authorName === username || committerName === username)) ||
-      (githubId && authorId === githubId) ||
-      (username && authorEmail.includes(`${username}@`)) ||
-      (githubId && authorEmail.includes(`${githubId}+${username}@users.noreply.github.com`))
-    );
-  });
+  if (username && authorLogin === username) return { matched: true, matchedBy: 'author_login' };
+  if (username && committerLogin === username) return { matched: true, matchedBy: 'committer_login' };
+  if (githubId && authorId === githubId) return { matched: true, matchedBy: 'author_github_id' };
+  if (knownEmails.size && (knownEmails.has(authorEmail) || knownEmails.has(committerEmail))) {
+    return { matched: true, matchedBy: 'verified_email' };
+  }
+  if (username && (authorName === username || committerName === username)) {
+    return { matched: true, matchedBy: 'fallback_name' };
+  }
+  return {
+    matched: false,
+    matchedBy: 'unmatched',
+    reason: authorLogin || committerLogin ? 'login_mismatch' : 'missing_github_login',
+  };
+};
+
+const filterUserContributionCommits = (commits, githubAccount = {}) => {
+  const commitList = Array.isArray(commits) ? commits.filter(Boolean) : [];
+  const githubUsername = githubAccount.username || '';
+  const userCommits = commitList.filter((commit) => getCommitUserMatchInfo(commit, githubAccount).matched);
 
   return {
     type: 'user_contribution',
@@ -408,12 +431,16 @@ const calculateMissingCriticalPenalty = ({ skillVector, careerDirection }) => {
 };
 
 const calculateUserReadiness = ({ skillVector, commitSummary, checklist, careerDirection, files }) => {
+  const toScore100 = (value) => {
+    const score = Number(value) || 0;
+    return score <= 1 ? score * 100 : score;
+  };
   const presentSkills = (Array.isArray(skillVector) ? skillVector : [])
     .filter((item) => item.level !== 'missing' && Number(item.score || 0) > 0)
-    .sort((left, right) => Number(right.score || 0) - Number(left.score || 0));
+    .sort((left, right) => toScore100(right.score) - toScore100(left.score));
   const topFive = presentSkills.slice(0, 5);
   const skillScore = topFive.length
-    ? (topFive.reduce((sum, item) => sum + Number(item.score || 0), 0) / topFive.length) * 100
+    ? topFive.reduce((sum, item) => sum + toScore100(item.score), 0) / topFive.length
     : 0;
   const contributionScore = calculateContributionScore(commitSummary);
   const commitQualityScore = calculateUserCommitQualityScore(commitSummary);
@@ -426,7 +453,7 @@ const calculateUserReadiness = ({ skillVector, commitSummary, checklist, careerD
     completeness.score * 0.1 -
     missingCriticalPenalty;
   const userReadinessScore = Math.round(clamp(rawScore, 0, 100));
-  const strongSkillCount = presentSkills.filter((item) => item.level === 'strong' || Number(item.score || 0) >= 0.7).length;
+  const strongSkillCount = presentSkills.filter((item) => item.level === 'strong' || toScore100(item.score) >= 70).length;
   const lacksAdvancedEvidence =
     Number(commitSummary.totalCommits || 0) < 10 ||
     strongSkillCount < 4 ||
@@ -853,6 +880,7 @@ const sanitizeAnalysisSnapshot = (snapshot, options = {}) => {
 module.exports = {
   buildAnalysisPayload,
   filterUserContributionCommits,
+  getCommitUserMatchInfo,
   formatAnalysisResponse,
   sanitizeAnalysisSnapshot,
 };

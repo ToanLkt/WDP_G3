@@ -119,6 +119,7 @@ const buildSnapshotPayload = (analysisResult) => {
       skillGaps: source.dev2vec?.skillGaps || {},
       evidencePreview: source.dev2vec?.evidencePreview || {},
       scoringMethod: source.dev2vec?.scoringMethod || source.scoreBreakdown?.scoringMethod || '',
+      cacheMetadata: source.dev2vec?.cacheMetadata || source.rawAnalysis?.dev2vecCacheMetadata || {},
     },
     analyzedAt: source.analyzedAt || source.createdAt || new Date(),
     snapshotType: 'after_analysis',
@@ -376,9 +377,12 @@ const findDev2VecSkillDetail = (skillGap = {}, skillName, status) => {
 };
 
 const scoreDev2VecSkill = (detail, status) => {
-  if (Number.isFinite(Number(detail?.similarity))) return Math.min(1, Math.max(0, Number(detail.similarity)));
-  if (status === 'matched') return 1;
-  if (status === 'weak') return 0.5;
+  if (Number.isFinite(Number(detail?.similarity))) {
+    const similarity = Number(detail.similarity);
+    return Math.min(100, Math.max(0, similarity <= 1 ? similarity * 100 : similarity));
+  }
+  if (status === 'matched') return 100;
+  if (status === 'weak') return 50;
   return 0;
 };
 
