@@ -35,10 +35,17 @@ const normalizePriority = (priority) => {
 const slugifySkill = (value) =>
   normalizeText(canonicalizeSkillName(value)).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'skill';
 
-const buildTaskItemId = ({ scope = 'main', phaseIndex = 0, taskIndex = 0, canonicalSkillName }) =>
+const slugifyText = (value, fallback = 'task') =>
+  normalizeText(value).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || fallback;
+
+const buildTaskItemId = ({ scope = 'main', phaseIndex = 0, taskIndex = 0, canonicalSkillName, title }) => {
+  const taskSlug = slugifyText(`${canonicalSkillName || ''} ${title || ''}`, slugifySkill(canonicalSkillName));
+  return (
   scope === 'alt'
-    ? `alt-${Number(phaseIndex) + 1}-task-${Number(taskIndex) + 1}-${slugifySkill(canonicalSkillName)}`
-    : `main-${Number(phaseIndex) + 1}-${Number(taskIndex) + 1}-${slugifySkill(canonicalSkillName)}`;
+    ? `alt-${Number(phaseIndex) + 1}-task-${Number(taskIndex) + 1}-${taskSlug}`
+    : `main-${Number(phaseIndex) + 1}-${Number(taskIndex) + 1}-${taskSlug}`
+  );
+};
 
 const getUserRoadmapOrThrow = async (userId, roadmapId) => {
   const roadmap = await Roadmap.findOne({ _id: roadmapId, userId }).lean();
@@ -52,16 +59,18 @@ const mapTask = (task, { scope, phaseIndex, taskIndex, roadmap, path } = {}) => 
   if (!task || typeof task !== 'object') return null;
   const canonicalSkillName = canonicalizeSkillName(task.canonicalSkillName || task.skillName || task.skill || task.title || '');
   if (!canonicalSkillName) return null;
+  const title = String(task.title || `Task ${Number(taskIndex || 0) + 1}`).trim();
   const itemId = String(task.itemId || '').trim() || buildTaskItemId({
     scope,
     phaseIndex,
     taskIndex,
     canonicalSkillName,
+    title,
   });
   if (!itemId) return null;
   return {
     itemId,
-    title: String(task.title || `Task ${Number(taskIndex || 0) + 1}`).trim(),
+    title,
     description: String(task.description || '').trim(),
     skillName: canonicalSkillName,
     canonicalSkillName,
@@ -118,7 +127,18 @@ const buildLearningQueryFromTask = (roadmap, task) => ({
   targetRole: task.targetRole || roadmap.targetRole,
   level: task.level || roadmap.effectiveLevel || 'beginner',
   language: roadmap.language || 'vi',
+  contentCacheKey: task.itemId || task.title,
 });
+
+const buildResourceQueryFromLearningQuery = (query = {}, task = {}, personalizedContext = {}) => {
+  const { contentCacheKey, ...resourceQuery } = query;
+  return {
+    ...resourceQuery,
+    taskTitle: task.title || '',
+    taskDescription: task.description || '',
+    projectType: personalizedContext.projectType || '',
+  };
+};
 
 const getLearningContentDocument = async (query) => {
   const identity = learningService.buildLearningIdentity(query);
@@ -177,16 +197,35 @@ const getProgressForItem = async (userId, roadmapId, itemId) => {
     : null;
 };
 
-const getResourcesForLearning = async (query, includeResources, searchIfMissing = false) => {
+const getResourcesForLearning = async (query, includeResources, searchIfMissing = false, diagnostics = {}) => {
   if (!includeResources) return [];
+  console.info('[roadmap-learning-resource]', {
+    reasonCode: 'learning_resources_requested',
+    roadmapId: diagnostics.roadmapId,
+    itemId: diagnostics.itemId,
+    canonicalSkillName: query.canonicalSkillName || query.skillName,
+    taskTitle: query.taskTitle,
+    targetRole: query.targetRole,
+    language: query.language,
+    searchIfMissing,
+  });
   try {
     const resourcesResult = await learningService.getLearningResources(query);
     if (resourcesResult.data.resources.length || !searchIfMissing) {
+      console.info('[roadmap-learning-resource]', {
+        reasonCode: resourcesResult.data.resources.length ? 'learning_resources_cache_hit' : 'learning_resources_cache_empty',
+        roadmapId: diagnostics.roadmapId,
+        itemId: diagnostics.itemId,
+        canonicalSkillName: query.canonicalSkillName || query.skillName,
+        acceptedCount: resourcesResult.data.resources.length,
+      });
       return resourcesResult.data.resources;
     }
   } catch (error) {
     console.warn('[roadmap-learning-resource]', {
-      reasonCode: 'resource_lookup_error',
+      reasonCode: 'learning_resources_lookup_error',
+      roadmapId: diagnostics.roadmapId,
+      itemId: diagnostics.itemId,
       skillName: query.canonicalSkillName || query.skillName,
       level: query.level,
       language: query.language,
@@ -197,11 +236,27 @@ const getResourcesForLearning = async (query, includeResources, searchIfMissing 
 
   try {
     const searched = await learningService.searchAndCacheYoutubeResources(query);
+    console.info('[roadmap-learning-resource]', {
+      reasonCode: 'learning_resources_attached',
+      roadmapId: diagnostics.roadmapId,
+      itemId: diagnostics.itemId,
+      canonicalSkillName: query.canonicalSkillName || query.skillName,
+      acceptedCount: searched.data.resources?.length || 0,
+    });
     return searched.data.resources || [];
   } catch (error) {
+    const providerStatus = Number(error?.response?.status || error?.statusCode || 0);
+    const reasonCode = /YOUTUBE_API_KEY/i.test(error.message || '')
+      ? 'youtube_api_key_missing'
+      : providerStatus === 403 || providerStatus === 429
+        ? 'youtube_quota_exceeded'
+        : 'youtube_api_error';
     console.warn('[roadmap-learning-resource]', {
-      reasonCode: 'resource_search_error',
+      reasonCode,
+      roadmapId: diagnostics.roadmapId,
+      itemId: diagnostics.itemId,
       skillName: query.canonicalSkillName || query.skillName,
+      taskTitle: query.taskTitle,
       level: query.level,
       language: query.language,
       statusCode: error.statusCode || error.response?.status || 500,
@@ -282,7 +337,13 @@ const getRoadmapItemLearning = async (authUserOrId, roadmapId, itemId, options =
   const query = buildLearningQueryFromTask(roadmap, task);
   const learningResult = await learningService.getLearningContent(query);
   const includeResources = parseBoolean(options.includeResources, true);
-  const resources = await getResourcesForLearning(query, includeResources, false);
+  const personalizedContext = buildPersonalizedContext(roadmap, task);
+  const resources = await getResourcesForLearning(
+    buildResourceQueryFromLearningQuery(query, task, personalizedContext),
+    includeResources,
+    false,
+    { roadmapId, itemId: task.itemId }
+  );
 
   return {
     message: 'Roadmap item learning found',
@@ -328,7 +389,12 @@ const generateRoadmapItemLearning = async (authUserOrId, roadmapId, itemId, body
     },
   });
   const includeResources = parseBoolean(body.includeResources, true);
-  const resources = await getResourcesForLearning(query, includeResources, true);
+  const resources = await getResourcesForLearning(
+    buildResourceQueryFromLearningQuery(query, task, personalizedContext),
+    includeResources,
+    true,
+    { roadmapId, itemId: task.itemId }
+  );
 
   return {
     message: 'Roadmap item learning generated successfully',
@@ -346,5 +412,6 @@ module.exports = {
   findRoadmapTaskByItemId,
   buildLearningQueryFromTask,
   buildPersonalizedContext,
+  formatLearning,
   formatRoadmapItemLearningResponse,
 };

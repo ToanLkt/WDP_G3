@@ -75,6 +75,8 @@ Mọi endpoint trong flow đều yêu cầu Bearer token. Không gửi token tro
 
 FE không được tự tạo `itemId`, không dùng array index, `task.id`, hoặc Mongo subdocument `_id`. Backend lưu `itemId` một lần khi generate. Roadmap cũ chưa có ID dùng compatibility fallback; response vẫn trả field `itemId`.
 
+Roadmap mới tạo sau fix dùng `itemId` unique theo task context, gồm section, week/phase index, task index và slug từ `canonicalSkillName + taskTitle`. Ví dụ: `main-1-1-rest-api-xay-dung-api-crud`. FE vẫn không parse ý nghĩa từ string này; chỉ lưu và gửi lại exact value.
+
 # 5. Roadmap response fields
 
 Generate response đặt roadmap trực tiếp tại `data`:
@@ -113,6 +115,8 @@ Mỗi task có các field cần tích hợp:
 - `analyzedAt`
 - `modelVersion`
 - `evidenceVersion`
+
+Nếu request generate gửi `durationWeeks=6`, Backend normalize main roadmap để có task trong đủ các tuần `1..6`. `GET /api/roadmaps/me`, `GET /api/roadmaps/:roadmapId` và `GET /api/roadmaps/:roadmapId/learning` phải hiển thị week thống nhất theo stored task.
 
 # 6. Learning availability
 
@@ -179,6 +183,270 @@ Content luôn ở `data.learning` và giữ nguyên các field:
 - `resources`
 
 Không đọc các field chưa có trong contract như `summary`, `objectives`, `sections`, hoặc `quiz`.
+
+# 8.1. Learning auto-generate flow for FE
+
+Khi user click vào một task/bài học trong roadmap, FE nên mở learning content theo flow này:
+
+1. Lấy đúng `roadmapId`.
+2. Lấy đúng `itemId` từ task backend trả về.
+3. Gọi API đọc content hoặc kiểm tra availability.
+4. Nếu content chưa có thì tự gọi `POST generate`.
+5. Render kết quả trực tiếp từ `data.learning`.
+
+Quy tắc quan trọng cho `itemId`:
+
+- Không tự tạo `itemId`.
+- Không dùng array index.
+- Không dùng `task.id`.
+- Không dùng Mongo subdocument `_id` nếu task có.
+- Không map bằng skill name vì một skill có thể xuất hiện ở nhiều task.
+
+Có 2 cách implement hợp lệ.
+
+## Option A: Availability-first
+
+FE gọi trước:
+
+```http
+GET /api/roadmaps/:roadmapId/learning
+```
+
+Tìm item bằng exact `itemId`.
+
+Nếu item có:
+
+```json
+{
+  "learningStatus": "available"
+}
+```
+
+thì gọi:
+
+```http
+GET /api/roadmaps/:roadmapId/learning/items/:itemId?includeResources=true
+```
+
+và render `data.learning`.
+
+Nếu item có:
+
+```json
+{
+  "learningStatus": "missing"
+}
+```
+
+thì gọi:
+
+```http
+POST /api/roadmaps/:roadmapId/learning/items/:itemId/generate
+Content-Type: application/json
+```
+
+```json
+{
+  "forceRegenerate": false,
+  "includeResources": true
+}
+```
+
+Sau đó render trực tiếp từ:
+
+```js
+response.data.data.learning
+```
+
+Không cần gọi `GET` lại ngay nếu `POST generate` đã trả đủ `data.learning`.
+
+## Option B: GET-first with 404 fallback
+
+FE gọi thẳng:
+
+```http
+GET /api/roadmaps/:roadmapId/learning/items/:itemId?includeResources=true
+```
+
+Nếu API trả `200`, render `data.learning`.
+
+Nếu API trả `404` với ý nghĩa content chưa generate, gọi:
+
+```http
+POST /api/roadmaps/:roadmapId/learning/items/:itemId/generate
+Content-Type: application/json
+```
+
+```json
+{
+  "forceRegenerate": false,
+  "includeResources": true
+}
+```
+
+Sau đó render trực tiếp:
+
+```js
+generateResponse.data.data.learning
+```
+
+Nếu `404` do roadmap/task không tồn tại hoặc không thuộc user, FE không retry generate vô hạn. Hãy reload roadmap detail và kiểm tra lại `itemId`.
+
+## Recommended FE helper
+
+```js
+async function openRoadmapLearning(api, roadmapId, itemId) {
+  try {
+    const detailRes = await api.get(
+      `/api/roadmaps/${roadmapId}/learning/items/${itemId}`,
+      {
+        params: { includeResources: true },
+      }
+    );
+
+    return detailRes.data.data.learning;
+  } catch (err) {
+    const status = err.response?.status;
+    const message = err.response?.data?.message || "";
+
+    const shouldGenerate =
+      status === 404 &&
+      (
+        message.includes("Learning content not found") ||
+        message.includes("Please generate it first")
+      );
+
+    if (!shouldGenerate) {
+      throw err;
+    }
+
+    const generateRes = await api.post(
+      `/api/roadmaps/${roadmapId}/learning/items/${itemId}/generate`,
+      {
+        forceRegenerate: false,
+        includeResources: true,
+      }
+    );
+
+    return generateRes.data.data.learning;
+  }
+}
+```
+
+Nếu FE muốn dùng availability-first:
+
+```js
+async function openRoadmapLearningAvailabilityFirst(api, roadmapId, itemId) {
+  const availabilityRes = await api.get(
+    `/api/roadmaps/${roadmapId}/learning`
+  );
+
+  const item = availabilityRes.data.data.items.find(
+    (x) => x.itemId === itemId
+  );
+
+  if (!item) {
+    throw new Error("Learning item not found in roadmap availability response");
+  }
+
+  if (item.learningStatus === "available") {
+    const detailRes = await api.get(
+      `/api/roadmaps/${roadmapId}/learning/items/${itemId}`,
+      {
+        params: { includeResources: true },
+      }
+    );
+
+    return detailRes.data.data.learning;
+  }
+
+  const generateRes = await api.post(
+    `/api/roadmaps/${roadmapId}/learning/items/${itemId}/generate`,
+    {
+      forceRegenerate: false,
+      includeResources: true,
+    }
+  );
+
+  return generateRes.data.data.learning;
+}
+```
+
+## Loading / retry UI
+
+FE nên có các state:
+
+- `idle`: chưa mở learning.
+- `loading`: đang `GET` detail hoặc đang kiểm tra availability.
+- `generating`: content chưa có, đang gọi `POST generate`.
+- `ready`: đã có `data.learning`.
+- `error`: lỗi thật.
+
+Khi đang generate, có thể hiển thị:
+
+```text
+Đang tạo nội dung học cho kỹ năng này...
+```
+
+Nếu generate lỗi do provider/LLM/YouTube tạm lỗi, hiển thị nút Retry. Retry gọi lại `POST generate` với body:
+
+```json
+{
+  "forceRegenerate": false,
+  "includeResources": true
+}
+```
+
+Không tự đổi `role`, `level`, `language`, `skillName`, hoặc `itemId`.
+
+## Resource/video rendering
+
+Sau khi có learning content, FE render video/resource từ:
+
+```js
+learning.resources
+```
+
+Mỗi resource có thể có:
+
+```json
+{
+  "title": "...",
+  "url": "...",
+  "provider": "youtube",
+  "thumbnailUrl": "...",
+  "channelTitle": "...",
+  "publishedAt": "...",
+  "source": "...",
+  "score": 0.93
+}
+```
+
+Nếu `learning.resources.length === 0`, vẫn render learning content bình thường và chỉ hiển thị empty state:
+
+```text
+Chưa có video/tài nguyên phù hợp cho kỹ năng này.
+```
+
+Không coi `resources: []` là lỗi.
+
+## Important rules
+
+- Roadmap generate không tự generate learning content.
+- `GET /learning` chỉ kiểm tra availability, không tạo content.
+- `GET /learning/items/:itemId` chỉ đọc cache, không tự tạo content.
+- `POST /learning/items/:itemId/generate` mới là API tạo content.
+- FE phải dùng exact `itemId` từ backend.
+- FE render từ `data.learning`, không đọc `summary`, `objectives`, `sections`, hoặc `quiz` vì các field đó không nằm trong contract hiện tại.
+- `POST generate` trả `201` khi tạo mới, `200` khi dùng cache; FE xử lý cả hai như success.
+
+Đoạn quan trọng nhất FE cần làm:
+
+```text
+Nếu GET learning item trả 404 "Learning content not found / Please generate it first"
+-> gọi POST /api/roadmaps/:roadmapId/learning/items/:itemId/generate
+-> render generateResponse.data.data.learning
+```
 
 # 9. YouTube resource fields
 

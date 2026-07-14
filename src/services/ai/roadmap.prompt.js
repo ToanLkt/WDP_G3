@@ -7,6 +7,7 @@ function safeJson(data) {
 }
 
 function buildRoadmapPrompt({ targetRole, githubContext, roadmapGapContext }) {
+  const durationWeeks = Number(roadmapGapContext?.durationWeeks || 6);
   return `
 You are an AI Career Mentor and Software Engineering curriculum designer.
 
@@ -15,6 +16,7 @@ Generate a personalized learning roadmap for a Software Engineering student.
 
 Important rules:
 - The student selected this target role: ${targetRole}.
+- The student selected this duration: ${durationWeeks} weeks.
 - The roadmap must prioritize the selected target role.
 - This roadmap is based on the current user's own GitHub commits/contribution, not the whole repository.
 - Use effectiveLevel from Roadmap Skill Gap Context as the student's actual level band. request level is only a fallback.
@@ -28,6 +30,10 @@ Important rules:
 - Do not invent repositories, technologies, or skills not present in the context.
 - You may suggest missing skills only if they are relevant to the selected target role.
 - If Roadmap Skill Gap Context is available, prioritize its prioritySkills in order.
+- Generate exactly ${durationWeeks} weeks for the mainPath.
+- Every week from 1 to ${durationWeeks} must have at least one mainPath task.
+- Do not stop at 4 weeks when the requested duration is ${durationWeeks}.
+- Task week values must be integers in range 1..${durationWeeks}.
 - Do not make alreadyStrongSkills the main learning content.
 - Do not treat topSkills/already detected skills as missing.
 - Use missingSkills/gapType="missing" for new learning or adding missing repo evidence.
@@ -37,6 +43,14 @@ Important rules:
 - Every skill name must use the canonical name from Roadmap Skill Gap Context.
 - mainPath phases and tasks must use only canonical skills from Roadmap Skill Gap Context skillGapSummary/skillGaps.
 - Do not invent a new primary skillName or canonicalSkillName for mainPath tasks.
+- canonicalSkillName must semantically match the task title and description.
+- For Backend Developer mainPath tasks, do not use frontend-only skills such as React UI, Responsive Design, Component Design, State Management, or Frontend Testing.
+- Within the same week, do not assign every task the same canonicalSkillName when task titles cover different sub-skills.
+- For Frontend Developer tasks, prefer the most specific matching skill among React UI, Component Design, State Management, API Integration, Frontend Testing, Responsive Design, Accessibility, Performance Optimization, and Documentation.
+- For Backend Developer tasks, prefer the most specific matching skill among REST API, Database, Authentication, Docker Basics, API Testing, Documentation, and Clean Code.
+- For Mobile Developer tasks, prefer the most specific matching skill among Mobile UI, Navigation, Local Storage, API Integration, App State Management, Documentation, and Clean Code.
+- For DevOps Engineer tasks, prefer the most specific matching skill among Docker, Kubernetes, CI/CD, Infrastructure as Code, Monitoring, and Documentation.
+- If an alternative path uses skills outside the selected target role, clearly label it as a supporting/cross-functional path in title, pathType, and reason.
 - If a task mentions Docker, Docker Compose, Dockerfile, containers, or deployment containers, set skillName/canonicalSkillName to Docker Basics when Docker Basics exists in skillGapSummary.
 - If a task mentions Jest, Supertest, unit tests, integration tests, or API tests, set skillName/canonicalSkillName to API Testing when API Testing exists in skillGapSummary.
 - If a task mentions MongoDB, Mongoose, schema design, indexes, queries, or data models, set skillName/canonicalSkillName to Database when Database exists in skillGapSummary.
@@ -107,7 +121,8 @@ Return JSON with exactly this structure:
 }
 
 Constraints:
-- mainPath should have 3 to 5 phases.
+- mainPath must have exactly ${durationWeeks} phases, one phase per week.
+- Phase 1 represents week 1, phase 2 represents week 2, and so on through week ${durationWeeks}.
 - Each phase should have 2 to 4 tasks.
 - supportingPaths must contain exactly 2 items.
 - Resources can be empty array if no reliable resource URL is available.

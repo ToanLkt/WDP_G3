@@ -64,16 +64,21 @@ const normalizeSource = (source) => {
 const normalizeLanguage = (language, defaultLanguage) =>
   normalizeText(language || defaultLanguage) || defaultLanguage;
 
-const buildLearningIdentity = ({ skillName, targetRole, level, language }) => {
+const buildLearningIdentity = ({ skillName, targetRole, level, language, contentCacheKey }) => {
   const requestedSkillName = String(skillName || '').trim();
   const canonicalSkillName = canonicalizeSkillName(requestedSkillName);
   const cleanTargetRole = String(targetRole || DEFAULT_TARGET_ROLE).trim() || DEFAULT_TARGET_ROLE;
+  const normalizedBaseSkillName = normalizeText(canonicalSkillName);
+  const normalizedContentCacheKey = normalizeText(contentCacheKey || '');
 
   return {
     requestedSkillName,
     skillName: canonicalSkillName,
     canonicalSkillName,
-    normalizedSkillName: normalizeText(canonicalSkillName),
+    normalizedSkillName: normalizedContentCacheKey
+      ? `${normalizedBaseSkillName}__${normalizedContentCacheKey}`
+      : normalizedBaseSkillName,
+    resourceNormalizedSkillName: normalizedBaseSkillName,
     legacyNormalizedSkillName: normalizeText(requestedSkillName),
     targetRole: cleanTargetRole,
     normalizedTargetRole: normalizeText(cleanTargetRole),
@@ -88,7 +93,7 @@ const getLearningMetadata = (identity) => ({
   requestedSkillName: identity.requestedSkillName,
   skillName: identity.skillName,
   canonicalSkillName: identity.canonicalSkillName,
-  normalizedSkillName: identity.normalizedSkillName,
+  normalizedSkillName: identity.resourceNormalizedSkillName || identity.normalizedSkillName,
   targetRole: identity.targetRole,
   level: identity.level,
   language: identity.language,
@@ -126,6 +131,34 @@ const buildResourceQuery = ({ skillName, targetRole, level, language, type }) =>
       language: normalizeLanguage(language, DEFAULT_RESOURCE_LANGUAGE),
       type: normalizeType(type),
     },
+  };
+};
+
+const buildResourceSearchContext = ({ skillName, targetRole, level, language, taskTitle, taskDescription, projectType }) => {
+  const identity = buildLearningIdentity({ skillName, targetRole, level, language });
+  const text = `${taskTitle || ''} ${taskDescription || ''} ${identity.canonicalSkillName || ''}`.toLowerCase();
+  const terms = [identity.canonicalSkillName, targetRole, level, projectType].filter(Boolean);
+  let querySkill = identity.canonicalSkillName;
+  const rules = [
+    { pattern: /unit test|unit tests|component test|component testing|react testing library|jest|vitest|test|testing|kiem thu/i, query: 'React component unit testing', terms: ['react', 'component', 'unit testing', 'testing', 'jest', 'react testing library'] },
+    { pattern: /docker|dockerfile|compose|container/i, query: 'Docker Dockerfile container tutorial', terms: ['docker', 'dockerfile', 'container'] },
+    { pattern: /api|crud|endpoint|route|controller|swagger|openapi/i, query: 'REST API CRUD endpoint tutorial', terms: ['rest api', 'crud', 'endpoint', 'controller', 'swagger'] },
+    { pattern: /jwt|auth|authentication|authorization|rbac|login|token/i, query: 'JWT authentication authorization tutorial', terms: ['jwt', 'authentication', 'authorization', 'rbac'] },
+    { pattern: /database|mongodb|mongoose|schema|query|index/i, query: 'MongoDB Mongoose schema query tutorial', terms: ['mongodb', 'mongoose', 'schema', 'database'] },
+    { pattern: /accessibility|a11y|aria|keyboard/i, query: 'React accessibility ARIA tutorial', terms: ['accessibility', 'aria', 'react'] },
+    { pattern: /performance|lazy load|bundle|web vitals|render/i, query: 'React performance optimization tutorial', terms: ['react', 'performance', 'optimization'] },
+  ];
+  const matched = rules.find((rule) => rule.pattern.test(text));
+  if (matched) {
+    querySkill = matched.query;
+    terms.push(...matched.terms);
+  }
+  const targetRoleText = targetRole ? `for ${targetRole}` : '';
+  const levelText = level ? `${level}` : '';
+  return {
+    primaryQuery: [querySkill, targetRoleText, levelText, 'tutorial'].filter(Boolean).join(' '),
+    fallbackEnglishQuery: [querySkill, targetRoleText, 'practical tutorial'].filter(Boolean).join(' '),
+    relevanceTerms: [...new Set(terms.map((term) => normalizeText(term)).filter(Boolean))],
   };
 };
 
@@ -172,8 +205,8 @@ const sanitizeLearningContent = (payload) => ({
     .filter((value, index, values) => values.indexOf(value) === index),
 });
 
-const getLearningContent = async ({ skillName, targetRole, level, language }) => {
-  const identity = buildLearningIdentity({ skillName, targetRole, level, language });
+const getLearningContent = async ({ skillName, targetRole, level, language, contentCacheKey }) => {
+  const identity = buildLearningIdentity({ skillName, targetRole, level, language, contentCacheKey });
 
   if (!identity.skillName) {
     throw createStatusError('skillName is required', 400);
@@ -463,7 +496,7 @@ const saveLearningResource = async ({ skillName, body = {} }) => {
   };
 };
 
-const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, language }) => {
+const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, language, taskTitle, taskDescription, projectType }) => {
   const { identity, query } = buildResourceQuery({
     skillName,
     targetRole,
@@ -488,7 +521,7 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
     }), identity);
   }
   if (existing.length) {
-    console.info('[learning-resource]', { reasonCode: 'cache_hit', skillName: identity.canonicalSkillName, level: identity.level, language: query.language, count: existing.length });
+    console.info('[learning-resource]', { reasonCode: 'learning_resources_cache_hit', skillName: identity.canonicalSkillName, level: identity.level, language: query.language, count: existing.length });
     return {
       message: 'Learning resources already cached',
       data: {
@@ -500,6 +533,14 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
       statusCode: 200,
     };
   }
+
+  console.info('[learning-resource]', {
+    reasonCode: 'learning_resources_cache_empty',
+    skillName: identity.canonicalSkillName,
+    targetRole: identity.targetRole,
+    level: identity.level,
+    language: query.language,
+  });
 
   const catalogResources = findCatalogResources({
     skillName: identity.skillName,
@@ -533,7 +574,7 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
       }
     }
 
-    console.info('[learning-resource]', { reasonCode: 'curated_hit', skillName: identity.canonicalSkillName, level: identity.level, language: query.language, count: savedCatalogResources.length });
+    console.info('[learning-resource]', { reasonCode: 'learning_resources_attached', source: 'curated', skillName: identity.canonicalSkillName, level: identity.level, language: query.language, acceptedCount: savedCatalogResources.length });
     return {
       message: 'Learning resources loaded from catalog and cached successfully',
       data: {
@@ -549,28 +590,66 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
   }
 
   if (!process.env.YOUTUBE_API_KEY) {
-    console.warn('[learning-resource]', { reasonCode: 'youtube_key_missing', skillName: identity.canonicalSkillName, level: identity.level, language: query.language });
+    console.warn('[learning-resource]', { reasonCode: 'youtube_api_key_missing', skillName: identity.canonicalSkillName, level: identity.level, language: query.language });
     throw createStatusError('No valid catalog resources found and YOUTUBE_API_KEY is not configured', 500);
   }
 
   let videos;
+  const searchContext = buildResourceSearchContext({
+    skillName: identity.skillName,
+    targetRole: identity.targetRole,
+    level: identity.level,
+    language: query.language,
+    taskTitle,
+    taskDescription,
+    projectType,
+  });
   try {
+    console.info('[learning-resource]', {
+      reasonCode: 'learning_resources_search_started',
+      skillName: identity.canonicalSkillName,
+      targetRole: identity.targetRole,
+      level: identity.level,
+      language: query.language,
+      query: searchContext.primaryQuery,
+    });
     videos = await searchYoutubeVideos({
       skillName: identity.skillName,
       targetRole: identity.targetRole,
       level: identity.level,
       language: query.language,
+      query: searchContext.primaryQuery,
+      relevanceTerms: searchContext.relevanceTerms,
     });
+    if (!videos.length && query.language !== 'en') {
+      console.info('[learning-resource]', {
+        reasonCode: 'youtube_search_started',
+        fallback: 'en',
+        skillName: identity.canonicalSkillName,
+        query: searchContext.fallbackEnglishQuery,
+      });
+      videos = await searchYoutubeVideos({
+        skillName: identity.skillName,
+        targetRole: identity.targetRole,
+        level: identity.level,
+        language: 'en',
+        query: searchContext.fallbackEnglishQuery,
+        relevanceTerms: searchContext.relevanceTerms,
+      });
+    }
   } catch (error) {
     const providerStatus = Number(error?.response?.status || error?.statusCode || 0);
-    const reasonCode = providerStatus === 403 || providerStatus === 429
+    const reasonCode = error.reasonCode === 'youtube_api_key_missing'
+      ? 'youtube_api_key_missing'
+      : providerStatus === 403 || providerStatus === 429
       ? 'youtube_quota_exceeded'
-      : 'youtube_provider_error';
+      : 'youtube_api_error';
     console.warn('[learning-resource]', {
       reasonCode,
       skillName: identity.canonicalSkillName,
       level: identity.level,
       language: query.language,
+      query: searchContext.primaryQuery,
       providerStatus: providerStatus || undefined,
     });
     throw error;
@@ -578,7 +657,7 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
 
   const bestVideo = videos[0];
   if (!bestVideo) {
-    console.info('[learning-resource]', { reasonCode: 'youtube_no_candidates', skillName: identity.canonicalSkillName, level: identity.level, language: query.language });
+    console.info('[learning-resource]', { reasonCode: 'youtube_no_candidates', skillName: identity.canonicalSkillName, level: identity.level, language: query.language, query: searchContext.primaryQuery });
     return {
       message: 'No relevant YouTube resources found',
       data: {
@@ -614,6 +693,7 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
     metadataExpiresAt: getMetadataExpiresAt(bestVideo.validatedAt),
   });
   console.info('[learning-resource]', { reasonCode: 'youtube_hit', skillName: identity.canonicalSkillName, level: identity.level, language: query.language, count: 1 });
+  console.info('[learning-resource]', { reasonCode: 'learning_resources_attached', source: 'youtube_api', skillName: identity.canonicalSkillName, level: identity.level, language: query.language, acceptedCount: 1 });
 
   return {
     message: 'Best YouTube resource searched and cached successfully',
@@ -638,5 +718,6 @@ module.exports = {
   extractJsonFromText,
   buildLearningIdentity,
   buildLearningContentKey,
+  buildResourceSearchContext,
   buildResourceQuery,
 };

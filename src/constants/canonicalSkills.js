@@ -18,6 +18,8 @@ const LEGACY_CANONICAL_SKILLS = [
   { name: 'Bootstrap', category: 'Frontend', aliases: ['Bootstrap CSS', 'React Bootstrap'], defaultLevel: 'beginner', tags: ['bootstrap', 'css', 'frontend', 'ui'] },
   { name: 'Responsive Design', category: 'Frontend', aliases: ['Responsive Web Design', 'Mobile-first Design', 'RWD'], defaultLevel: 'beginner', tags: ['responsive', 'frontend', 'css', 'mobile'] },
   { name: 'API Integration', category: 'Frontend', aliases: ['API Consumption', 'Consume API', 'Frontend API Integration'], defaultLevel: 'intermediate', tags: ['api', 'frontend', 'integration', 'http'] },
+  { name: 'Accessibility', category: 'Frontend', aliases: ['A11y', 'ARIA', 'Web Accessibility', 'Accessible UI'], defaultLevel: 'intermediate', tags: ['accessibility', 'frontend', 'a11y', 'ui'] },
+  { name: 'Performance Optimization', category: 'Frontend', aliases: ['Frontend Performance', 'Web Performance', 'Performance'], defaultLevel: 'intermediate', tags: ['performance', 'frontend', 'optimization', 'web'] },
   { name: 'Axios', category: 'Frontend', aliases: ['axios', 'Axios HTTP Client'], defaultLevel: 'beginner', tags: ['axios', 'http', 'api', 'frontend'] },
   { name: 'Form Handling', category: 'Frontend', aliases: ['Forms', 'Form Management', 'React Forms'], defaultLevel: 'intermediate', tags: ['forms', 'frontend', 'validation', 'ui'] },
   { name: 'State Management', category: 'Frontend', aliases: ['Application State', 'Global State', 'Redux', 'Context API'], defaultLevel: 'intermediate', tags: ['state', 'frontend', 'react', 'redux'] },

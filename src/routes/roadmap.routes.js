@@ -22,7 +22,7 @@ const router = express.Router();
  *   post:
  *     tags: [Roadmaps]
  *     summary: Generate a personalized roadmap for the current user
- *     description: Uses the latest user-contribution analysis and Dev2Vec role match/skill gap output to generate a personalized roadmap. Roadmap skill gaps are derived from Dev2Vec skill prototype similarity, and roleMatch.matchScore is classifier probability * 100.
+ *     description: Uses the latest user-contribution analysis and Dev2Vec role match/skill gap output to generate a personalized roadmap. Roadmap skill gaps are derived from Dev2Vec skill prototype similarity, and roleMatch.matchScore is classifier probability * 100. The main roadmap is normalized to cover every requested week from 1..durationWeeks.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -62,6 +62,7 @@ const router = express.Router();
  *               durationWeeks:
  *                 type: integer
  *                 example: 6
+ *                 description: Requested roadmap duration in weeks. Backend also accepts legacy aliases weeks, targetWeeks, estimatedWeeks, timelineWeeks, and duration.
  *               language:
  *                 type: string
  *                 example: vi
@@ -659,7 +660,7 @@ router.post('/:roadmapId/progress/reset', authMiddleware, roadmapProgressControl
  *   get:
  *     tags: [Roadmaps]
  *     summary: Get roadmap learning availability
- *     description: Get learning availability for all tasks in a roadmap. Uses shared skill learning cache and maps it to roadmap itemId.
+ *     description: Get learning availability for all real tasks in a roadmap. Items are mapped by exact stored itemId and include taskTitle, canonicalSkillName, targetRole, level, week, and priority.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -695,7 +696,7 @@ router.get('/:roadmapId/learning', authMiddleware, roadmapLearningController.get
  *   get:
  *     tags: [Roadmaps]
  *     summary: Get roadmap task learning content
- *     description: Get learning content for one roadmap task by itemId. Roadmap clients should use this instead of calling shared skill learning directly.
+ *     description: Get learning content for one roadmap task by exact stored itemId. Roadmap clients should use this instead of calling shared skill learning directly.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -742,7 +743,7 @@ router.get('/:roadmapId/learning/items/:itemId', authMiddleware, roadmapLearning
  *   post:
  *     tags: [Roadmaps]
  *     summary: Generate roadmap task learning content
- *     description: Generate or fetch shared learning content for the skill behind a roadmap task, using roadmap/task context.
+ *     description: Generate or fetch task-specific learning content for the skill behind a roadmap task, using exact itemId and roadmap/task context.
  *     security:
  *       - bearerAuth: []
  *     parameters:
