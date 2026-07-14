@@ -1,10 +1,11 @@
 const mongoose = require('mongoose');
 
 const AiFeedback = require('../models/AiFeedback');
-const AnalysisSnapshot = require('../models/AnalysisSnapshot');
+const AnalysisResult = require('../models/AnalysisResult');
 const Repository = require('../models/Repository');
 const RepositoryPackage = require('../models/RepositoryPackage');
 const Roadmap = require('../models/Roadmap');
+const RoadmapProgress = require('../models/RoadmapProgress');
 const SkillSignal = require('../models/SkillSignal');
 const StudentProfile = require('../models/StudentProfile');
 const { generateRoadmapResponse } = require('./ai.service');
@@ -166,7 +167,7 @@ const sanitizeRoadmapTask = (task = {}, fallback = {}) => {
     inferSkillFromTaskText(task) || task.canonicalSkillName || task.skillName || task.skill || fallback.skillName || ''
   );
   const title = String(task.title || task.name || 'Roadmap task').trim();
-  const itemId = buildTaskItemId({
+  const itemId = String(task.itemId || '').trim() || buildTaskItemId({
     scope: fallback.scope || 'main',
     phaseIndex: Number(fallback.phaseIndex || 0),
     taskIndex: Number(fallback.taskIndex || 0),
@@ -442,7 +443,7 @@ const buildRoadmapGithubContext = async (userId) => {
       .limit(MAX_REPOSITORIES)
       .select('name fullName description language topics pushedAt updatedAtGithub')
       .lean(),
-    AnalysisSnapshot.find({ userId })
+    AnalysisResult.find({ userId })
       .sort({ analyzedAt: -1, createdAt: -1 })
       .limit(MAX_ANALYSIS_SNAPSHOTS)
       .select(
@@ -1321,6 +1322,8 @@ const generateRoadmap = async (
     throw createStatusError('sourceMode must be one of: single_repo, all_analyzed_repos, selected_repos.', 400);
   }
 
+  roadmapSource = await analysisSourceService.attachSnapshotProvenance({ userId, roadmapSource });
+
   const requestedRoleId = normalizeDev2VecRoleId(roleId) || normalizeDev2VecRoleId(normalizedTargetRole);
   let dev2vecOutput = null;
   if (useRoleMatching !== false || hasCachedDev2VecResult(analysisForGap)) {
@@ -1403,6 +1406,10 @@ const generateRoadmap = async (
       (existingRoadmap.mainRoadmap || existingRoadmap.mainPath) &&
       normalizeRoadmapSourceForResponse(existingRoadmap.roadmapSource)
     ) {
+      existingRoadmap.roadmapSource = await analysisSourceService.attachSnapshotProvenance({
+        userId,
+        roadmapSource: existingRoadmap.roadmapSource,
+      });
       return {
         message: 'Roadmap fetched successfully',
         data: formatGeneratedRoadmapResponse(existingRoadmap),
@@ -1539,6 +1546,19 @@ const getRoadmapById = async (userIdOrAuthUser, roadmapId) => {
     throw createStatusError('Roadmap not found', 404);
   }
 
+  roadmap.roadmapSource = await analysisSourceService.attachSnapshotProvenance({
+    userId,
+    roadmapSource: roadmap.roadmapSource,
+  });
+  const progress = await RoadmapProgress.findOne({ userId, roadmapId })
+    .select('progressSummary overallProgress updatedAt')
+    .lean();
+  if (progress) {
+    roadmap.progressSummary = progress.progressSummary || {
+      ...(roadmap.progressSummary || {}),
+      overallProgress: Number(progress.overallProgress || 0),
+    };
+  }
   return {
     message: 'Roadmap fetched successfully',
     data: { roadmap: formatGeneratedRoadmapResponse(roadmap) },

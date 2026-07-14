@@ -1,4 +1,6 @@
 const axios = require('axios');
+const { nowMs } = require('../../utils/dev2vecTiming');
+const { recordGithubCall } = require('../../utils/analysisPerformance');
 
 const {
   GITHUB_REPOS_URL,
@@ -62,6 +64,22 @@ const fetchGithubUserProfile = async (accessToken) => {
   return response.data || {};
 };
 
+const revokeGithubAccessToken = async ({ clientId, clientSecret, accessToken }) => {
+  await axios.delete(`https://api.github.com/applications/${clientId}/token`, {
+    auth: {
+      username: clientId,
+      password: clientSecret,
+    },
+    data: {
+      access_token: accessToken,
+    },
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+    },
+  });
+};
+
 const fetchGithubRepositories = async (accessToken) => {
   try {
     const response = await axios.get(GITHUB_REPOS_URL, {
@@ -87,6 +105,7 @@ const encodeGithubContentPath = (path) => String(path || '')
 const fetchGithubContent = async (owner, repo, path, accessToken) => {
   const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeGithubContentPath(path)}`;
 
+  const started = nowMs();
   try {
     const response = await axios.get(url, {
       headers: getGithubHeaders(accessToken),
@@ -99,12 +118,15 @@ const fetchGithubContent = async (owner, repo, path, accessToken) => {
     }
 
     handleGithubApiError(error, 'Failed to fetch file from GitHub');
+  } finally {
+    recordGithubCall(path ? 'contents_file' : 'contents_listing', nowMs() - started);
   }
 };
 
 module.exports = {
   fetchGithubAccessToken,
   fetchGithubUserProfile,
+  revokeGithubAccessToken,
   fetchGithubRepositories,
   fetchGithubContent,
   handleGithubApiError,

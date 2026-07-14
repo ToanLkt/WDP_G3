@@ -51,6 +51,13 @@ const validateSendChatMessageBody = (req) => {
     }
   }
 
+  for (const field of ['repositoryId', 'roadmapId', 'analysisId', 'snapshotId']) {
+    const value = req.body && req.body[field];
+    if (value !== undefined && (typeof value !== 'string' || !value.trim())) {
+      errors.push(`${field} must be a non-empty string`);
+    }
+  }
+
   return buildValidationResult(errors);
 };
 

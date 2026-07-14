@@ -4,6 +4,7 @@ const {
   buildAnalysisSkillsFromDev2Vec,
   buildAnalysisSummaryFromDev2Vec,
   getDev2VecMatchLevel,
+  getUserLevelFromScore,
   mapDev2VecOutputToRoleMatches,
 } = require('../src/services/dev2vec/dev2vecRoleMapper.service');
 
@@ -103,6 +104,12 @@ assert.strictEqual(summary.overallScore, 72.31);
 assert.strictEqual(summary.userReadinessScore, 72.31);
 assert.strictEqual(summary.userLevel, 'intermediate');
 assert.strictEqual(summary.confidence, 0.72314);
+
+assert.strictEqual(getUserLevelFromScore(80), 'advanced');
+assert.strictEqual(getUserLevelFromScore(79.99), 'intermediate');
+assert.strictEqual(getUserLevelFromScore(45), 'intermediate');
+assert.strictEqual(getUserLevelFromScore(44.99), 'beginner');
+assert.strictEqual(buildAnalysisSummaryFromDev2Vec({ rolePredictions: [], skillGaps: {} }).userLevel, 'beginner');
 
 const phase6Output = {
   ...dev2vecOutput,

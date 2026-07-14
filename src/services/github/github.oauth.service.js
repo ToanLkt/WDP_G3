@@ -74,6 +74,8 @@ const buildErrorRedirect = (redirectUrl, error) => {
   return url.toString();
 };
 
+const isTrue = (value) => value === true || value === 'true' || value === '1';
+
 const startOAuth = async (authUser, options = {}) => {
   ensureAuthorizedUser(authUser);
 
@@ -108,6 +110,7 @@ const startOAuth = async (authUser, options = {}) => {
     message: 'GitHub OAuth URL generated successfully',
     data: {
       authorizeUrl: url.toString(),
+      forceAccountSelection: isTrue(options.forceAccountSelection),
     },
     statusCode: 200,
   };
@@ -166,6 +169,7 @@ const handleOAuthCallback = async (query) => {
         username: githubUser.login,
         displayName: githubUser.name || '',
         avatarUrl: githubUser.avatar_url || '',
+        email: githubUser.email || '',
         profileUrl: githubUser.html_url || '',
         accessToken,
         tokenType: tokenPayload.token_type || 'bearer',

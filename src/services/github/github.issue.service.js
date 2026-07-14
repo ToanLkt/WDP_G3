@@ -1,4 +1,6 @@
 const axios = require('axios');
+const { nowMs } = require('../../utils/dev2vecTiming');
+const { recordGithubCall } = require('../../utils/analysisPerformance');
 
 const GithubAccount = require('../../models/GithubAccount');
 const RepositoryIssue = require('../../models/RepositoryIssue');
@@ -170,17 +172,16 @@ const logIssueFetchFailure = ({ error, repositoryId, userId }) => {
 };
 
 const fetchGithubIssuesPage = async ({ owner, repo, accessToken, page, config }) => {
-  const response = await axios.get(`https://api.github.com/repos/${owner}/${repo}/issues`, {
-    params: {
-      state: 'all',
-      sort: 'updated',
-      direction: 'desc',
-      per_page: config.perPage,
-      page,
-    },
-    headers: getGithubHeaders(accessToken),
-    timeout: config.timeoutMs,
-  });
+  const started = nowMs();
+  let response;
+  try {
+    response = await axios.get(`https://api.github.com/repos/${owner}/${repo}/issues`, {
+      params: { state: 'all', sort: 'updated', direction: 'desc', per_page: config.perPage, page },
+      headers: getGithubHeaders(accessToken), timeout: config.timeoutMs,
+    });
+  } finally {
+    recordGithubCall('issues', nowMs() - started);
+  }
   return {
     items: Array.isArray(response.data) ? response.data : [],
     headers: response.headers || {},

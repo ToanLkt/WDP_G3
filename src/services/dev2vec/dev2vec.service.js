@@ -1,4 +1,5 @@
 const { execFile } = require('child_process');
+const axios = require('axios');
 const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
@@ -114,6 +115,34 @@ const parsePositiveInteger = (value, fallback) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const isTrue = (value, fallback = false) => value === undefined
+  ? fallback
+  : ['true', '1'].includes(String(value).toLowerCase());
+
+const getServiceUrl = () => String(process.env.DEV2VEC_SERVICE_URL || '').replace(/\/$/, '');
+
+const getDev2VecServiceHealth = async () => {
+  const serviceUrl = getServiceUrl();
+  if (!serviceUrl) return { configured: false, healthy: false, status: 'not_configured' };
+  try {
+    const response = await axios.get(`${serviceUrl}/health`, {
+      timeout: parsePositiveInteger(process.env.DEV2VEC_SERVICE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS),
+    });
+    return { configured: true, healthy: response.data?.status === 'ok', ...response.data };
+  } catch (error) {
+    return { configured: true, healthy: false, status: 'unavailable', reason: error.code || error.message };
+  }
+};
+
+const runServiceInference = async (payload, timeoutMs) => {
+  const started = Date.now();
+  const response = await axios.post(`${getServiceUrl()}/infer`, payload, {
+    timeout: timeoutMs,
+    maxContentLength: parsePositiveInteger(process.env.DEV2VEC_MAX_BUFFER_BYTES, DEFAULT_MAX_BUFFER_BYTES),
+  });
+  return { output: validateDev2VecOutput(response.data), latencyMs: Date.now() - started };
+};
+
 const validateDev2VecOutput = (output) => {
   if (!output || typeof output !== 'object') {
     throw createDev2VecError(
@@ -135,6 +164,9 @@ const validateDev2VecOutput = (output) => {
   if (
     output.success !== true
     || !Array.isArray(output.rolePredictions)
+    || !output.skillGaps
+    || typeof output.skillGaps !== 'object'
+    || Array.isArray(output.skillGaps)
     || !output.vectorDims
     || typeof output.vectorDims !== 'object'
   ) {
@@ -193,6 +225,7 @@ const runPythonInference = async ({ pythonBin, inferPath, tmpFile, timeoutMs, ma
       [inferPath, '--input', tmpFile],
       {
         cwd: process.cwd(),
+        env: { ...process.env, PYTHONHASHSEED: process.env.PYTHONHASHSEED || '0' },
         timeout: timeoutMs,
         maxBuffer,
         windowsHide: true,
@@ -233,6 +266,37 @@ const runDev2VecInference = async (input = {}, options = {}) => {
     DEFAULT_MAX_BUFFER_BYTES,
   );
 
+  const serviceUrl = getServiceUrl();
+  let fallbackReason = null;
+  if (serviceUrl) {
+    try {
+      const service = await runServiceInference(
+        payload,
+        parsePositiveInteger(process.env.DEV2VEC_SERVICE_TIMEOUT_MS, timeoutMs),
+      );
+      if (process.env.ANALYSIS_TIMING_DEBUG === 'true' || process.env.DEV2VEC_TIMING_DEBUG === 'true') {
+        console.log('[Dev2VecClient]', JSON.stringify({
+          requestId: payload.requestId,
+          mode: 'service',
+          serviceLatencyMs: service.latencyMs,
+          artifactVersion: service.output.modelVersion || null,
+          retryCount: 0,
+          workerState: 'warm',
+        }));
+      }
+      return service.output;
+    } catch (error) {
+      if (!isTrue(process.env.DEV2VEC_SERVICE_FALLBACK_ENABLED, true)) throw error;
+      fallbackReason = error.code || error.message;
+      console.warn('[Dev2VecClient]', JSON.stringify({
+        requestId: payload.requestId,
+        mode: 'process_fallback',
+        fallbackReason,
+        retryCount: 0,
+      }));
+    }
+  }
+
   let tmpFile;
   const timer = createDev2VecTimer({ requestId: payload.requestId });
   try {
@@ -266,6 +330,16 @@ const runDev2VecInference = async (input = {}, options = {}) => {
     }
 
     const output = validateDev2VecOutput(parseStdoutJson(result.stdout));
+    if (process.env.ANALYSIS_TIMING_DEBUG === 'true' || process.env.DEV2VEC_TIMING_DEBUG === 'true') {
+      console.log('[Dev2VecClient]', JSON.stringify({
+        requestId: payload.requestId,
+        mode: fallbackReason ? 'process_fallback' : 'process',
+        fallbackReason,
+        artifactVersion: output.modelVersion || null,
+        retryCount: 0,
+        workerState: 'cold',
+      }));
+    }
     timer.log({
       apiTokenCount: payload.apiTokens.length,
       repoTextLength: payload.repoDocument.length,
@@ -278,6 +352,7 @@ const runDev2VecInference = async (input = {}, options = {}) => {
 };
 
 module.exports = {
+  getDev2VecServiceHealth,
   isDev2VecEnabled,
   normalizeDev2VecInput,
   validateDev2VecOutput,

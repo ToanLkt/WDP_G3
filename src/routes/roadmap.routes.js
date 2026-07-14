@@ -170,6 +170,17 @@ router.post(
  *         snapshotId:
  *           type: string
  *           nullable: true
+ *         snapshotIds:
+ *           type: array
+ *           items:
+ *             type: string
+ *         analyzedAt:
+ *           type: string
+ *           format: date-time
+ *           nullable: true
+ *         evidenceVersion:
+ *           type: string
+ *           nullable: true
  *         repositoryId:
  *           type: string
  *         repoName:

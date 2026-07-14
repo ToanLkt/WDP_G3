@@ -2,6 +2,7 @@ const AnalysisResult = require('../models/AnalysisResult');
 const RepositoryPackage = require('../models/RepositoryPackage');
 const RepositoryCommit = require('../models/RepositoryCommit');
 const GithubAccount = require('../models/GithubAccount');
+const RepoAnalysisSnapshot = require('../models/RepoAnalysisSnapshot');
 
 const { findRepositoryForUser } = require('./github/github.repository.service');
 const {
@@ -11,11 +12,12 @@ const {
 const { createSnapshotFromAnalysisResult } = require('./snapshot.service');
 const { createStatusError } = require('./github/github.utils');
 const { resolveUserContributionSource } = require('./analysisSource.service');
-const { fetchRepositoryPackages } = require('./github/github.package.service');
+const { fetchRepositoryPackages, isSourceEvidenceCacheCompatible } = require('./github/github.package.service');
 const { getRepositoryIssueEvidence } = require('./github/github.issue.service');
 const {
   fetchAndCacheRepositoryCommits,
   fetchAndCacheCommitDetailsForUserCommits,
+  fetchCurrentDefaultBranchHead,
 } = require('./github/github.commit.service');
 const {
   buildDev2VecInputFromAnalysisSource,
@@ -29,6 +31,9 @@ const {
   getRepositoryFingerprint,
   hasCachedDev2VecResult,
   shouldUseCachedDev2Vec,
+  compareMetadata,
+  getCacheMetadata,
+  shouldUseExactAnalysisCache,
 } = require('./dev2vec/dev2vecCachePolicy.service');
 const {
   buildAnalysisSkillsFromDev2Vec,
@@ -43,6 +48,13 @@ const {
 const { buildDocumentationRecommendation } = require('../utils/documentationEvidence');
 const { createDev2VecTimer } = require('../utils/dev2vecTiming');
 const { resolveEffectiveRole, roleKey } = require('./analysis/effectiveRoleResolver');
+const { decideIncrementalAnalysis } = require('./analysis/analysisIncrementalPolicy.service');
+const {
+  getAnalysisPerformance,
+  logAnalysisPerformance,
+  recordCache,
+  runWithAnalysisPerformance,
+} = require('../utils/analysisPerformance');
 
 const shouldIncludeEvidence = (query = {}) => query.includeEvidence === true || query.includeEvidence === 'true';
 const getView = (query = {}) => (query.view === 'detail' ? 'detail' : 'summary');
@@ -591,7 +603,7 @@ const inferCareerDirectionFromUserContribution = (dev2vecInput = {}, projectType
   return top[0];
 };
 
-const loadRepositoryCommitsForAnalysis = async ({ user, repository, githubAccount, existingCommits = [] }) => {
+const loadRepositoryCommitsForAnalysis = async ({ user, repository, githubAccount, existingCommits = [], currentHeadSha = null }) => {
   const branch = getCommitBranch(repository);
   const branchCommits = (Array.isArray(existingCommits) ? existingCommits : [])
     .filter((commit) => !commit.branch || commit.branch === branch);
@@ -599,7 +611,8 @@ const loadRepositoryCommitsForAnalysis = async ({ user, repository, githubAccoun
     commit.lastFetchedAt
     && Date.now() - new Date(commit.lastFetchedAt).getTime() < 15 * 60 * 1000
   ));
-  if (branchCommits.length && cacheFresh) {
+  const cachedHeadMatches = !currentHeadSha || branchCommits.some((commit) => commit.sha === currentHeadSha);
+  if (branchCommits.length && cacheFresh && cachedHeadMatches) {
     return { commits: branchCommits, metadata: { source: 'cache', branch } };
   }
 
@@ -608,12 +621,12 @@ const loadRepositoryCommitsForAnalysis = async ({ user, repository, githubAccoun
     repository,
     githubAccount,
     query: { sha: branch, perPage: 100 },
-    forceRefresh: branchCommits.length === 0,
+    forceRefresh: branchCommits.length === 0 || !cachedHeadMatches,
   });
   return { commits: result.commits || branchCommits, metadata: result.metadata || { branch } };
 };
 
-const analyzeRepository = async ({ user, params, query }) => {
+const analyzeRepositoryCore = async ({ user, params, query, body }) => {
   validateAuthUser(user);
   if (isAnalysisRoleDebugEnabled()) {
     const metadata = getCurrentDev2VecPipelineMetadata();
@@ -623,16 +636,19 @@ const analyzeRepository = async ({ user, params, query }) => {
       roleResolverVersion: metadata.roleResolverVersion,
     });
   }
+  const forceRegenerate = isTrue(query?.forceRegenerate) || isTrue(body?.forceRegenerate);
+  const requestId = getAnalysisPerformance().requestId;
   const timer = createDev2VecTimer({
     repoId: params.repoId,
-    requestId: `analysis-${user.userId}-${params.repoId}`,
+    requestId,
   });
 
   const repository = await timer.measure('metadataMs', () => findRepositoryForUser(user, params.repoId));
-  let [githubAccount, packageRecord, cachedCommits] = await timer.measure('loadRepositoryContextMs', () => Promise.all([
-    GithubAccount.findOne({ userId: user.userId }).lean(),
+  let [githubAccount, packageRecord, cachedCommits, latestAnalysis] = await timer.measure('loadRepositoryContextMs', () => Promise.all([
+    GithubAccount.findOne({ userId: user.userId }).select('+accessToken').lean(),
     RepositoryPackage.findOne({ userId: user.userId, repositoryId: repository._id }).lean(),
     RepositoryCommit.find({ userId: user.userId, repositoryId: repository._id }).sort({ authorDate: -1 }).lean(),
+    AnalysisResult.findOne({ userId: user.userId, repositoryId: repository._id }).sort({ analyzedAt: -1 }).lean(),
   ]));
 
   if (!githubAccount) {
@@ -641,15 +657,61 @@ const analyzeRepository = async ({ user, params, query }) => {
     throw error;
   }
 
+  let currentHeadSha = null;
+  try {
+    currentHeadSha = await timer.measure('headFetchMs', () => fetchCurrentDefaultBranchHead({ repository, githubAccount }));
+  } catch (error) {
+    console.warn('[analysis-incremental]', JSON.stringify({ requestId, reason: 'head_fetch_failed', code: error.code || error.message }));
+  }
+  if (currentHeadSha) repository.defaultBranchSha = currentHeadSha;
+
+  const cacheEnabled = !['false', '0'].includes(String(process.env.ANALYSIS_CACHE_ENABLED || 'true').toLowerCase());
+  const cacheDecision = cacheEnabled
+    ? shouldUseExactAnalysisCache({ analysis: latestAnalysis, repository, currentHeadSha, forceRegenerate })
+    : { useCache: false, reason: 'feature_disabled' };
+  recordCache(cacheDecision.useCache);
+  if (cacheDecision.useCache) {
+    let snapshot = await RepoAnalysisSnapshot.findOne({ analysisResultId: latestAnalysis._id }).sort({ createdAt: -1 });
+    if (!snapshot) snapshot = await timer.measure('snapshotSaveMs', () => createSnapshotFromAnalysisResult(latestAnalysis));
+    timer.log({ cacheHit: true, cacheReason: cacheDecision.reason, analyzedHeadSha: currentHeadSha });
+    logAnalysisPerformance({ phases: timer.phases, totalMs: timer.getTotalMs(), cacheHit: true, cacheReason: cacheDecision.reason, pythonWorkerState: 'skipped' });
+    return {
+      message: 'Repository analyzed successfully',
+      data: sanitizeAnalysisSnapshot(latestAnalysis, {
+        view: getView(query), includeEvidence: shouldIncludeEvidence(query), snapshotId: snapshot?._id || null,
+      }),
+      statusCode: 200,
+    };
+  }
+
   const commitLoad = await timer.measure('commitFetchMs', () => loadRepositoryCommitsForAnalysis({
     user,
     repository,
     githubAccount,
     existingCommits: cachedCommits,
+    currentHeadSha,
   }));
   const commits = commitLoad.commits || [];
   const contributionScope = filterUserContributionCommits(commits, githubAccount);
   let userCommits = contributionScope.userCommits;
+  const previousFingerprint = getCacheMetadata(latestAnalysis)?.repositoryFingerprint || {};
+  const metadataCompatible = compareMetadata(
+    getCacheMetadata(latestAnalysis), getCurrentDev2VecPipelineMetadata()
+  ) === 'compatible';
+  const incrementalEnabled = !['false', '0'].includes(String(process.env.ANALYSIS_INCREMENTAL_ENABLED || 'true').toLowerCase());
+  const incrementalDecision = decideIncrementalAnalysis({
+    enabled: incrementalEnabled,
+    forceRegenerate,
+    latestAnalysis,
+    currentHeadSha,
+    previousFingerprint,
+    currentBranch: repository.defaultBranch,
+    metadataCompatible,
+    commits,
+  });
+  let incremental = incrementalDecision.incremental;
+  let incrementalReason = incrementalDecision.reason;
+  const newCommitShas = incrementalDecision.newCommitShas;
   const commitDetailLoad = await timer.measure('commitDetailFetchMs', () => fetchAndCacheCommitDetailsForUserCommits({
     authUser: user,
     repository,
@@ -659,6 +721,15 @@ const analyzeRepository = async ({ user, params, query }) => {
     includeCodeEvidence: true,
   }));
   userCommits = commitDetailLoad.commits || userCommits;
+  const fetchedOldEvidence = incremental && (commitDetailLoad.metadata?.fetchedShas || [])
+    .some((sha) => !newCommitShas.includes(sha));
+  if (incremental && fetchedOldEvidence) {
+    incremental = false;
+    incrementalReason = 'missing_old_evidence_full_rebuild';
+  } else if (incremental && Number(commitDetailLoad.metadata?.failedDetailCount || 0) > 0) {
+    incremental = false;
+    incrementalReason = 'incremental_evidence_validation_failed';
+  }
   if (isContributionCodeDebugEnabled() || isAnalysisSkillDebugEnabled()) {
     const code = commitDetailLoad.metadata?.codeEvidence || {};
     console.log('[analysis-contribution-code][debug]', {
@@ -767,13 +838,36 @@ const analyzeRepository = async ({ user, params, query }) => {
     issueEvidence,
   });
 
+  const previousSnapshot = latestAnalysis
+    ? await RepoAnalysisSnapshot.findOne({ analysisResultId: latestAnalysis._id }).select('_id').lean()
+    : null;
+  const analysisProvenance = {
+    analyzedHeadSha: currentHeadSha || '',
+    previousAnalysisId: latestAnalysis?._id || null,
+    previousSnapshotId: previousSnapshot?._id || null,
+    newCommitShas,
+    reusedCommitShasCount: Math.max(0, userCommits.length - newCommitShas.length),
+    newEvidenceCount: Number(commitDetailLoad.metadata?.codeEvidence?.normalizedFilesSaved || commitDetailLoad.metadata?.fetchedDetailCount || 0),
+    reusedEvidenceCount: userCommits
+      .filter((commit) => !newCommitShas.includes(commit.sha))
+      .reduce((count, commit) => count + Number(commit.normalizedFiles?.length || 0), 0),
+    incremental,
+    incrementalReason,
+  };
+
   const analysisResult = await timer.measure('mongoSaveMs', () => AnalysisResult.create({
     userId: user.userId,
     repositoryId: repository._id,
     ...analysisPayload,
+    analysisProvenance,
   }));
   const repoSnapshot = await timer.measure('snapshotSaveMs', () => createSnapshotFromAnalysisResult(analysisResult));
   timer.log({
+    requestId,
+    cacheHit: false,
+    cacheReason: cacheDecision.reason,
+    incremental,
+    incrementalReason,
     sourceFileCount: Number(dev2vecInput.sourceStats?.sourceFileCount || 0),
     apiTokenCount: Number(dev2vecInput.sourceStats?.apiTokenCount || 0),
       issueStatus: dev2vecInput.evidenceChannels?.channelStatus?.issue,
@@ -785,6 +879,19 @@ const analyzeRepository = async ({ user, params, query }) => {
       fetchedCommitDetailCount: commitDetailLoad.metadata?.fetchedDetailCount,
       reusedCommitDetailCount: commitDetailLoad.metadata?.reusedDetailCount,
       matchedUserCommitCount: contributionScope.userCommits.length,
+  });
+  logAnalysisPerformance({
+    phases: timer.phases,
+    totalMs: timer.getTotalMs(),
+    cacheHit: false,
+    cacheReason: cacheDecision.reason,
+    incremental,
+    incrementalReason,
+    commitCount: commits.length,
+    userCommitCount: userCommits.length,
+    sourceFileCount: Number(dev2vecInput.sourceStats?.sourceFileCount || 0),
+    issueCount: getModelIssues(issueEvidence).length,
+    bytesProcessed: Number(dev2vecInput.repoDocument?.length || 0) + Number(dev2vecInput.issueDocument?.length || 0),
   });
 
   return {
@@ -836,6 +943,11 @@ const mapRoleMatchesFromDev2Vec = (dev2vecOutput, { includeDetails = false, limi
   const mapped = mapDev2VecOutputToRoleMatches(dev2vecOutput, { includeDetails, limit });
   return filterMatchesByTargetRole(mapped.matches || [], targetRole).slice(0, limit);
 };
+
+const analyzeRepository = (args) => runWithAnalysisPerformance(
+  `analysis-${args?.user?.userId || 'anonymous'}-${args?.params?.repoId || 'unknown'}-${Date.now()}`,
+  () => analyzeRepositoryCore(args),
+);
 
 const getIssueChannelStatus = (issueEvidence = {}) => {
   const metadata = issueEvidence.metadata || {};
@@ -1040,7 +1152,7 @@ const hasSourceEvidenceContent = (packageRecord = {}) => (
 );
 
 const ensurePackageSourceEvidence = async ({ user, repoId, repository, packageRecord }) => {
-  if (hasSourceEvidenceContent(packageRecord)) return packageRecord;
+  if (hasSourceEvidenceContent(packageRecord) && isSourceEvidenceCacheCompatible(packageRecord, repository)) return packageRecord;
 
   await fetchRepositoryPackages(user, repoId || repository?._id);
   return RepositoryPackage.findOne({ userId: user.userId, repositoryId: repository._id }).lean();

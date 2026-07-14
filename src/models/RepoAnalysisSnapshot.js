@@ -118,7 +118,7 @@ const repoAnalysisSnapshotSchema = new mongoose.Schema(
     },
     analysisResultId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'AnalysisSnapshot',
+      ref: 'AnalysisResult',
     },
     projectType: {
       type: String,
@@ -156,6 +156,7 @@ const repoAnalysisSnapshotSchema = new mongoose.Schema(
     skillEvidence: { type: [skillEvidenceSchema], default: [] },
     skillVector: { type: [skillVectorSchema], default: [] },
     dev2vec: { type: Object, default: {} },
+    analysisProvenance: { type: Object, default: {} },
     analyzedAt: {
       type: Date,
       default: Date.now,

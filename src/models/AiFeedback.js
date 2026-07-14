@@ -14,8 +14,12 @@ const aiFeedbackSchema = new mongoose.Schema(
     },
     analysisSnapshotId: {
       type: mongoose.Schema.Types.ObjectId,
-      required: true,
+      default: null,
     },
+    analysisId: { type: mongoose.Schema.Types.ObjectId, ref: 'AnalysisResult', default: null },
+    snapshotId: { type: mongoose.Schema.Types.ObjectId, ref: 'RepoAnalysisSnapshot', default: null },
+    roadmapId: { type: mongoose.Schema.Types.ObjectId, ref: 'Roadmap', default: null },
+    progressUpdatedAt: { type: Date, default: null },
     githubRepoId: {
       type: Number,
       required: true,
@@ -106,5 +110,6 @@ const aiFeedbackSchema = new mongoose.Schema(
 aiFeedbackSchema.index({ userId: 1, repositoryId: 1 });
 aiFeedbackSchema.index({ userId: 1, generatedAt: -1 });
 aiFeedbackSchema.index({ analysisSnapshotId: 1 });
+aiFeedbackSchema.index({ userId: 1, roadmapId: 1, generatedAt: -1 });
 
 module.exports = mongoose.model('AiFeedback', aiFeedbackSchema);

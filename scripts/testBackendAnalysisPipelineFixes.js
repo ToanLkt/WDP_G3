@@ -6,6 +6,7 @@ const {
 const { resolveEffectiveRole, normalizeRoleId } = require('../src/services/analysis/effectiveRoleResolver');
 const { buildAnalysisSkillsFromDev2Vec, buildAnalysisSummaryFromDev2Vec } = require('../src/services/dev2vec/dev2vecRoleMapper.service');
 const { buildDev2VecAnalysisPayload } = require('../src/services/analysis.service');
+const { validateDev2VecOutput } = require('../src/services/dev2vec/dev2vec.service');
 const { sanitizeAnalysisSnapshot } = require('../src/services/analysis/analysis.engine');
 const {
   EVIDENCE_VERSION,
@@ -289,6 +290,14 @@ assert(response.missingSkills.some((skill) => skill.skill === 'Frontend Testing'
 assert(!response.missingSkills.some((skill) => ['REST API', 'Database', 'Authentication'].includes(skill.skill)));
 assert(!response.topSkills.some((topSkill) => response.missingSkills.some((missingSkill) => missingSkill.skill === topSkill.skill)));
 assert.strictEqual(Object.prototype.hasOwnProperty.call(response, 'normalizedFiles'), false);
+assert.throws(
+  () => sanitizeAnalysisSnapshot(null, { view: 'summary' }),
+  (error) => error.message === 'Analysis result not available after analysis' && error.statusCode === 500
+);
+assert.throws(
+  () => validateDev2VecOutput({ success: true, rolePredictions: [], vectorDims: {} }),
+  (error) => error.message === 'Dev2Vec output is missing required fields' && error.errorCode === 'DEV2VEC_INVALID_OUTPUT'
+);
 
 const originalAxiosGet = axios.get;
 const patchOnlyFiles = Array.from({ length: 80 }, (_, index) => ({

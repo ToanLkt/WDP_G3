@@ -25,6 +25,11 @@ const githubAccountSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    email: {
+      type: String,
+      default: '',
+      trim: true,
+    },
     profileUrl: {
       type: String,
       default: '',

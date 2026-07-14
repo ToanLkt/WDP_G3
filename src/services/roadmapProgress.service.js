@@ -51,6 +51,24 @@ const calculateProgressSummary = (items = []) => {
   };
 };
 
+const applyItemStatus = (item, status, progressPercent, now = new Date()) => {
+  const wasCompleted = item.status === 'completed';
+  item.status = status;
+  item.progressPercent = getItemProgressPercent(status, progressPercent);
+  if (status === 'in_progress') {
+    if (!item.startedAt) item.startedAt = now;
+    item.completedAt = null;
+  } else if (status === 'completed') {
+    if (!item.startedAt) item.startedAt = now;
+    if (!wasCompleted || !item.completedAt) item.completedAt = now;
+  } else {
+    item.startedAt = null;
+    item.completedAt = null;
+  }
+  item.updatedAt = now;
+  return item;
+};
+
 function calculateOverallProgress(items) {
   return calculateProgressSummary(items).overallProgress;
 }
@@ -87,7 +105,7 @@ const mapTaskToProgressItem = (task, { scope, phaseIndex, taskIndex, targetRole,
   if (!task || typeof task !== 'object') return null;
   const canonicalSkillName = canonicalizeSkillName(task.canonicalSkillName || task.skillName || task.skill || task.title || '');
   if (!canonicalSkillName) return null;
-  const itemId = buildTaskItemId({ scope, phaseIndex, taskIndex, canonicalSkillName });
+  const itemId = String(task.itemId || '').trim() || buildTaskItemId({ scope, phaseIndex, taskIndex, canonicalSkillName });
   if (!itemId) return null;
   return {
     itemId,
@@ -310,25 +328,7 @@ const updateRoadmapItemStatus = async (authUserOrId, roadmapId, { itemId, skillN
 
   const now = new Date();
   const previousOverallProgress = Number(progress.overallProgress || 0);
-  item.status = status;
-  item.progressPercent = getItemProgressPercent(status, progressPercent);
-
-  if (status === 'in_progress') {
-    if (!item.startedAt) {
-      item.startedAt = now;
-    }
-    item.completedAt = null;
-  } else if (status === 'completed') {
-    if (!item.startedAt) {
-      item.startedAt = now;
-    }
-    item.completedAt = now;
-  } else {
-    item.startedAt = null;
-    item.completedAt = null;
-  }
-
-  item.updatedAt = now;
+  applyItemStatus(item, status, progressPercent, now);
   progress.items = progress.items.filter((progressItem) => String(progressItem.itemId || '').trim());
   const progressSummary = calculateProgressSummary(progress.items);
   progress.progressSummary = progressSummary;
@@ -393,6 +393,7 @@ const resetRoadmapProgress = async (authUserOrId, roadmapId) => {
 module.exports = {
   getItemProgressPercent,
   calculateOverallProgress,
+  applyItemStatus,
   extractRoadmapSkills,
   getOrCreateRoadmapProgress,
   getRoadmapProgress,

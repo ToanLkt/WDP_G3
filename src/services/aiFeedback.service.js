@@ -10,6 +10,7 @@ const { generateTextWithGemini } = require('./ai.service');
 const { buildFallbackFeedback, parseAiFeedbackResponse } = require('./ai-feedback/aiFeedback.parser');
 const { createStatusError, ensureAuthorizedUser } = require('./github/github.utils');
 const { mapDev2VecOutputToRoleMatches } = require('./dev2vec/dev2vecRoleMapper.service');
+const { resolveCurrentContext } = require('./currentContext.service');
 
 const PROMPT_VERSION = 'dev2vec-v1';
 const GEMINI_FALLBACK_RISK_NOTE = 'Gemini API failed, fallback feedback was used.';
@@ -60,6 +61,10 @@ const buildFeedbackResponse = (feedback) => {
     _id: feedback._id,
     repositoryId: feedback.repositoryId,
     analysisSnapshotId: feedback.analysisSnapshotId,
+    analysisId: feedback.analysisId || null,
+    snapshotId: feedback.snapshotId || feedback.analysisSnapshotId || null,
+    roadmapId: feedback.roadmapId || null,
+    progressUpdatedAt: feedback.progressUpdatedAt || null,
     githubRepoId: feedback.githubRepoId,
     repoName: feedback.repoName,
     fullName: feedback.fullName,
@@ -78,6 +83,14 @@ const buildFeedbackResponse = (feedback) => {
     generatedAt: feedback.generatedAt,
     createdAt: feedback.createdAt,
     updatedAt: feedback.updatedAt,
+    isStale: Boolean(feedback.isStale),
+    context: {
+      repositoryId: feedback.repositoryId || null,
+      analysisId: feedback.analysisId || null,
+      snapshotId: feedback.snapshotId || feedback.analysisSnapshotId || null,
+      roadmapId: feedback.roadmapId || null,
+      progressUpdatedAt: feedback.progressUpdatedAt || null,
+    },
   };
 };
 
@@ -221,6 +234,20 @@ const buildFeedbackContext = ({ repository, dev2vecSource }) => {
   };
 };
 
+const attachRoadmapFeedbackContext = (context, selectedContext) => ({
+  ...context,
+  analysisId: selectedContext.provenance.analysisId,
+  snapshotId: selectedContext.provenance.snapshotId,
+  roadmapId: selectedContext.provenance.roadmapId,
+  progressUpdatedAt: selectedContext.provenance.progressUpdatedAt,
+  roadmap: selectedContext.roadmap
+    ? { targetRole: selectedContext.roadmap.targetRole, effectiveLevel: selectedContext.roadmap.effectiveLevel, language: selectedContext.roadmap.language }
+    : null,
+  progress: selectedContext.progressContext,
+  topSkills: selectedContext.topSkills.length ? selectedContext.topSkills : context.topSkills,
+  missingSkillNames: selectedContext.missingSkills.length ? selectedContext.missingSkills : context.missingSkillNames,
+});
+
 const buildFeedbackMetadata = (context) => ({
   analysisSource: 'dev2vec',
   analysisRecordType: context.analysisRecordType,
@@ -230,6 +257,13 @@ const buildFeedbackMetadata = (context) => ({
   vectorSources: context.vectorSources,
   sourceStats: context.sourceStats,
   docs: context.docsEvidence || {},
+  provenance: {
+    repositoryId: context.repositoryId || null,
+    analysisId: context.analysisId || null,
+    snapshotId: context.snapshotId || null,
+    roadmapId: context.roadmapId || null,
+    progressUpdatedAt: context.progressUpdatedAt || null,
+  },
 });
 
 const createDev2VecRequiredError = () => {
@@ -238,18 +272,34 @@ const createDev2VecRequiredError = () => {
   return error;
 };
 
-const generateRepositoryFeedback = async (user, repoId) => {
+const generateRepositoryFeedback = async (user, repoId, options = {}) => {
   ensureAuthorizedUser(user);
 
   const userId = user.userId || user._id || user.id;
   const repository = await findRepositoryForUser(userId, repoId);
-  const dev2vecSource = await findLatestDev2VecSource(userId, repository._id);
+  const selectedContext = await resolveCurrentContext(userId, {
+    repositoryId: repository._id,
+    roadmapId: options.roadmapId,
+    analysisId: options.analysisId,
+    snapshotId: options.snapshotId,
+  });
+  const roadmapRepositoryIds = selectedContext.roadmap?.roadmapSource?.repositoryIds || [];
+  const contextMatchesRepository =
+    !selectedContext.provenance.repositoryId ||
+    String(selectedContext.provenance.repositoryId) === String(repository._id) ||
+    roadmapRepositoryIds.some((id) => String(id) === String(repository._id));
+  if (!contextMatchesRepository) {
+    throw createStatusError('Selected context does not belong to the requested repository', 400);
+  }
+  const dev2vecSource = selectedContext.analysis && hasDev2VecAnalysis(selectedContext.analysis)
+    ? { sourceType: selectedContext.legacyFallback ? 'LegacyAnalysisSnapshot' : 'AnalysisResult', analysis: selectedContext.analysis, analysisSnapshotId: selectedContext.provenance.snapshotId }
+    : null;
 
   if (!dev2vecSource) {
     throw createDev2VecRequiredError();
   }
 
-  const feedbackContext = buildFeedbackContext({ repository, dev2vecSource });
+  const feedbackContext = attachRoadmapFeedbackContext(buildFeedbackContext({ repository, dev2vecSource }), selectedContext);
   const prompt = buildAiFeedbackPrompt(feedbackContext);
   let aiContent = '';
   let parsed = null;
@@ -276,7 +326,11 @@ const generateRepositoryFeedback = async (user, repoId) => {
   const feedback = await AiFeedback.create({
     userId,
     repositoryId: repository._id,
-    analysisSnapshotId: feedbackContext.analysisSnapshotId,
+    analysisSnapshotId: feedbackContext.snapshotId || null,
+    analysisId: feedbackContext.analysisId || null,
+    snapshotId: feedbackContext.snapshotId || null,
+    roadmapId: feedbackContext.roadmapId || null,
+    progressUpdatedAt: feedbackContext.progressUpdatedAt || null,
     githubRepoId: feedbackContext.githubRepoId,
     repoName: feedbackContext.repoName,
     fullName: feedbackContext.fullName,
@@ -312,7 +366,7 @@ const generateRepositoryFeedback = async (user, repoId) => {
   };
 };
 
-const getRepositoryFeedback = async (user, repoId) => {
+const getRepositoryFeedback = async (user, repoId, options = {}) => {
   ensureAuthorizedUser(user);
 
   const userId = user.userId || user._id || user.id;
@@ -320,16 +374,29 @@ const getRepositoryFeedback = async (user, repoId) => {
   const feedback = await AiFeedback.findOne({
     userId,
     repositoryId: repository._id,
+    ...(options.roadmapId ? { roadmapId: options.roadmapId } : {}),
   })
     .sort({ generatedAt: -1, createdAt: -1 })
     .select('-rawAiResponse')
     .lean();
 
+  let isStale = false;
+  if (feedback) {
+    try {
+      const current = await resolveCurrentContext(userId, { repositoryId: repository._id, roadmapId: options.roadmapId || feedback.roadmapId || null });
+      isStale = Boolean(
+        (current.provenance.analysisId && String(current.provenance.analysisId) !== String(feedback.analysisId || '')) ||
+        (current.provenance.progressUpdatedAt && new Date(current.provenance.progressUpdatedAt) > new Date(feedback.progressUpdatedAt || 0))
+      );
+    } catch (error) {
+      isStale = false;
+    }
+  }
   return {
     statusCode: 200,
     message: 'AI feedback result fetched successfully',
     data: {
-      feedback: buildFeedbackResponse(feedback),
+      feedback: buildFeedbackResponse(feedback ? { ...feedback, isStale } : feedback),
     },
   };
 };

@@ -33,6 +33,13 @@ const attachFullNameRepoId = (req, res, next) => {
  *           type: string
  *           example: gitanalyzer://github/connect
  *         description: Optional allowlisted frontend connect callback. Web can use http://localhost:5173/github/connect; mobile must use the exact MOBILE_REDIRECT_URL such as gitanalyzer://github/connect. Defaults to FRONTEND_URL /github/connect.
+ *       - in: query
+ *         name: forceAccountSelection
+ *         required: false
+ *         schema:
+ *           type: boolean
+ *           example: true
+ *         description: Optional FE hint for reconnect UX. GitHub OAuth may still reuse the active github.com browser session; backend cannot clear GitHub cookies.
  *     responses:
  *       200:
  *         description: OAuth URL generated successfully
@@ -53,12 +60,47 @@ const attachFullNameRepoId = (req, res, next) => {
  *                     authorizeUrl:
  *                       type: string
  *                       example: https://github.com/login/oauth/authorize?client_id=xxx&redirect_uri=http%3A%2F%2Flocalhost%3A5000%2Fapi%2Fgithub%2Foauth%2Fcallback&scope=repo+read%3Auser+user%3Aemail&state=abc
+ *                     forceAccountSelection:
+ *                       type: boolean
+ *                       example: true
  *       401:
  *         description: Unauthorized
  *       500:
  *         description: GitHub OAuth environment is not configured
  */
 router.get('/oauth', authMiddleware, githubController.startOAuth);
+
+/**
+ * @swagger
+ * /api/github/connect:
+ *   get:
+ *     tags: [GitHub]
+ *     summary: Start GitHub repository connect OAuth flow
+ *     description: Alias of /api/github/oauth for FE reconnect flows. Accepts forceAccountSelection=true as a UX hint only; backend cannot log the user out of github.com or force account switching.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: redirectUrl
+ *         required: false
+ *         schema:
+ *           type: string
+ *           example: http://localhost:5173/github/connect
+ *       - in: query
+ *         name: forceAccountSelection
+ *         required: false
+ *         schema:
+ *           type: boolean
+ *           example: true
+ *     responses:
+ *       200:
+ *         description: OAuth URL generated successfully
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: GitHub OAuth environment is not configured
+ */
+router.get('/connect', authMiddleware, githubController.startOAuth);
 
 /**
  * @swagger
@@ -102,7 +144,8 @@ router.get('/oauth/callback', githubController.handleOAuthCallback);
  * /api/github/me:
  *   get:
  *     tags: [GitHub]
- *     summary: Get connected GitHub account
+ *     summary: Get connected GitHub account legacy alias
+ *     description: Legacy alias of GET /api/github/account.
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -110,17 +153,59 @@ router.get('/oauth/callback', githubController.handleOAuthCallback);
  *         description: GitHub account retrieved successfully
  *       401:
  *         description: Unauthorized
- *       404:
- *         description: GitHub account not found
  */
 router.get('/me', authMiddleware, githubController.getMe);
+
+/**
+ * @swagger
+ * /api/github/account:
+ *   get:
+ *     tags: [GitHub]
+ *     summary: Get current connected GitHub account
+ *     description: Returns the current user's connected GitHub account status. The response never includes the GitHub access token.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: GitHub account fetched successfully
+ *         content:
+ *           application/json:
+ *             examples:
+ *               connected:
+ *                 value:
+ *                   success: true
+ *                   message: GitHub account fetched successfully
+ *                   data:
+ *                     connected: true
+ *                     account:
+ *                       githubUserId: "123456"
+ *                       username: octocat
+ *                       displayName: The Octocat
+ *                       avatarUrl: https://avatars.githubusercontent.com/u/123456?v=4
+ *                       email: octocat@example.com
+ *                       connectedAt: "2026-07-14T00:00:00.000Z"
+ *                       updatedAt: "2026-07-14T00:00:00.000Z"
+ *                   errorCode: null
+ *               disconnected:
+ *                 value:
+ *                   success: true
+ *                   message: GitHub account fetched successfully
+ *                   data:
+ *                     connected: false
+ *                     account: null
+ *                   errorCode: null
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/account', authMiddleware, githubController.getAccount);
 
 /**
  * @swagger
  * /api/github/disconnect:
  *   delete:
  *     tags: [GitHub]
- *     summary: Disconnect current GitHub account
+ *     summary: Disconnect current GitHub account legacy alias
+ *     description: Legacy alias of DELETE /api/github/account.
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -130,6 +215,33 @@ router.get('/me', authMiddleware, githubController.getMe);
  *         description: Unauthorized
  */
 router.delete('/disconnect', authMiddleware, githubController.disconnect);
+
+/**
+ * @swagger
+ * /api/github/account:
+ *   delete:
+ *     tags: [GitHub]
+ *     summary: Disconnect current GitHub account
+ *     description: Unlinks the current user's GitHub account from this app and removes the stored local access token. It does not delete repositories, analysis results, roadmaps, chat, feedback, or log the browser out of github.com.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: GitHub account disconnected successfully
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: GitHub account disconnected successfully
+ *               data:
+ *                 connected: false
+ *                 githubLogoutUrl: https://github.com/logout
+ *                 note: Disconnected from this app. To connect a different GitHub account, log out from GitHub.com or use an incognito window before reconnecting.
+ *               errorCode: null
+ *       401:
+ *         description: Unauthorized
+ */
+router.delete('/account', authMiddleware, githubController.disconnect);
 
 /**
  * @swagger

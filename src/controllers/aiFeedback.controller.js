@@ -3,7 +3,7 @@ const { successResponse } = require('../utils/response');
 
 const generateRepositoryFeedback = async (req, res, next) => {
   try {
-    const result = await aiFeedbackService.generateRepositoryFeedback(req.user, req.params.repoId);
+    const result = await aiFeedbackService.generateRepositoryFeedback(req.user, req.params.repoId, req.body || {});
     return successResponse(res, result.message, result.data, result.statusCode);
   } catch (error) {
     return next(error);
@@ -12,7 +12,7 @@ const generateRepositoryFeedback = async (req, res, next) => {
 
 const getRepositoryFeedback = async (req, res, next) => {
   try {
-    const result = await aiFeedbackService.getRepositoryFeedback(req.user, req.params.repoId);
+    const result = await aiFeedbackService.getRepositoryFeedback(req.user, req.params.repoId, req.query || {});
     return successResponse(res, result.message, result.data, result.statusCode);
   } catch (error) {
     return next(error);

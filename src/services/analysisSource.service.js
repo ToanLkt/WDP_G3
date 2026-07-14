@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const AnalysisResult = require('../models/AnalysisResult');
+const RepoAnalysisSnapshot = require('../models/RepoAnalysisSnapshot');
 const { canonicalizeSkillName, getCanonicalSkillCategory } = require('../utils/skillCanonicalizer');
 const { createStatusError } = require('./github/github.utils');
 const { findRepositoryForUser } = require('./github/github.repository.service');
@@ -88,6 +89,51 @@ const buildAnalysisSourceSummary = ({ analysis, repository, sourceMode = 'single
     userReadinessScore: Number(summary.userReadinessScore || 0),
     careerDirection: summary.careerDirection || analysis?.careerDirection || '',
     projectType: summary.projectType || analysis?.projectType || '',
+    analyzedAt: analysis?.analyzedAt || analysis?.createdAt || null,
+    modelVersion: analysis?.dev2vec?.modelVersion || null,
+    evidenceVersion:
+      analysis?.dev2vec?.cacheMetadata?.analysisPipelineVersion ||
+      analysis?.rawAnalysis?.dev2vecCacheMetadata?.analysisPipelineVersion ||
+      null,
+  };
+};
+
+const findSnapshotForAnalysis = async (userId, analysisId) => {
+  if (!analysisId || !mongoose.Types.ObjectId.isValid(String(analysisId))) return null;
+  return RepoAnalysisSnapshot.findOne({ userId, analysisResultId: analysisId })
+    .sort({ createdAt: -1 })
+    .select('_id analysisResultId repositoryId analyzedAt createdAt dev2vec.cacheMetadata')
+    .lean();
+};
+
+const attachSnapshotProvenance = async ({ userId, roadmapSource }) => {
+  if (!roadmapSource || typeof roadmapSource !== 'object') return roadmapSource;
+  const analysisIds = roadmapSource.analysisIds?.length
+    ? roadmapSource.analysisIds
+    : roadmapSource.analysisId
+      ? [roadmapSource.analysisId]
+      : [];
+  const snapshots = await Promise.all(analysisIds.map((analysisId) => findSnapshotForAnalysis(userId, analysisId)));
+  const validSnapshots = snapshots.filter(Boolean);
+  const byAnalysisId = new Map(validSnapshots.map((snapshot) => [String(snapshot.analysisResultId), snapshot]));
+  const repositories = Array.isArray(roadmapSource.repositories)
+    ? roadmapSource.repositories.map((repository) => {
+        const snapshot = byAnalysisId.get(String(repository.analysisId || ''));
+        return {
+          ...repository,
+          snapshotId: snapshot?._id || repository.snapshotId || null,
+          analyzedAt: repository.analyzedAt || snapshot?.analyzedAt || null,
+        };
+      })
+    : roadmapSource.repositories;
+  return {
+    ...roadmapSource,
+    snapshotId: validSnapshots.length === 1 ? validSnapshots[0]._id : roadmapSource.snapshotId || null,
+    snapshotIds: validSnapshots.map((snapshot) => snapshot._id),
+    analyzedAt:
+      roadmapSource.analyzedAt ||
+      (validSnapshots.length === 1 ? validSnapshots[0].analyzedAt || validSnapshots[0].createdAt : null),
+    repositories,
   };
 };
 
@@ -329,4 +375,6 @@ module.exports = {
   mergeUserContributionAnalyses,
   mergeMultiRepoAnalysisContext,
   resolveUserContributionSource,
+  findSnapshotForAnalysis,
+  attachSnapshotProvenance,
 };

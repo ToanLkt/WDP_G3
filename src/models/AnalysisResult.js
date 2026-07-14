@@ -92,6 +92,7 @@ const analysisResultSchema = new mongoose.Schema(
     skillEvidence: { type: [skillEvidenceSchema], default: [] },
     skillVector: { type: [skillVectorSchema], default: [] },
     dev2vec: { type: Object, default: {} },
+    analysisProvenance: { type: Object, default: {} },
   },
   {
     timestamps: true,
@@ -99,7 +100,7 @@ const analysisResultSchema = new mongoose.Schema(
   }
 );
 
-analysisResultSchema.index({ userId: 1, repositoryId: 1 });
+analysisResultSchema.index({ userId: 1, repositoryId: 1, analyzedAt: -1 });
 analysisResultSchema.index({ userId: 1, analyzedAt: -1 });
 
 module.exports =
