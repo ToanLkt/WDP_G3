@@ -13,7 +13,16 @@ Render chỉ chạy inference. Không chạy `ml_service/train.py`, `github_fetc
 - Tạo Python venv tại `/opt/venv`.
 - Cài Python deps từ `ml_service/requirements.txt`.
 - Cài Node deps bằng `npm ci --omit=dev`.
-- Copy source code và chạy `npm start`.
+- Copy source code và chạy `node scripts/startProduction.js` qua `npm start`.
+- Supervisor start Python worker `ml_service/app.py` trên `127.0.0.1:8001`, sau đó start Node API bằng `server.js`.
+
+Render Start Command khuyến nghị:
+
+```text
+npm start
+```
+
+Không dùng `node server.js` trên Render nếu muốn persistent Python service. Lệnh đó chỉ start Node API và Dev2Vec sẽ fallback về `infer.py` process-per-request nếu không có service riêng.
 
 Python path trong container:
 
@@ -32,6 +41,11 @@ DEV2VEC_INFER_PATH=ml_service/infer.py
 DEV2VEC_TIMEOUT_MS=30000
 DEV2VEC_MAX_BUFFER_BYTES=10485760
 DEV2VEC_ARTIFACTS_DIR=ml_service/artifacts
+DEV2VEC_SERVICE_URL=http://127.0.0.1:8001
+DEV2VEC_SERVICE_PORT=8001
+DEV2VEC_SERVICE_TIMEOUT_MS=30000
+DEV2VEC_SERVICE_FALLBACK_ENABLED=true
+DEV2VEC_SERVICE_CONCURRENCY=1
 ```
 
 Dockerfile đã có default `ENV`, nhưng Render vẫn nên set `DEV2VEC_ENABLED=true` để tránh bị override nhầm.

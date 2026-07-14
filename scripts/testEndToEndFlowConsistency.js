@@ -48,26 +48,29 @@ const payload = roadmapService.normalizeRoadmapPayload({
   skillGapSummary: [],
 });
 
-const storedIds = payload.mainRoadmap.phases[0].tasks.map((task) => task.itemId);
+const storedIds = payload.mainRoadmap.phases.flatMap((phase) => phase.tasks.map((task) => task.itemId));
 assert(storedIds.every(Boolean), 'generated tasks must store itemId');
 assert.strictEqual(new Set(storedIds).size, storedIds.length, 'itemId must be unique');
+const coveredWeeks = [...new Set(payload.mainRoadmap.phases.flatMap((phase) => phase.tasks.map((task) => task.week)))].sort((a, b) => a - b);
+assert.deepStrictEqual(coveredWeeks, [1, 2, 3, 4, 5, 6], 'roadmap must cover requested weeks');
 
 const reloaded = JSON.parse(JSON.stringify({ _id: '665f1f000000000000000010', ...payload }));
-const serializedIds = roadmapService.formatGeneratedRoadmapResponse(reloaded).mainRoadmap.phases[0].tasks.map((task) => task.itemId);
+const serializedIds = roadmapService.formatGeneratedRoadmapResponse(reloaded).mainRoadmap.phases.flatMap((phase) => phase.tasks.map((task) => task.itemId));
 assert.deepStrictEqual(serializedIds, storedIds, 'serializer must preserve stored itemId');
 reloaded.mainRoadmap.phases[0].tasks.reverse();
 const reorderedIds = roadmapService.formatGeneratedRoadmapResponse(reloaded).mainRoadmap.phases[0].tasks.map((task) => task.itemId);
-assert.deepStrictEqual(reorderedIds, [...storedIds].reverse(), 'serializer must not recompute itemId after reorder');
+assert.deepStrictEqual(reorderedIds, [...payload.mainRoadmap.phases[0].tasks].reverse().map((task) => task.itemId), 'serializer must not recompute itemId after reorder');
 
 const extracted = roadmapLearningService.extractRoadmapTasks(reloaded);
-assert.deepStrictEqual(extracted.map((task) => task.itemId), [...storedIds].reverse(), 'learning must use stored itemId');
+assert.strictEqual(extracted.length, storedIds.length, 'learning must include all stored roadmap tasks');
+assert.deepStrictEqual(new Set(extracted.map((task) => task.itemId)), new Set(storedIds), 'learning must use stored itemId');
 const learningIdentity = roadmapLearningService.buildLearningQueryFromTask(reloaded, extracted[0]);
 assert.strictEqual(learningIdentity.language, 'vi');
 const contentIdentity = learningService.buildLearningIdentity(learningIdentity);
 const resourceIdentity = learningService.buildResourceQuery(learningIdentity);
 assert.strictEqual(contentIdentity.language, resourceIdentity.query.language, 'content/resource language must match roadmap language');
 
-const progressItems = roadmapProgressService.extractRoadmapSkills(reloaded);
+const progressItems = roadmapProgressService.extractRoadmapSkills(reloaded).slice(0, 2);
 progressItems[0].status = 'completed';
 progressItems[0].progressPercent = 100;
 progressItems[0].completedAt = new Date('2026-07-14T00:00:00.000Z');

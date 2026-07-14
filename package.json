@@ -6,7 +6,9 @@
   "type": "commonjs",
   "scripts": {
     "dev": "nodemon server.js",
-    "start": "node server.js",
+    "start": "node scripts/startProduction.js",
+    "start:production": "node scripts/startProduction.js",
+    "start:node": "node server.js",
     "docker:up": "docker compose up -d && node scripts/print-docker-help.js",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f api",

@@ -54,11 +54,20 @@ Repo dùng phương án cùng container để ít thay đổi nhất. Docker ch�
 
 Python không bind public interface. Với phương án hai Render services trong tương lai, chỉ cần đặt `DEV2VEC_SERVICE_URL` thành private internal URL và không dùng supervisor cùng container.
 
+Render Start Command khuyến nghị:
+
+```text
+npm start
+```
+
+`npm start` hiện chạy `node scripts/startProduction.js`. Nếu Render đặt trực tiếp `node server.js` hoặc `npm run start:node` thì chỉ Node API chạy, persistent Python service không tự start và Dev2Vec sẽ dùng process-per-request khi không có `DEV2VEC_SERVICE_URL`.
+
 # 9. Environment variables
 
 | Biến | Mặc định | Ý nghĩa |
 |---|---:|---|
 | `DEV2VEC_SERVICE_URL` | rỗng ngoài Docker | URL persistent worker; rỗng dùng process path |
+| `DEV2VEC_SERVICE_PORT` | `8001` | Port private worker khi dùng supervisor |
 | `DEV2VEC_SERVICE_TIMEOUT_MS` | `30000` | HTTP inference timeout |
 | `DEV2VEC_SERVICE_FALLBACK_ENABLED` | `true` | Cho phép fallback `infer.py` |
 | `DEV2VEC_SERVICE_CONCURRENCY` | `1` | Số request chờ/được xử lý có giới hạn; model vẫn lock để deterministic |
@@ -100,7 +109,7 @@ Test performance bao phủ exact hit, force bypass, incomplete fingerprint, firs
 - `ANALYSIS_CACHE_ENABLED=false`: bỏ exact cache.
 - `ANALYSIS_INCREMENTAL_ENABLED=false`: luôn full evidence collection.
 - Bỏ `DEV2VEC_SERVICE_URL` hoặc đặt `DEV2VEC_SERVICE_FALLBACK_ENABLED=true`: dùng `infer.py` process path.
-- Có thể đổi Docker CMD về `npm start` để bỏ supervisor/Python service mà không đổi DB/FE.
+- Có thể đổi Render Start Command/Docker CMD về `npm run start:node` và bỏ `DEV2VEC_SERVICE_URL` để rollback về process-per-request mà không đổi DB/FE.
 
 Các field mới là optional Object; dữ liệu cũ vẫn đọc bình thường. Không có automatic data migration/delete khi startup. Chạy index thủ công bằng `npm run migrate:analysis-performance-indexes`.
 

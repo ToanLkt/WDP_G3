@@ -30,7 +30,7 @@ const parseIso8601DurationSeconds = (duration = '') => {
     + Number(seconds || 0);
 };
 
-const calculateYouTubeVideoScore = ({ title, description = '', channelTitle, skillName, level }) => {
+const calculateYouTubeVideoScore = ({ title, description = '', channelTitle, skillName, level, relevanceTerms = [] }) => {
   const normalizedTitle = String(title || '').toLowerCase();
   const normalizedDescription = String(description || '').toLowerCase();
   const normalizedChannel = String(channelTitle || '').toLowerCase();
@@ -39,9 +39,13 @@ const calculateYouTubeVideoScore = ({ title, description = '', channelTitle, ski
   let score = 0;
   const normalizedContent = normalizeText(`${normalizedTitle} ${normalizedDescription}`);
   const hasSkill = normalizedSkill && normalizedContent.includes(normalizedSkill);
+  const matchedTermCount = [...new Set((relevanceTerms || []).map(normalizeText).filter(Boolean))]
+    .filter((term) => normalizedContent.includes(term)).length;
 
   if (hasSkill) {
     score += 40;
+  } else if (matchedTermCount) {
+    score += Math.min(35, matchedTermCount * 12);
   } else {
     score -= 30;
   }
@@ -145,18 +149,27 @@ const validateYouTubeVideoMetadata = (video = {}) => {
   };
 };
 
-const searchYoutubeVideos = async ({ skillName, targetRole, level, language = 'en' }) => {
+const searchYoutubeVideos = async ({ skillName, targetRole, level, language = 'en', query, relevanceTerms = [] }) => {
   if (!process.env.YOUTUBE_API_KEY) {
     const error = new Error('YOUTUBE_API_KEY is not configured');
     error.statusCode = 500;
+    error.reasonCode = 'youtube_api_key_missing';
     throw error;
   }
 
-  const query = `${skillName} tutorial for ${targetRole} ${level}`;
+  const searchQuery = String(query || `${skillName} tutorial for ${targetRole} ${level}`).trim();
+  console.info('[youtube-search]', {
+    reasonCode: 'youtube_search_started',
+    query: searchQuery,
+    skillName,
+    targetRole,
+    level,
+    language,
+  });
   const response = await axios.get(YOUTUBE_SEARCH_URL, {
     params: {
       part: 'snippet',
-      q: query,
+      q: searchQuery,
       type: 'video',
       maxResults: 4,
       key: process.env.YOUTUBE_API_KEY,
@@ -180,6 +193,7 @@ const searchYoutubeVideos = async ({ skillName, targetRole, level, language = 'e
         channelTitle: video.channelTitle,
         skillName,
         level,
+        relevanceTerms,
       }),
       safetyStatus: 'allowed',
       safetyReasons: [],
@@ -189,15 +203,23 @@ const searchYoutubeVideos = async ({ skillName, targetRole, level, language = 'e
   let reasonCode = 'youtube_hit';
   if (!videoIds.length) reasonCode = 'youtube_no_candidates';
   else if (!validMetadata.length) reasonCode = 'youtube_invalid_metadata';
-  else if (!safeVideos.length || !relevantVideos.length) reasonCode = 'youtube_all_filtered';
+  else if (!safeVideos.length || !relevantVideos.length) reasonCode = 'youtube_candidates_filtered_out';
   console.info('[youtube-search]', {
     reasonCode,
+    query: searchQuery,
     searchCandidates: videoIds.length,
     metadataCandidates: mapped.length,
     validMetadataCandidates: validMetadata.length,
     safeCandidates: safeVideos.length,
     relevantCandidates: relevantVideos.length,
   });
+  if (relevantVideos.length) {
+    console.info('[youtube-search]', {
+      reasonCode: 'youtube_search_success',
+      query: searchQuery,
+      acceptedCount: relevantVideos.length,
+    });
+  }
   return relevantVideos;
 };
 
