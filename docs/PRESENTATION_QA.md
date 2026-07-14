@@ -256,18 +256,18 @@ Neu model khong co detail similarity cho skill thi backend normalize ve 0 va coi
 ## Q14. User level/band duoc chia the nao?
 
 ### Tra loi ngan
-User level trong summary duoc chia tu top role match score: >=70 la `intermediate`, >=40 la `beginner`, con lai la `novice`. Score nay den tu role probability da nhan len percent.
+User level trong summary duoc chia tu top role match score: >=80 la `advanced`, >=45 la `intermediate`, con lai la `beginner`. Score nay den tu role probability da nhan len percent.
 
 ### Bang chung trong source
 - File: `src/services/dev2vec/dev2vecRoleMapper.service.js`
 - Function: `buildAnalysisSummaryFromDev2Vec`
-- Line: 167, 168, 170, 175
+- Line: 167, 168, 169, 175
 
 ### Trang thai
 - VERIFIED_IMPLEMENTED
 
 ### Han che
-Khong thay band `advanced` trong summary mapper hien tai.
+Cac API level su dung chung 3 band `beginner`, `intermediate`, `advanced`.
 
 ## Q15. Issue evidence co duoc lay that khong?
 

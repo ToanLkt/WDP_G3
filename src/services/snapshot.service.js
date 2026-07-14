@@ -152,6 +152,7 @@ const buildSnapshotPayload = (analysisResult) => {
       scoringMethod: source.dev2vec?.scoringMethod || source.scoreBreakdown?.scoringMethod || '',
       cacheMetadata: source.dev2vec?.cacheMetadata || source.rawAnalysis?.dev2vecCacheMetadata || {},
     },
+    analysisProvenance: source.analysisProvenance || {},
     analyzedAt: source.analyzedAt || source.createdAt || new Date(),
     snapshotType: 'after_analysis',
     source: 'github',

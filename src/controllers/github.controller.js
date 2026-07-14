@@ -7,6 +7,7 @@ const startOAuth = async (req, res, next) => {
   try {
     const result = await githubService.startOAuth(req.user, {
       redirectUrl: req.query.redirectUrl,
+      forceAccountSelection: req.query.forceAccountSelection,
       origin: req.get('origin'),
     });
     return successResponse(res, result.message, result.data, result.statusCode);
@@ -34,6 +35,15 @@ const handleOAuthCallback = async (req, res, next) => {
 };
 
 const getMe = async (req, res, next) => {
+  try {
+    const result = await githubService.getGithubAccountLegacy(req.user);
+    return successResponse(res, result.message, result.data, result.statusCode);
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const getAccount = async (req, res, next) => {
   try {
     const result = await githubService.getGithubAccount(req.user);
     return successResponse(res, result.message, result.data, result.statusCode);
@@ -119,6 +129,7 @@ module.exports = {
   startOAuth,
   handleOAuthCallback,
   getMe,
+  getAccount,
   disconnect,
   getRepositories,
   getCachedRepositories,

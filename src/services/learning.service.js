@@ -18,7 +18,7 @@ const { canonicalizeSkillName } = require('../utils/skillCanonicalizer');
 const DEFAULT_TARGET_ROLE = 'Software Developer';
 const DEFAULT_LEVEL = 'beginner';
 const DEFAULT_CONTENT_LANGUAGE = 'vi';
-const DEFAULT_RESOURCE_LANGUAGE = 'en';
+const DEFAULT_RESOURCE_LANGUAGE = DEFAULT_CONTENT_LANGUAGE;
 const DEFAULT_RESOURCE_TYPE = 'video';
 const VALID_LEVELS = ['beginner', 'intermediate', 'advanced'];
 const VALID_RESOURCE_TYPES = ['video', 'article', 'docs'];
@@ -116,7 +116,7 @@ const getPersistedIdentity = (identity) => ({
 });
 
 const buildResourceQuery = ({ skillName, targetRole, level, language, type }) => {
-  const identity = buildLearningIdentity({ skillName, targetRole, level, language: DEFAULT_CONTENT_LANGUAGE });
+  const identity = buildLearningIdentity({ skillName, targetRole, level, language });
   return {
     identity,
     query: {
@@ -488,6 +488,7 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
     }), identity);
   }
   if (existing.length) {
+    console.info('[learning-resource]', { reasonCode: 'cache_hit', skillName: identity.canonicalSkillName, level: identity.level, language: query.language, count: existing.length });
     return {
       message: 'Learning resources already cached',
       data: {
@@ -532,6 +533,7 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
       }
     }
 
+    console.info('[learning-resource]', { reasonCode: 'curated_hit', skillName: identity.canonicalSkillName, level: identity.level, language: query.language, count: savedCatalogResources.length });
     return {
       message: 'Learning resources loaded from catalog and cached successfully',
       data: {
@@ -547,18 +549,36 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
   }
 
   if (!process.env.YOUTUBE_API_KEY) {
+    console.warn('[learning-resource]', { reasonCode: 'youtube_key_missing', skillName: identity.canonicalSkillName, level: identity.level, language: query.language });
     throw createStatusError('No valid catalog resources found and YOUTUBE_API_KEY is not configured', 500);
   }
 
-  const videos = await searchYoutubeVideos({
-    skillName: identity.skillName,
-    targetRole: identity.targetRole,
-    level: identity.level,
-    language: query.language,
-  });
+  let videos;
+  try {
+    videos = await searchYoutubeVideos({
+      skillName: identity.skillName,
+      targetRole: identity.targetRole,
+      level: identity.level,
+      language: query.language,
+    });
+  } catch (error) {
+    const providerStatus = Number(error?.response?.status || error?.statusCode || 0);
+    const reasonCode = providerStatus === 403 || providerStatus === 429
+      ? 'youtube_quota_exceeded'
+      : 'youtube_provider_error';
+    console.warn('[learning-resource]', {
+      reasonCode,
+      skillName: identity.canonicalSkillName,
+      level: identity.level,
+      language: query.language,
+      providerStatus: providerStatus || undefined,
+    });
+    throw error;
+  }
 
   const bestVideo = videos[0];
   if (!bestVideo) {
+    console.info('[learning-resource]', { reasonCode: 'youtube_no_candidates', skillName: identity.canonicalSkillName, level: identity.level, language: query.language });
     return {
       message: 'No relevant YouTube resources found',
       data: {
@@ -593,6 +613,7 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
     validatedAt: bestVideo.validatedAt,
     metadataExpiresAt: getMetadataExpiresAt(bestVideo.validatedAt),
   });
+  console.info('[learning-resource]', { reasonCode: 'youtube_hit', skillName: identity.canonicalSkillName, level: identity.level, language: query.language, count: 1 });
 
   return {
     message: 'Best YouTube resource searched and cached successfully',
@@ -617,4 +638,5 @@ module.exports = {
   extractJsonFromText,
   buildLearningIdentity,
   buildLearningContentKey,
+  buildResourceQuery,
 };

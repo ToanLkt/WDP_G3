@@ -214,6 +214,7 @@ const addDetectedFile = (detectedFiles, entry) => {
 
 const getSourceEvidenceCacheKey = (repository = {}) => ({
   defaultBranch: repository.defaultBranch || '',
+  latestCommitSha: repository.defaultBranchSha || repository.latestCommitSha || '',
   pushedAt: repository.pushedAt || null,
   updatedAtGithub: repository.updatedAtGithub || null,
   evidenceBuilderVersion: EVIDENCE_BUILDER_VERSION,
@@ -229,6 +230,7 @@ const isSourceEvidenceCacheCompatible = (record = {}, repository = {}) => {
   return cached.evidenceBuilderVersion === current.evidenceBuilderVersion
     && cached.sourceUsageParserVersion === current.sourceUsageParserVersion
     && String(cached.defaultBranch || '') === String(current.defaultBranch || '')
+    && String(cached.latestCommitSha || '') === String(current.latestCommitSha || '')
     && String(cached.pushedAt || '') === String(current.pushedAt || '')
     && String(cached.updatedAtGithub || '') === String(current.updatedAtGithub || '');
 };
@@ -443,9 +445,23 @@ const fetchRepositoryPackages = async (authUser, repoId) => {
   const languagesSet = new Set();
   const rawData = {};
 
-  for (const path of candidatePaths) {
-    const data = await fetchGithubContent(owner, repo, path, githubAccount.accessToken);
+  const uniqueCandidatePaths = [...new Map(candidatePaths.map((path) => [path.toLowerCase(), path])).values()];
+  const negativeCache = existing?.rawData?.__negativePathCache || {};
+  const fingerprintKey = JSON.stringify(getSourceEvidenceCacheKey(repository));
+  const cachedMissing = negativeCache.fingerprintKey === fingerprintKey
+    ? new Set(negativeCache.paths || [])
+    : new Set();
+  const candidateResults = await runWithConcurrency(
+    uniqueCandidatePaths.filter((path) => !cachedMissing.has(path)),
+    SOURCE_FETCH_CONCURRENCY,
+    async (path) => ({ path, data: await fetchGithubContent(owner, repo, path, githubAccount.accessToken) })
+  );
+  const missingPaths = new Set(cachedMissing);
+
+  for (const result of candidateResults.filter(Boolean)) {
+    const { path, data } = result;
     if (!data) {
+      missingPaths.add(path);
       continue;
     }
 
@@ -599,6 +615,11 @@ const fetchRepositoryPackages = async (authUser, repoId) => {
   };
   upsert.rawData.__sourceEvidenceCache = {
     ...getSourceEvidenceCacheKey(repository),
+    generatedAt: lastFetchedAt,
+  };
+  upsert.rawData.__negativePathCache = {
+    fingerprintKey,
+    paths: [...missingPaths],
     generatedAt: lastFetchedAt,
   };
 

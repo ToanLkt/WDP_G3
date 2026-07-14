@@ -109,6 +109,18 @@ router.get('/sessions/:sessionId', authMiddleware, chatController.getChatSession
  *               message:
  *                 type: string
  *                 example: Dua tren GitHub cua toi, toi phu hop Backend hay Fullstack hon?
+ *               repositoryId:
+ *                 type: string
+ *                 description: Optional repository-scoped context. Used when roadmapId is absent.
+ *               roadmapId:
+ *                 type: string
+ *                 description: Optional roadmap-scoped context; highest priority and includes current progress.
+ *               analysisId:
+ *                 type: string
+ *                 description: Optional owned AnalysisResult selector when repositoryId/roadmapId are absent.
+ *               snapshotId:
+ *                 type: string
+ *                 description: Optional owned RepoAnalysisSnapshot selector when repositoryId/roadmapId are absent.
  *     responses:
  *       200:
  *         description: Message sent successfully. In AI_AUTO, the response may include intent, contextSource, and skillScoreSummary outside production for debugging.
@@ -155,6 +167,9 @@ router.get('/sessions/:sessionId', authMiddleware, chatController.getChatSession
  *                     skillScoreSummary:
  *                       type: object
  *                       description: Present only when NODE_ENV is not production.
+ *                     context:
+ *                       type: object
+ *                       description: Safe provenance IDs for the analysis/roadmap/progress used by this answer.
  *       400:
  *         description: Invalid request body
  *       401:

@@ -133,10 +133,11 @@ const compactSkill = (skillName, level, priority = 'normal') => ({
 
 const buildChatSkillScoreContext = async (userId, options = {}) => {
   const repositoryId = options.repositoryId || options.repoId || null;
-  const [studentProfile, analysis] = await Promise.all([
+  const [studentProfile, loadedAnalysis] = await Promise.all([
     StudentProfile.findOne({ userId }).select('targetCareer currentSkills githubUsername githubConnected').lean(),
-    findLatestDev2VecAnalysis(userId, repositoryId),
+    options.analysis ? Promise.resolve(options.analysis) : findLatestDev2VecAnalysis(userId, repositoryId),
   ]);
+  const analysis = options.analysis || loadedAnalysis;
 
   if (!analysis || !hasDev2VecAnalysis(analysis)) {
     return {

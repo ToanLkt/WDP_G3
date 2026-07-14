@@ -10,11 +10,11 @@ const cases = [
   ['CICD', 'CI/CD'],
   ['CI CD', 'CI/CD'],
   ['JWT Auth', 'JWT Authentication'],
-  ['docker-compose', 'Docker Compose'],
+  ['docker-compose', 'Docker Basics'],
   ['MongoDB/Mongoose', 'Mongoose'],
-  ['OpenAPI', 'Swagger'],
+  ['OpenAPI', 'REST API'],
   ['Environment Configuration', 'Environment Variables'],
-  ['Testing', 'Testing'],
+  ['Testing', 'API Testing'],
   ['Clean Code', 'Clean Code'],
 ];
 

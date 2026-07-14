@@ -168,10 +168,10 @@ const searchYoutubeVideos = async ({ skillName, targetRole, level, language = 'e
     .map((item) => item.id?.videoId)
     .filter(Boolean);
   const details = await fetchYouTubeVideoDetails(videoIds);
-  return details
-    .map(mapVideoDetail)
-    .filter((video) => validateYouTubeVideoMetadata(video).valid)
-    .filter((video) => checkYouTubeSafety(video).allowed)
+  const mapped = details.map(mapVideoDetail);
+  const validMetadata = mapped.filter((video) => validateYouTubeVideoMetadata(video).valid);
+  const safeVideos = validMetadata.filter((video) => checkYouTubeSafety(video).allowed);
+  const scoredVideos = safeVideos
     .map((video) => ({
       ...video,
       score: calculateYouTubeVideoScore({
@@ -184,9 +184,21 @@ const searchYoutubeVideos = async ({ skillName, targetRole, level, language = 'e
       safetyStatus: 'allowed',
       safetyReasons: [],
       validatedAt: new Date(),
-    }))
-    .filter((video) => video.score >= 40)
-    .sort((a, b) => b.score - a.score);
+    }));
+  const relevantVideos = scoredVideos.filter((video) => video.score >= 40).sort((a, b) => b.score - a.score);
+  let reasonCode = 'youtube_hit';
+  if (!videoIds.length) reasonCode = 'youtube_no_candidates';
+  else if (!validMetadata.length) reasonCode = 'youtube_invalid_metadata';
+  else if (!safeVideos.length || !relevantVideos.length) reasonCode = 'youtube_all_filtered';
+  console.info('[youtube-search]', {
+    reasonCode,
+    searchCandidates: videoIds.length,
+    metadataCandidates: mapped.length,
+    validMetadataCandidates: validMetadata.length,
+    safeCandidates: safeVideos.length,
+    relevantCandidates: relevantVideos.length,
+  });
+  return relevantVideos;
 };
 
 module.exports = {

@@ -1,4 +1,7 @@
 const isTimingEnabled = () => (
+  process.env.ANALYSIS_TIMING_DEBUG === 'true'
+  || process.env.ANALYSIS_TIMING_DEBUG === '1'
+  ||
   process.env.DEV2VEC_TIMING_DEBUG === 'true'
   || process.env.DEV2VEC_TIMING_DEBUG === '1'
 );
@@ -34,7 +37,7 @@ const createDev2VecTimer = ({ repoId, analysisId, requestId } = {}) => {
     });
   };
 
-  return { measure, mark, log, phases };
+  return { measure, mark, log, phases, getTotalMs: () => nowMs() - start };
 };
 
 module.exports = {

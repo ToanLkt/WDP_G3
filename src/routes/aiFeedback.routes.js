@@ -44,6 +44,20 @@ router.get('/me', authMiddleware, aiFeedbackController.getMyFeedbacks);
  *         schema:
  *           type: string
  *         description: Repository MongoDB _id or GitHub repo id
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               roadmapId:
+ *                 type: string
+ *                 description: Optional owned roadmap. Pins feedback to its analysis and current progress.
+ *               analysisId:
+ *                 type: string
+ *               snapshotId:
+ *                 type: string
  *     responses:
  *       201:
  *         description: AI feedback generated successfully
@@ -72,6 +86,11 @@ router.post('/repositories/:repoId', authMiddleware, aiFeedbackController.genera
  *         schema:
  *           type: string
  *         description: Repository MongoDB _id or GitHub repo id
+ *       - in: query
+ *         name: roadmapId
+ *         schema:
+ *           type: string
+ *         description: Optional roadmap scope for selecting feedback and freshness comparison.
  *     responses:
  *       200:
  *         description: AI feedback result fetched successfully

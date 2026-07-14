@@ -3,6 +3,7 @@ const { calculateScores } = require('./analysis.scoring');
 const { dedupeStrings, extractSkillSignals } = require('./analysis.skillExtractor');
 const { buildSkillVectorFromAnalysis } = require('../skillVector.service');
 const { generateAnalysisInsightsFromSkillVector } = require('../skillInsight.service');
+const { createStatusError } = require('../github/github.utils');
 const {
   buildDocumentationRecommendation,
   detectDocumentationEvidence,
@@ -810,7 +811,7 @@ const buildSummary = (source) => ({
 
 const formatAnalysisResponse = (snapshot, options = {}) => {
   if (!snapshot) {
-    return null;
+    throw createStatusError('Analysis result not available after analysis', 500);
   }
 
   const source = toPlainObject(snapshot);

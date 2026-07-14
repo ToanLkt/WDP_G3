@@ -25,6 +25,7 @@ const roleRoutes = require("./routes/role.routes");
 
 const errorMiddleware = require("./middlewares/error.middleware");
 const { errorResponse } = require("./utils/response");
+const { getDev2VecServiceHealth } = require('./services/dev2vec/dev2vec.service');
 
 const app = express();
 
@@ -62,15 +63,20 @@ app.get("/", (req, res) => {
   });
 });
 
-const healthHandler = (req, res) =>
-  res.json({
+const healthHandler = async (req, res) => {
+  const python = await getDev2VecServiceHealth();
+  const required = Boolean(process.env.DEV2VEC_SERVICE_URL);
+  const healthy = !required || python.healthy;
+  return res.status(healthy ? 200 : 503).json({
     success: true,
     message: "Server is running",
     data: {
-      status: "ok",
+      status: healthy ? "ok" : "degraded",
       environment: process.env.NODE_ENV || "development",
+      dev2vecService: python,
     },
   });
+};
 
 app.get("/health", healthHandler);
 app.get("/api/health", healthHandler);

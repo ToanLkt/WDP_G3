@@ -6,7 +6,7 @@ const ChatSetting = require('../models/ChatSetting');
 const StudentProfile = require('../models/StudentProfile');
 const Repository = require('../models/Repository');
 const RepositoryPackage = require('../models/RepositoryPackage');
-const AnalysisSnapshot = require('../models/AnalysisSnapshot');
+const AnalysisResult = require('../models/AnalysisResult');
 const SkillSignal = require('../models/SkillSignal');
 
 const { generateChatResult } = require('./ai.service');
@@ -17,6 +17,7 @@ const {
   detectChatIntent,
 } = require('./chatSkillContext.service');
 const { createStatusError } = require('./github/github.utils');
+const { resolveCurrentContext } = require('./currentContext.service');
 
 let LearningRecommendation = null;
 
@@ -273,7 +274,7 @@ const buildUserGithubContext = async (userId) => {
       .limit(MAX_CONTEXT_REPOSITORIES)
       .select('name fullName description language topics pushedAt updatedAtGithub')
       .lean(),
-    AnalysisSnapshot.find({ userId })
+    AnalysisResult.find({ userId })
       .sort({ analyzedAt: -1, createdAt: -1 })
       .limit(MAX_CONTEXT_SNAPSHOTS)
       .select(
@@ -439,6 +440,23 @@ const sendMessage = async ({ user, params, body }) => {
 
   const intent = detectChatIntent(content);
 
+  const selectors = {
+    repositoryId: body?.repositoryId || null,
+    roadmapId: body?.roadmapId || null,
+    analysisId: body?.analysisId || null,
+    snapshotId: body?.snapshotId || null,
+  };
+  let selectedContext;
+  try {
+    selectedContext = await resolveCurrentContext(userId, selectors);
+  } catch (error) {
+    if (error.statusCode !== 404 || Object.values(selectors).some(Boolean)) throw error;
+    selectedContext = {
+      analysis: null, repository: null, roadmap: null, progressContext: null,
+      topSkills: [], missingSkills: [],
+      provenance: { repositoryId: null, analysisId: null, snapshotId: null, roadmapId: null, progressUpdatedAt: null, analysisSource: 'none' },
+    };
+  }
   const [githubContext, recentMessages, skillScoreContext] = await Promise.all([
     buildUserGithubContext(userId),
     ChatMessage.find({
@@ -452,8 +470,20 @@ const sendMessage = async ({ user, params, body }) => {
     buildChatSkillScoreContext(userId, {
       intent,
       repositoryId: session.repositoryId || session.repoId || body?.repositoryId || body?.repoId || null,
+      analysis: selectedContext.analysis,
     }),
   ]);
+  const selectedAnalysisContext = {
+    repositoryName: selectedContext.repository?.name || selectedContext.analysis?.repoName || '',
+    projectType: selectedContext.analysis?.projectType || '',
+    careerDirection: selectedContext.analysis?.careerDirection || '',
+    userLevel: selectedContext.analysis?.summary?.userLevel || '',
+    topSkills: selectedContext.topSkills,
+    missingSkills: selectedContext.missingSkills,
+    targetRole: selectedContext.roadmap?.targetRole || '',
+    progress: selectedContext.progressContext,
+    provenance: selectedContext.provenance,
+  };
 
   const shouldShortCircuitNoSkillData =
     intentsRequiringSkillScore.has(intent) && !skillScoreContext.hasSkillScoreData;
@@ -469,6 +499,7 @@ const sendMessage = async ({ user, params, body }) => {
         learningRecommendations: githubContext.learningRecommendations,
         chatHistory: recentMessages.reverse(),
         userQuestion: content,
+        selectedContext: selectedAnalysisContext,
       });
 
   const assistantResult = shouldShortCircuitNoSkillData
@@ -493,6 +524,7 @@ const sendMessage = async ({ user, params, body }) => {
       usedFallback: assistantResult.usedFallback,
       intent,
       contextSource: 'dev2vec',
+      context: selectedContext.provenance,
     },
   });
 
@@ -514,6 +546,7 @@ const sendMessage = async ({ user, params, body }) => {
     userMessage: buildMessageResponse(userMessage.toObject()),
     aiMessage: buildMessageResponse(assistantMessage.toObject()),
     assistantMessage: buildMessageResponse(assistantMessage.toObject()),
+    context: selectedContext.provenance,
   };
 
   if (shouldIncludeChatDebug()) {

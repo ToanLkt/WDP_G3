@@ -136,6 +136,24 @@ def validate_artifact_metadata(metadata, classifier):
         raise ValueError("Classifier input dimension is incompatible")
 
 
+def load_artifacts(artifacts):
+    """Load and validate immutable inference artifacts once."""
+    loaded = {
+        "repo_model": Doc2Vec.load(str(artifacts / "doc2vec_repo.model")),
+        "issue_model": Doc2Vec.load(str(artifacts / "doc2vec_issue.model")),
+        "api_model": Doc2Vec.load(str(artifacts / "doc2vec_api.model")),
+        "classifier": joblib.load(artifacts / "role_classifier.joblib"),
+        "label_encoder": joblib.load(artifacts / "label_encoder.joblib"),
+    }
+    with (artifacts / "skill_vectors.json").open(encoding="utf-8") as handle:
+        loaded["skill_vectors"] = json.load(handle)
+    with (artifacts / "model_metadata.json").open(encoding="utf-8") as handle:
+        loaded["metadata"] = json.load(handle)
+    validate_artifact_metadata(loaded["metadata"], loaded["classifier"])
+    validate_role_scoring_config(loaded["metadata"])
+    return loaded
+
+
 def cosine_similarity(left, right):
     left_norm = float(np.linalg.norm(left))
     right_norm = float(np.linalg.norm(right))
@@ -273,18 +291,16 @@ def run_inference(payload, artifacts):
     repo_document, issue_document, api_tokens, evidence_channels, top_n = validate_input(payload)
     timings["validateInputMs"] = now_ms() - started
     load_started = now_ms()
-    repo_model = Doc2Vec.load(str(artifacts / "doc2vec_repo.model"))
-    issue_model = Doc2Vec.load(str(artifacts / "doc2vec_issue.model"))
-    api_model = Doc2Vec.load(str(artifacts / "doc2vec_api.model"))
-    classifier = joblib.load(artifacts / "role_classifier.joblib")
-    label_encoder = joblib.load(artifacts / "label_encoder.joblib")
-    with (artifacts / "skill_vectors.json").open(encoding="utf-8") as handle:
-        skill_vectors = json.load(handle)
-    with (artifacts / "model_metadata.json").open(encoding="utf-8") as handle:
-        metadata = json.load(handle)
+    loaded = artifacts if isinstance(artifacts, dict) else load_artifacts(artifacts)
+    repo_model = loaded["repo_model"]
+    issue_model = loaded["issue_model"]
+    api_model = loaded["api_model"]
+    classifier = loaded["classifier"]
+    label_encoder = loaded["label_encoder"]
+    skill_vectors = loaded["skill_vectors"]
+    metadata = loaded["metadata"]
     timings["modelLoadMs"] = now_ms() - load_started
     validate_started = now_ms()
-    validate_artifact_metadata(metadata, classifier)
     scoring_config = validate_role_scoring_config(metadata)
     channel_info = resolve_channel_availability(
         repo_document, issue_document, api_tokens, evidence_channels

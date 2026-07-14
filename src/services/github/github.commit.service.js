@@ -1,4 +1,6 @@
 const axios = require('axios');
+const { nowMs } = require('../../utils/dev2vecTiming');
+const { recordGithubCall } = require('../../utils/analysisPerformance');
 
 const GithubAccount = require('../../models/GithubAccount');
 const Repository = require('../../models/Repository');
@@ -169,10 +171,16 @@ const fetchGithubCommits = async ({ owner, repo, accessToken, branch, perPage, m
   let githubStatus = null;
 
   for (let page = 1; page <= maxPages; page += 1) {
-    const response = await axios.get(commitsUrl, {
-      params: { per_page: perPage, page, sha: branch },
-      headers: getGithubHeaders(accessToken),
-    });
+    const started = nowMs();
+    let response;
+    try {
+      response = await axios.get(commitsUrl, {
+        params: { per_page: perPage, page, sha: branch },
+        headers: getGithubHeaders(accessToken),
+      });
+    } finally {
+      recordGithubCall('commit_list', nowMs() - started);
+    }
     githubStatus = response.status;
     const pageItems = Array.isArray(response.data) ? response.data : [];
     commits.push(...pageItems);
@@ -182,11 +190,25 @@ const fetchGithubCommits = async ({ owner, repo, accessToken, branch, perPage, m
   return { commits, githubStatus, commitApiUrlWithoutToken: `${commitsUrl}?sha=${encodeURIComponent(branch)}` };
 };
 
+const fetchCurrentDefaultBranchHead = async ({ repository, githubAccount }) => {
+  const [owner, repo] = String(repository.fullName || '').split('/');
+  const branch = getBranchForCommitFetch(repository, {});
+  if (!owner || !repo || !githubAccount?.accessToken || !branch) return null;
+  const result = await fetchGithubCommits({
+    owner, repo, branch, accessToken: githubAccount.accessToken, perPage: 1, maxPages: 1,
+  });
+  return result.commits?.[0]?.sha || null;
+};
+
 const fetchGithubCommitDetail = async ({ owner, repo, accessToken, sha }) => {
   const detailUrl = `${getCommitApiUrl(owner, repo)}/${encodeURIComponent(sha)}`;
-  const response = await axios.get(detailUrl, {
-    headers: getGithubHeaders(accessToken),
-  });
+  const started = nowMs();
+  let response;
+  try {
+    response = await axios.get(detailUrl, { headers: getGithubHeaders(accessToken) });
+  } finally {
+    recordGithubCall('commit_detail', nowMs() - started);
+  }
   return {
     detail: response.data,
     githubStatus: response.status,
@@ -195,11 +217,17 @@ const fetchGithubCommitDetail = async ({ owner, repo, accessToken, sha }) => {
 };
 
 const fetchFileAtCommit = async ({ owner, repo, accessToken, sha, filename }) => {
-  const response = await axios.get(`https://api.github.com/repos/${owner}/${repo}/contents/${filename.split('/').map(encodeURIComponent).join('/')}`, {
-    params: { ref: sha },
-    headers: getGithubHeaders(accessToken),
-    timeout: parsePositiveInteger(process.env.GITHUB_COMMIT_CONTENT_TIMEOUT_MS, 10000),
-  });
+  const started = nowMs();
+  let response;
+  try {
+    response = await axios.get(`https://api.github.com/repos/${owner}/${repo}/contents/${filename.split('/').map(encodeURIComponent).join('/')}`, {
+      params: { ref: sha },
+      headers: getGithubHeaders(accessToken),
+      timeout: parsePositiveInteger(process.env.GITHUB_COMMIT_CONTENT_TIMEOUT_MS, 10000),
+    });
+  } finally {
+    recordGithubCall('file_at_commit', nowMs() - started);
+  }
   if (response.data?.encoding !== 'base64' || !response.data?.content) return '';
   const buffer = Buffer.from(String(response.data.content).replace(/\s/g, ''), 'base64');
   if (buffer.length > getCommitFileMaxBytes()) {
@@ -424,6 +452,7 @@ const fetchAndCacheCommitDetailsForUserCommits = async ({
     repo,
     requestedCount: Array.isArray(commits) ? commits.length : 0,
     fetchedDetailCount: 0,
+    fetchedShas: [],
     reusedDetailCount: 0,
     failedDetailCount: 0,
     skippedDetailCount: 0,
@@ -534,6 +563,7 @@ const fetchAndCacheCommitDetailsForUserCommits = async ({
         metadata.githubStatus = result.githubStatus;
         metadata.commitDetailApiUrlWithoutToken = result.commitDetailApiUrlWithoutToken;
         metadata.fetchedDetailCount += 1;
+        metadata.fetchedShas.push(commit.sha);
         updates.set(commit.sha, normalized);
         const embedNormalizedFiles = !includeCodeEvidence || shouldEmbedNormalizedFiles(normalized.normalizedFiles);
         const persistedNormalized = embedNormalizedFiles
@@ -745,6 +775,7 @@ const getRepositoryCommitsCached = async (authUser, repoId, query = {}) => {
 };
 
 module.exports = {
+  fetchCurrentDefaultBranchHead,
   fetchAndCacheRepositoryCommits,
   fetchAndCacheCommitDetailsForUserCommits,
   getBranchForCommitFetch,

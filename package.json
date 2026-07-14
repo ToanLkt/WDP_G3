@@ -20,9 +20,15 @@
     "test:role-matching": "node scripts/testRoleMatching.js",
     "test:roadmap-skill-gap": "node scripts/testRoadmapSkillGap.js",
     "test:learning-canonicalization": "node scripts/testLearningCanonicalization.js",
+    "test:end-to-end-flow": "node scripts/testEndToEndFlowConsistency.js",
+    "test:current-context": "node scripts/testCurrentContextServiceHarness.js",
+    "test:github-account": "node scripts/testGithubAccountFlow.js",
     "test:dev2vec-input": "node scripts/testDev2VecInputBuilder.js",
     "test:dev2vec-evidence-taxonomy": "node scripts/testDev2VecEvidenceTaxonomy.js",
-    "test:backend-analysis-pipeline": "node scripts/testBackendAnalysisPipelineFixes.js"
+    "test:backend-analysis-pipeline": "node scripts/testBackendAnalysisPipelineFixes.js",
+    "test:analysis-performance": "node scripts/testAnalysisPerformanceOptimizations.js",
+    "benchmark:analysis-performance": "node scripts/benchmarkAnalysisPerformanceOptimizations.js",
+    "migrate:analysis-performance-indexes": "node scripts/createAnalysisPerformanceIndexes.js"
   },
   "dependencies": {
     "axios": "^1.11.0",

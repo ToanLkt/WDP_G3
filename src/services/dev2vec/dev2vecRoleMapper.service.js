@@ -140,11 +140,18 @@ const getPredictionForRole = (dev2vecOutput = {}, roleId = '') => {
   )) || null;
 };
 
+const getUserLevelFromScore = (score) => {
+  const value = Number(score) || 0;
+  if (value >= 80) return 'advanced';
+  if (value >= 45) return 'intermediate';
+  return 'beginner';
+};
+
 const buildAnalysisSummaryFromDev2Vec = (dev2vecOutput = {}, options = {}) => {
   if (Object.prototype.hasOwnProperty.call(options, 'roleId') && !options.roleId) {
     return {
       careerDirection: '',
-      userLevel: 'novice',
+      userLevel: 'beginner',
       userReadinessScore: 0,
       overallScore: 0,
       projectType: '',
@@ -155,7 +162,7 @@ const buildAnalysisSummaryFromDev2Vec = (dev2vecOutput = {}, options = {}) => {
   if (!topPrediction) {
     return {
       careerDirection: '',
-      userLevel: 'novice',
+      userLevel: 'beginner',
       userReadinessScore: 0,
       overallScore: 0,
       projectType: '',
@@ -164,11 +171,7 @@ const buildAnalysisSummaryFromDev2Vec = (dev2vecOutput = {}, options = {}) => {
   }
 
   const matchScore = roundPercent(topPrediction.probability);
-  const userLevel = matchScore >= 70
-    ? 'intermediate'
-    : matchScore >= 40
-      ? 'beginner'
-      : 'novice';
+  const userLevel = getUserLevelFromScore(matchScore);
 
   return {
     careerDirection: topPrediction.roleName || '',
@@ -421,6 +424,7 @@ module.exports = {
   mapPredictionToRoleMatch,
   getDev2VecMatchLevel,
   getDev2VecMatchLevelLabel,
+  getUserLevelFromScore,
   mapSkillGapDetails,
   buildAnalysisSummaryFromDev2Vec,
   buildAnalysisSkillsFromDev2Vec,

@@ -40,6 +40,12 @@ const router = express.Router();
  *           type: boolean
  *           default: false
  *         description: Only works with view=detail. Includes debug skillVector evidence for admin/debug.
+ *       - in: query
+ *         name: forceRegenerate
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: Bypass exact and incremental caches; public response remains unchanged.
  *     responses:
  *       200:
  *         description: Repository analyzed successfully. Default response is compact and scoped to current user's contribution.

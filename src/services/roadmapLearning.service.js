@@ -52,7 +52,7 @@ const mapTask = (task, { scope, phaseIndex, taskIndex, roadmap, path } = {}) => 
   if (!task || typeof task !== 'object') return null;
   const canonicalSkillName = canonicalizeSkillName(task.canonicalSkillName || task.skillName || task.skill || task.title || '');
   if (!canonicalSkillName) return null;
-  const itemId = buildTaskItemId({
+  const itemId = String(task.itemId || '').trim() || buildTaskItemId({
     scope,
     phaseIndex,
     taskIndex,
@@ -185,6 +185,13 @@ const getResourcesForLearning = async (query, includeResources, searchIfMissing 
       return resourcesResult.data.resources;
     }
   } catch (error) {
+    console.warn('[roadmap-learning-resource]', {
+      reasonCode: 'resource_lookup_error',
+      skillName: query.canonicalSkillName || query.skillName,
+      level: query.level,
+      language: query.language,
+      statusCode: error.statusCode || error.response?.status || 500,
+    });
     if (!searchIfMissing) return [];
   }
 
@@ -192,6 +199,13 @@ const getResourcesForLearning = async (query, includeResources, searchIfMissing 
     const searched = await learningService.searchAndCacheYoutubeResources(query);
     return searched.data.resources || [];
   } catch (error) {
+    console.warn('[roadmap-learning-resource]', {
+      reasonCode: 'resource_search_error',
+      skillName: query.canonicalSkillName || query.skillName,
+      level: query.level,
+      language: query.language,
+      statusCode: error.statusCode || error.response?.status || 500,
+    });
     try {
       const resourcesResult = await learningService.getLearningResources(query);
       return resourcesResult.data.resources || [];
