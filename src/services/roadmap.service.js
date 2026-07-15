@@ -1730,6 +1730,7 @@ const generateRoadmap = async (
       userId,
       targetRole: normalizedTargetRole,
       status: 'active',
+      isDeleted: { $ne: true },
     };
     if (repository) baseExistingQuery.repositoryId = repository._id;
     if (resolvedRoleId || roleCatalogEntry?.roleId || roleId) baseExistingQuery.roleId = resolvedRoleId || roleCatalogEntry?.roleId || roleId;
@@ -1790,6 +1791,7 @@ const generateRoadmap = async (
       userId,
       targetRole: normalizedTargetRole,
       status: 'active',
+      isDeleted: { $ne: true },
       'roadmapSource.sourceMode': normalizedSourceMode,
     };
     if (repository) archiveQuery.repositoryId = repository._id;
@@ -1881,7 +1883,7 @@ const generateRoadmap = async (
 
 const getMyRoadmaps = async (userIdOrAuthUser, filters = {}) => {
   const userId = getUserId(userIdOrAuthUser);
-  const query = { userId };
+  const query = { userId, isDeleted: { $ne: true } };
 
   if (['active', 'archived'].includes(filters.status)) {
     query.status = filters.status;
@@ -1907,7 +1909,7 @@ const getRoadmapById = async (userIdOrAuthUser, roadmapId) => {
     throw createStatusError('Roadmap not found', 404);
   }
 
-  const roadmap = await Roadmap.findOne({ _id: roadmapId, userId }).lean();
+  const roadmap = await Roadmap.findOne({ _id: roadmapId, userId, isDeleted: { $ne: true } }).lean();
   if (!roadmap) {
     throw createStatusError('Roadmap not found', 404);
   }
@@ -1940,7 +1942,7 @@ const archiveRoadmap = async (userIdOrAuthUser, roadmapId) => {
   }
 
   const roadmap = await Roadmap.findOneAndUpdate(
-    { _id: roadmapId, userId },
+    { _id: roadmapId, userId, isDeleted: { $ne: true } },
     { $set: { status: 'archived' } },
     { new: true }
   ).lean();
@@ -1959,11 +1961,45 @@ const archiveRoadmap = async (userIdOrAuthUser, roadmapId) => {
   };
 };
 
+const deleteRoadmap = async (userIdOrAuthUser, roadmapId) => {
+  const userId = getUserId(userIdOrAuthUser);
+
+  if (!mongoose.Types.ObjectId.isValid(String(roadmapId || ''))) {
+    throw createStatusError('Roadmap not found', 404);
+  }
+
+  const roadmap = await Roadmap.findOneAndUpdate(
+    { _id: roadmapId, userId, isDeleted: { $ne: true } },
+    {
+      $set: {
+        isDeleted: true,
+        deletedAt: new Date(),
+        deletedBy: userId,
+      },
+    },
+    { new: true }
+  ).lean();
+
+  if (!roadmap) {
+    throw createStatusError('Roadmap not found', 404);
+  }
+
+  return {
+    message: 'Roadmap deleted successfully',
+    data: {
+      roadmapId: roadmap._id,
+      deleted: true,
+    },
+    statusCode: 200,
+  };
+};
+
 module.exports = {
   generateRoadmap,
   getMyRoadmaps,
   getRoadmapById,
   archiveRoadmap,
+  deleteRoadmap,
   buildRoadmapGithubContext,
   parseRoadmapJson,
   buildFallbackRoadmap,

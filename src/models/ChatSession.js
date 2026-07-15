@@ -8,6 +8,44 @@ const chatSessionSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    repositoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Repository',
+      default: null,
+      index: true,
+    },
+    roadmapId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Roadmap',
+      default: null,
+      index: true,
+    },
+    analysisId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'AnalysisResult',
+      default: null,
+      index: true,
+    },
+    snapshotId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'RepoAnalysisSnapshot',
+      default: null,
+      index: true,
+    },
+    contextSelectionReason: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    contextPinnedAt: {
+      type: Date,
+      default: null,
+    },
+    contextPinnedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
     title: {
       type: String,
       default: 'New GitHub Mentor Chat',
@@ -68,10 +106,33 @@ const chatSessionSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    userDeletedAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+    closedAt: {
+      type: Date,
+      default: null,
+    },
+    closedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    closeReason: {
+      type: String,
+      default: '',
+      trim: true,
+    },
   },
   {
     timestamps: true,
   }
 );
+
+chatSessionSchema.index({ userId: 1, repositoryId: 1 });
+chatSessionSchema.index({ userId: 1, roadmapId: 1 });
+chatSessionSchema.index({ userId: 1, updatedAt: -1 });
 
 module.exports = mongoose.model('ChatSession', chatSessionSchema);

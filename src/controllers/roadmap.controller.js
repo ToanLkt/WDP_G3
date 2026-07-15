@@ -37,9 +37,19 @@ const archiveRoadmap = async (req, res, next) => {
   }
 };
 
+const deleteRoadmap = async (req, res, next) => {
+  try {
+    const result = await roadmapService.deleteRoadmap(req.user, req.params.roadmapId);
+    return successResponse(res, result.message, result.data, result.statusCode);
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   generateRoadmap,
   getMyRoadmaps,
   getRoadmapDetail,
   archiveRoadmap,
+  deleteRoadmap,
 };

@@ -198,7 +198,7 @@ const getOwnedRoadmap = async (userId, roadmapId) => {
     throw createStatusError('Roadmap not found', 404);
   }
 
-  const roadmap = await Roadmap.findOne({ _id: roadmapId, userId }).lean();
+  const roadmap = await Roadmap.findOne({ _id: roadmapId, userId, isDeleted: { $ne: true } }).lean();
   if (!roadmap) {
     throw createStatusError('Roadmap not found', 404);
   }

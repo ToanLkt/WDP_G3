@@ -252,6 +252,55 @@ router.post("/chat/sessions/:sessionId/messages", adminController.sendChatSessio
 
 /**
  * @swagger
+ * /api/admin/chat/sessions/{sessionId}/close:
+ *   patch:
+ *     tags: [Admin]
+ *     summary: Close a chat session as admin
+ *     description: Marks a chat session as closed without deleting messages. Closed sessions remain visible to admin and block user/admin replies and mode changes.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 example: Da xu ly xong yeu cau cua user
+ *     responses:
+ *       200:
+ *         description: Chat session closed successfully
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: Chat session closed successfully
+ *               data:
+ *                 session:
+ *                   _id: 665f1f000000000000000001
+ *                   status: closed
+ *                   closedAt: 2026-07-15T00:00:00.000Z
+ *                   closedBy: 665f1f000000000000000002
+ *               errorCode: null
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin permission is required
+ *       404:
+ *         description: Chat session not found
+ */
+router.patch("/chat/sessions/:sessionId/close", adminController.closeChatSession);
+
+/**
+ * @swagger
  * /api/admin/chat/sessions/{sessionId}/mode:
  *   patch:
  *     tags: [Admin]
@@ -280,6 +329,8 @@ router.post("/chat/sessions/:sessionId/messages", adminController.sendChatSessio
  *     responses:
  *       200:
  *         description: Chat session mode updated successfully
+ *       400:
+ *         description: CHAT_SESSION_CLOSED when the session is closed
  */
 router.patch("/chat/sessions/:sessionId/mode", adminController.updateChatSessionMode);
 

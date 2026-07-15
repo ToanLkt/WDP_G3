@@ -35,6 +35,29 @@ const router = express.Router();
  *               title:
  *                 type: string
  *                 example: Tu van GitHub cua toi
+ *               repositoryId:
+ *                 type: string
+ *                 description: Optional repository context to pin to this chat session.
+ *               roadmapId:
+ *                 type: string
+ *                 description: Optional roadmap context to pin to this chat session. Highest priority when present.
+ *               analysisId:
+ *                 type: string
+ *                 description: Optional AnalysisResult context to pin to this chat session.
+ *               snapshotId:
+ *                 type: string
+ *                 description: Optional RepoAnalysisSnapshot context to pin to this chat session.
+ *           examples:
+ *             repositoryScoped:
+ *               summary: Create a session pinned to a repository
+ *               value:
+ *                 title: Tu van repo WDP_G3
+ *                 repositoryId: 665f1f000000000000000001
+ *             roadmapScoped:
+ *               summary: Create a session pinned to a roadmap
+ *               value:
+ *                 title: Tu van roadmap Backend
+ *                 roadmapId: 665f1f000000000000000002
  *     responses:
  *       201:
  *         description: Chat session created successfully
@@ -85,6 +108,40 @@ router.get('/sessions/:sessionId', authMiddleware, chatController.getChatSession
 
 /**
  * @swagger
+ * /api/chat/sessions/{sessionId}:
+ *   delete:
+ *     tags: [Chat]
+ *     summary: Delete current user's chat session
+ *     description: Soft-hides the session from the current user's chat list. Messages are kept for audit/support history.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Chat session deleted successfully
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: Chat session deleted successfully
+ *               data:
+ *                 sessionId: 665f1f000000000000000001
+ *                 deleted: true
+ *               errorCode: null
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Chat session not found
+ */
+router.delete('/sessions/:sessionId', authMiddleware, chatController.deleteChatSession);
+
+/**
+ * @swagger
  * /api/chat/sessions/{sessionId}/messages:
  *   post:
  *     tags: [Chat]
@@ -121,6 +178,16 @@ router.get('/sessions/:sessionId', authMiddleware, chatController.getChatSession
  *               snapshotId:
  *                 type: string
  *                 description: Optional owned RepoAnalysisSnapshot selector when repositoryId/roadmapId are absent.
+ *           examples:
+ *             noSelector:
+ *               summary: Use pinned session context or latest analysis fallback
+ *               value:
+ *                 message: Toi phu hop Backend hay Fullstack hon?
+ *             repositoryOverride:
+ *               summary: Override and pin session context to a repository
+ *               value:
+ *                 message: Danh gia repo nay giup toi
+ *                 repositoryId: 665f1f000000000000000001
  *     responses:
  *       200:
  *         description: Message sent successfully. In AI_AUTO, the response may include intent, contextSource, and skillScoreSummary outside production for debugging.
@@ -169,9 +236,9 @@ router.get('/sessions/:sessionId', authMiddleware, chatController.getChatSession
  *                       description: Present only when NODE_ENV is not production.
  *                     context:
  *                       type: object
- *                       description: Safe provenance IDs for the analysis/roadmap/progress used by this answer.
+ *                       description: Safe provenance IDs for the analysis/roadmap/progress used by this answer, including repoName, contextSelectionReason, and contextPinned.
  *       400:
- *         description: Invalid request body
+ *         description: Invalid request body or CHAT_SESSION_CLOSED when the session is closed
  *       401:
  *         description: Unauthorized
  *       404:

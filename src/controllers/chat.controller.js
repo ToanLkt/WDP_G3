@@ -37,9 +37,19 @@ const sendChatMessage = async (req, res, next) => {
   }
 };
 
+const deleteChatSession = async (req, res, next) => {
+  try {
+    const result = await chatService.deleteSession({ user: req.user, params: req.params });
+    return successResponse(res, result.message, result.data, result.statusCode);
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   createChatSession,
   getChatSessions,
   getChatSessionDetail,
   sendChatMessage,
+  deleteChatSession,
 };
