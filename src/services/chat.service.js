@@ -48,10 +48,28 @@ const getUserId = (authUser) => {
   return String(userId);
 };
 
-const buildSessionResponse = (session) => {
+const computeChatSessionMode = (session = {}, globalSetting = null) => {
+  const modeSource = CHAT_MODE_SOURCES.includes(session?.modeSource) ? session.modeSource : 'GLOBAL';
+  const globalMode = CHAT_MODES.includes(globalSetting?.mode) ? globalSetting.mode : 'AI_AUTO';
+  const sessionMode = CHAT_MODES.includes(session?.mode) ? session.mode : null;
+  const effectiveMode = modeSource === 'SESSION' ? sessionMode || globalMode : globalMode;
+
+  return {
+    mode: modeSource === 'GLOBAL' ? null : sessionMode,
+    modeSource,
+    effectiveMode,
+  };
+};
+
+const normalizeActiveStatusForMode = (status, effectiveMode) =>
+  effectiveMode === 'AI_AUTO' && status === 'waiting_admin' ? 'active' : status;
+
+const buildSessionResponse = (session, globalSetting = null) => {
   if (!session) {
     return null;
   }
+
+  const modeState = computeChatSessionMode(session, globalSetting);
 
   return {
     _id: session._id,
@@ -66,8 +84,9 @@ const buildSessionResponse = (session) => {
     title: session.title,
     lastMessage: session.lastMessage || '',
     status: session.status || 'active',
-    mode: session.mode || 'AI_AUTO',
-    modeSource: session.modeSource || 'GLOBAL',
+    mode: modeState.mode,
+    modeSource: modeState.modeSource,
+    effectiveMode: modeState.effectiveMode,
     assignedAdminId: session.assignedAdminId || null,
     aiPausedAt: session.aiPausedAt || null,
     aiPausedBy: session.aiPausedBy || null,
@@ -130,18 +149,11 @@ const buildSettingResponse = (setting) => ({
 });
 
 const getEffectiveMode = async (session) => {
-  if ((session.modeSource || 'GLOBAL') === 'SESSION') {
-    return session.mode || 'AI_AUTO';
-  }
-
   const setting = await getOrCreateChatSetting();
-  return setting.mode || 'AI_AUTO';
+  return computeChatSessionMode(session, setting).effectiveMode;
 };
 
-const buildSessionWithEffectiveMode = (session, effectiveMode) => ({
-  ...buildSessionResponse(session),
-  effectiveMode,
-});
+const buildSessionWithEffectiveMode = (session, setting) => buildSessionResponse(session, setting);
 
 const findOwnedSession = async (userId, sessionId, options = {}) => {
   if (!mongoose.Types.ObjectId.isValid(String(sessionId || ''))) {
@@ -496,7 +508,7 @@ const createSession = async ({ user, body }) => {
   return {
     message: 'Chat session created successfully',
     data: {
-      session: buildSessionResponse(session.toObject()),
+      session: buildSessionResponse(session.toObject(), await getOrCreateChatSetting()),
       context: selectedContext ? buildContextResponse(selectedContext, true) : null,
     },
     statusCode: 201,
@@ -508,11 +520,12 @@ const getSessions = async ({ user }) => {
   const sessions = await ChatSession.find({ userId, userDeletedAt: null })
     .sort({ updatedAt: -1 })
     .lean();
+  const setting = await getOrCreateChatSetting();
 
   return {
     message: 'Chat sessions fetched successfully',
     data: {
-      sessions: sessions.map(buildSessionResponse),
+      sessions: sessions.map((session) => buildSessionResponse(session, setting)),
     },
     statusCode: 200,
   };
@@ -526,17 +539,20 @@ const getSessionDetail = async ({ user, params }) => {
     throw createStatusError('Chat session not found', 404);
   }
 
-  const messages = await ChatMessage.find({
-    sessionId: session._id,
-    userId,
-  })
-    .sort({ createdAt: 1, _id: 1 })
-    .lean();
+  const [setting, messages] = await Promise.all([
+    getOrCreateChatSetting(),
+    ChatMessage.find({
+      sessionId: session._id,
+      userId,
+    })
+      .sort({ createdAt: 1, _id: 1 })
+      .lean(),
+  ]);
 
   return {
     message: 'Chat session fetched successfully',
     data: {
-      session: buildSessionResponse(session),
+      session: buildSessionResponse(session, setting),
       messages: messages.map(buildMessageResponse),
     },
     statusCode: 200,
@@ -586,7 +602,9 @@ const sendMessage = async ({ user, params, body }) => {
   const sessionSelectors = getContextSelectors(session);
   const hasBodySelectors = hasContextSelectors(bodySelectors);
   const hasSessionSelectors = hasContextSelectors(sessionSelectors);
-  const effectiveMode = await getEffectiveMode(session);
+  const setting = await getOrCreateChatSetting();
+  const modeState = computeChatSessionMode(session, setting);
+  const effectiveMode = modeState.effectiveMode;
   let selectedContext = null;
 
   if (effectiveMode === 'AI_AUTO' || hasBodySelectors) {
@@ -639,12 +657,13 @@ const sendMessage = async ({ user, params, body }) => {
     return {
       message: 'Tin nhan da duoc gui.',
       data: {
-        mode: 'MANUAL',
-        effectiveMode: 'MANUAL',
-        modeSource: session.modeSource || 'GLOBAL',
+        mode: computeChatSessionMode(session, setting).mode,
+        effectiveMode,
+        modeSource: modeState.modeSource,
         status: session.status,
         userMessage: buildMessageResponse(userMessage.toObject()),
         adminMessage: null,
+        session: buildSessionResponse(session.toObject(), setting),
         context: selectedContext ? buildContextResponse(selectedContext, hasBodySelectors) : null,
       },
       statusCode: 200,
@@ -736,22 +755,20 @@ const sendMessage = async ({ user, params, body }) => {
 
   session.lastMessage = assistantContent;
   session.status = 'active';
-  if ((session.modeSource || 'GLOBAL') === 'GLOBAL') {
-    session.mode = 'AI_AUTO';
-  }
   session.unreadByUser = false;
   session.unreadByAdmin = false;
   session.lastMessageAt = new Date();
   await session.save();
 
   const data = {
-    mode: 'AI_AUTO',
-    effectiveMode: 'AI_AUTO',
-    modeSource: session.modeSource || 'GLOBAL',
+    mode: computeChatSessionMode(session, setting).mode,
+    effectiveMode,
+    modeSource: modeState.modeSource,
     status: session.status,
     userMessage: buildMessageResponse(userMessage.toObject()),
     aiMessage: buildMessageResponse(assistantMessage.toObject()),
     assistantMessage: buildMessageResponse(assistantMessage.toObject()),
+    session: buildSessionResponse(session.toObject(), setting),
     context: buildContextResponse(selectedContext, hasBodySelectors || hasSessionSelectors, {
       intent,
       intents,
@@ -794,6 +811,12 @@ const updateChatSettings = async ({ user, body }) => {
 
   const existing = await getOrCreateChatSetting();
   await ChatSetting.findByIdAndUpdate(existing._id, { $set: { mode, updatedBy: adminId } });
+  if (mode === 'AI_AUTO') {
+    await ChatSession.updateMany(
+      { modeSource: 'GLOBAL', status: 'waiting_admin', closedAt: null },
+      { $set: { status: 'active' } }
+    );
+  }
   const setting = await ChatSetting.findById(existing._id).populate('updatedBy', 'email fullName name role').lean();
 
   return {
@@ -846,10 +869,7 @@ const getAdminChatSessions = async ({ query }) => {
     message: 'Chat sessions fetched successfully',
     data: {
       items: sessions.map((session) => ({
-        ...buildSessionWithEffectiveMode(
-          session,
-          (session.modeSource || 'GLOBAL') === 'SESSION' ? session.mode || 'AI_AUTO' : setting.mode || 'AI_AUTO'
-        ),
+        ...buildSessionWithEffectiveMode(session, setting),
         user: session.userId,
         lastMessage: lastMessageMap.get(String(session._id)) || null,
       })),
@@ -879,8 +899,8 @@ const getAdminChatSessionDetail = async ({ params }) => {
     throw createStatusError('Chat session not found', 404);
   }
 
-  const [effectiveMode, messages] = await Promise.all([
-    getEffectiveMode(session),
+  const [setting, messages] = await Promise.all([
+    getOrCreateChatSetting(),
     ChatMessage.find({ sessionId: session._id }).sort({ createdAt: 1, _id: 1 }).lean(),
   ]);
 
@@ -888,7 +908,7 @@ const getAdminChatSessionDetail = async ({ params }) => {
     message: 'Chat session fetched successfully',
     data: {
       session: {
-        ...buildSessionWithEffectiveMode(session, effectiveMode),
+        ...buildSessionWithEffectiveMode(session, setting),
         user: session.userId,
       },
       messages: messages.map(buildMessageResponse),
@@ -922,8 +942,6 @@ const sendAdminChatMessage = async ({ user, params, body }) => {
     content,
   });
 
-  session.mode = 'MANUAL';
-  session.modeSource = 'SESSION';
   session.status = 'answered';
   session.assignedAdminId = adminId;
   session.unreadByUser = true;
@@ -931,12 +949,13 @@ const sendAdminChatMessage = async ({ user, params, body }) => {
   session.lastMessage = content;
   session.lastMessageAt = new Date();
   await session.save();
+  const setting = await getOrCreateChatSetting();
 
   return {
     message: 'Admin message sent successfully',
     data: {
       adminMessage: buildMessageResponse(adminMessage.toObject()),
-      session: buildSessionWithEffectiveMode(session.toObject(), 'MANUAL'),
+      session: buildSessionWithEffectiveMode(session.toObject(), setting),
     },
     statusCode: 201,
   };
@@ -963,7 +982,7 @@ const updateAdminChatSessionMode = async ({ user, params, body }) => {
       ? {
           mode,
           modeSource: 'SESSION',
-          status: 'waiting_admin',
+          status: existingSession.status || 'active',
           assignedAdminId: adminId,
           aiPausedAt: new Date(),
           aiPausedBy: adminId,
@@ -972,7 +991,7 @@ const updateAdminChatSessionMode = async ({ user, params, body }) => {
       : {
           mode,
           modeSource: 'SESSION',
-          status: 'active',
+          status: normalizeActiveStatusForMode(existingSession.status || 'active', mode),
           assignedAdminId: null,
           aiPausedAt: null,
           aiPausedBy: null,
@@ -987,7 +1006,7 @@ const updateAdminChatSessionMode = async ({ user, params, body }) => {
         ? 'Chat session switched to manual mode'
         : 'Chat session switched to AI auto mode',
     data: {
-      session: buildSessionWithEffectiveMode(session, mode),
+      session: buildSessionWithEffectiveMode(session, { mode }),
     },
     statusCode: 200,
   };
@@ -1004,9 +1023,16 @@ const useGlobalChatSessionMode = async ({ params }) => {
     throw createStatusError('Chat session not found', 404);
   }
   ensureSessionOpen(existingSession);
+  const effectiveMode = computeChatSessionMode({ modeSource: 'GLOBAL', mode: null }, setting).effectiveMode;
   const session = await ChatSession.findByIdAndUpdate(
     params.sessionId,
-    { $set: { modeSource: 'GLOBAL', mode: setting.mode || 'AI_AUTO' } },
+    {
+      $set: {
+        modeSource: 'GLOBAL',
+        mode: null,
+        status: normalizeActiveStatusForMode(existingSession.status || 'active', effectiveMode),
+      },
+    },
     { new: true }
   ).lean();
   if (!session) {
@@ -1016,7 +1042,7 @@ const useGlobalChatSessionMode = async ({ params }) => {
   return {
     message: 'Chat session switched to global mode',
     data: {
-      session: buildSessionWithEffectiveMode(session, setting.mode || 'AI_AUTO'),
+      session: buildSessionWithEffectiveMode(session, setting),
     },
     statusCode: 200,
   };
@@ -1036,7 +1062,7 @@ const closeAdminChatSession = async ({ user, params, body }) => {
     return {
       message: 'Chat session closed successfully',
       data: {
-        session: buildSessionResponse(existingSession.toObject()),
+        session: buildSessionResponse(existingSession.toObject(), await getOrCreateChatSetting()),
       },
       statusCode: 200,
     };
@@ -1066,7 +1092,7 @@ const closeAdminChatSession = async ({ user, params, body }) => {
   return {
     message: 'Chat session closed successfully',
     data: {
-      session: buildSessionResponse(session),
+      session: buildSessionResponse(session, await getOrCreateChatSetting()),
     },
     statusCode: 200,
   };
@@ -1087,4 +1113,5 @@ module.exports = {
   useGlobalChatSessionMode,
   closeAdminChatSession,
   buildUserGithubContext,
+  computeChatSessionMode,
 };

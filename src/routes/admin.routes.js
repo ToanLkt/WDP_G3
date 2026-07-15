@@ -130,7 +130,7 @@ router.get("/dev2vec/status", adminController.getDev2VecStatus);
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Chat settings fetched successfully
+ *         description: Chat settings fetched successfully. The mode is the global fallback for sessions whose modeSource is GLOBAL.
  *   patch:
  *     tags: [Admin]
  *     summary: Update global chat mode settings
@@ -149,7 +149,7 @@ router.get("/dev2vec/status", adminController.getDev2VecStatus);
  *                 enum: [AI_AUTO, MANUAL]
  *     responses:
  *       200:
- *         description: Chat settings updated successfully
+ *         description: Chat settings updated successfully. Sessions with modeSource GLOBAL resolve effectiveMode from the new setting; SESSION overrides are not changed.
  */
 router.get("/chat/settings", adminController.getChatSettings);
 router.patch("/chat/settings", adminController.updateChatSettings);
@@ -196,7 +196,7 @@ router.patch("/chat/settings", adminController.updateChatSettings);
  *           type: integer
  *     responses:
  *       200:
- *         description: Chat sessions fetched successfully
+ *         description: Chat sessions fetched successfully. Each session includes mode, modeSource, effectiveMode, status, closedAt, closedBy, and closeReason.
  */
 router.get("/chat/sessions", adminController.getChatSessions);
 
@@ -216,7 +216,7 @@ router.get("/chat/sessions", adminController.getChatSessions);
  *           type: string
  *     responses:
  *       200:
- *         description: Chat session fetched successfully
+ *         description: Chat session fetched successfully. Session uses the same effectiveMode serializer as the admin list.
  */
 router.get("/chat/sessions/:sessionId", adminController.getChatSessionDetail);
 
@@ -246,7 +246,7 @@ router.get("/chat/sessions/:sessionId", adminController.getChatSessionDetail);
  *                 type: string
  *     responses:
  *       201:
- *         description: Admin message sent successfully
+ *         description: Admin message sent successfully. Closed sessions return CHAT_SESSION_CLOSED; replying does not change modeSource or mode.
  */
 router.post("/chat/sessions/:sessionId/messages", adminController.sendChatSessionMessage);
 
@@ -328,7 +328,7 @@ router.patch("/chat/sessions/:sessionId/close", adminController.closeChatSession
  *                 type: string
  *     responses:
  *       200:
- *         description: Chat session mode updated successfully
+ *         description: Chat session mode updated successfully. Sets modeSource to SESSION and returns effectiveMode from the requested mode.
  *       400:
  *         description: CHAT_SESSION_CLOSED when the session is closed
  */
@@ -350,7 +350,9 @@ router.patch("/chat/sessions/:sessionId/mode", adminController.updateChatSession
  *           type: string
  *     responses:
  *       200:
- *         description: Chat session switched to global mode
+ *         description: Chat session switched to global mode. Sets modeSource to GLOBAL, clears session mode, and returns effectiveMode from global settings.
+ *       400:
+ *         description: CHAT_SESSION_CLOSED when the session is closed
  */
 router.patch("/chat/sessions/:sessionId/use-global-mode", adminController.useGlobalChatSessionMode);
 
