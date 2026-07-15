@@ -20,6 +20,7 @@ const {
 } = require('./chatSkillContext.service');
 const { createStatusError } = require('./github/github.utils');
 const { resolveCurrentContext } = require('./currentContext.service');
+const chatRealtime = require('./chatRealtime.service');
 
 let LearningRecommendation = null;
 
@@ -79,6 +80,7 @@ const buildSessionResponse = (session, globalSetting = null) => {
     analysisId: session.analysisId || null,
     snapshotId: session.snapshotId || null,
     contextSelectionReason: session.contextSelectionReason || '',
+    contextPinned: Boolean(session.contextPinnedAt),
     contextPinnedAt: session.contextPinnedAt || null,
     contextPinnedBy: session.contextPinnedBy || null,
     title: session.title,
@@ -94,6 +96,7 @@ const buildSessionResponse = (session, globalSetting = null) => {
     unreadByAdmin: Boolean(session.unreadByAdmin),
     unreadByUser: Boolean(session.unreadByUser),
     lastMessageAt: session.lastMessageAt || null,
+    lastResponseAt: session.lastResponseAt || null,
     userDeletedAt: session.userDeletedAt || null,
     closedAt: session.closedAt || null,
     closedBy: session.closedBy || null,
@@ -646,6 +649,8 @@ const sendMessage = async ({ user, params, body }) => {
     senderId: userId,
     content,
   });
+  const serializedUserMessage = buildMessageResponse(userMessage.toObject());
+  chatRealtime.emitMessageCreated({ sessionId: session._id, message: serializedUserMessage });
 
   if (effectiveMode === 'MANUAL') {
     session.lastMessage = content;
@@ -653,6 +658,8 @@ const sendMessage = async ({ user, params, body }) => {
     session.unreadByAdmin = true;
     session.lastMessageAt = new Date();
     await session.save();
+    const serializedSession = buildSessionResponse(session.toObject(), setting);
+    chatRealtime.emitSessionUpdated({ sessionId: session._id, session: serializedSession });
 
     return {
       message: 'Tin nhan da duoc gui.',
@@ -661,9 +668,9 @@ const sendMessage = async ({ user, params, body }) => {
         effectiveMode,
         modeSource: modeState.modeSource,
         status: session.status,
-        userMessage: buildMessageResponse(userMessage.toObject()),
+        userMessage: serializedUserMessage,
         adminMessage: null,
-        session: buildSessionResponse(session.toObject(), setting),
+        session: serializedSession,
         context: selectedContext ? buildContextResponse(selectedContext, hasBodySelectors) : null,
       },
       statusCode: 200,
@@ -758,17 +765,22 @@ const sendMessage = async ({ user, params, body }) => {
   session.unreadByUser = false;
   session.unreadByAdmin = false;
   session.lastMessageAt = new Date();
+  session.lastResponseAt = session.lastMessageAt;
   await session.save();
+  const serializedAssistantMessage = buildMessageResponse(assistantMessage.toObject());
+  const serializedSession = buildSessionResponse(session.toObject(), setting);
+  chatRealtime.emitMessageCreated({ sessionId: session._id, message: serializedAssistantMessage });
+  chatRealtime.emitSessionUpdated({ sessionId: session._id, session: serializedSession });
 
   const data = {
     mode: computeChatSessionMode(session, setting).mode,
     effectiveMode,
     modeSource: modeState.modeSource,
     status: session.status,
-    userMessage: buildMessageResponse(userMessage.toObject()),
-    aiMessage: buildMessageResponse(assistantMessage.toObject()),
-    assistantMessage: buildMessageResponse(assistantMessage.toObject()),
-    session: buildSessionResponse(session.toObject(), setting),
+    userMessage: serializedUserMessage,
+    aiMessage: serializedAssistantMessage,
+    assistantMessage: serializedAssistantMessage,
+    session: serializedSession,
     context: buildContextResponse(selectedContext, hasBodySelectors || hasSessionSelectors, {
       intent,
       intents,
@@ -810,6 +822,9 @@ const updateChatSettings = async ({ user, body }) => {
   }
 
   const existing = await getOrCreateChatSetting();
+  const sessionsToNotify = await ChatSession.find({ modeSource: 'GLOBAL', closedAt: null })
+    .select('_id')
+    .lean();
   await ChatSetting.findByIdAndUpdate(existing._id, { $set: { mode, updatedBy: adminId } });
   if (mode === 'AI_AUTO') {
     await ChatSession.updateMany(
@@ -818,6 +833,15 @@ const updateChatSettings = async ({ user, body }) => {
     );
   }
   const setting = await ChatSetting.findById(existing._id).populate('updatedBy', 'email fullName name role').lean();
+  if (sessionsToNotify.length) {
+    const updatedSessions = await ChatSession.find({ _id: { $in: sessionsToNotify.map((session) => session._id) } }).lean();
+    updatedSessions.forEach((session) => {
+      chatRealtime.emitSessionUpdated({
+        sessionId: session._id,
+        session: buildSessionResponse(session, setting),
+      });
+    });
+  }
 
   return {
     message: 'Chat settings updated successfully',
@@ -948,14 +972,19 @@ const sendAdminChatMessage = async ({ user, params, body }) => {
   session.unreadByAdmin = false;
   session.lastMessage = content;
   session.lastMessageAt = new Date();
+  session.lastResponseAt = session.lastMessageAt;
   await session.save();
   const setting = await getOrCreateChatSetting();
+  const serializedAdminMessage = buildMessageResponse(adminMessage.toObject());
+  const serializedSession = buildSessionWithEffectiveMode(session.toObject(), setting);
+  chatRealtime.emitMessageCreated({ sessionId: session._id, message: serializedAdminMessage });
+  chatRealtime.emitSessionUpdated({ sessionId: session._id, session: serializedSession });
 
   return {
     message: 'Admin message sent successfully',
     data: {
-      adminMessage: buildMessageResponse(adminMessage.toObject()),
-      session: buildSessionWithEffectiveMode(session.toObject(), setting),
+      adminMessage: serializedAdminMessage,
+      session: serializedSession,
     },
     statusCode: 201,
   };
@@ -999,6 +1028,8 @@ const updateAdminChatSessionMode = async ({ user, params, body }) => {
         };
 
   const session = await ChatSession.findByIdAndUpdate(params.sessionId, { $set: update }, { new: true }).lean();
+  const serializedSession = buildSessionWithEffectiveMode(session, { mode });
+  chatRealtime.emitSessionUpdated({ sessionId: session._id, session: serializedSession });
 
   return {
     message:
@@ -1006,7 +1037,7 @@ const updateAdminChatSessionMode = async ({ user, params, body }) => {
         ? 'Chat session switched to manual mode'
         : 'Chat session switched to AI auto mode',
     data: {
-      session: buildSessionWithEffectiveMode(session, { mode }),
+      session: serializedSession,
     },
     statusCode: 200,
   };
@@ -1038,11 +1069,13 @@ const useGlobalChatSessionMode = async ({ params }) => {
   if (!session) {
     throw createStatusError('Chat session not found', 404);
   }
+  const serializedSession = buildSessionWithEffectiveMode(session, setting);
+  chatRealtime.emitSessionUpdated({ sessionId: session._id, session: serializedSession });
 
   return {
     message: 'Chat session switched to global mode',
     data: {
-      session: buildSessionWithEffectiveMode(session, setting),
+      session: serializedSession,
     },
     statusCode: 200,
   };
@@ -1088,11 +1121,13 @@ const closeAdminChatSession = async ({ user, params, body }) => {
   if (!session) {
     throw createStatusError('Chat session not found', 404);
   }
+  const serializedSession = buildSessionResponse(session, await getOrCreateChatSetting());
+  chatRealtime.emitSessionUpdated({ sessionId: session._id, session: serializedSession });
 
   return {
     message: 'Chat session closed successfully',
     data: {
-      session: buildSessionResponse(session, await getOrCreateChatSetting()),
+      session: serializedSession,
     },
     statusCode: 200,
   };
@@ -1114,4 +1149,7 @@ module.exports = {
   closeAdminChatSession,
   buildUserGithubContext,
   computeChatSessionMode,
+  buildMessageResponse,
+  buildSessionResponse,
+  getOrCreateChatSetting,
 };
