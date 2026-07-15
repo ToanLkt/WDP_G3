@@ -14,7 +14,9 @@ const { buildChatContextPrompt } = require('./ai/chatContext.prompt');
 const {
   CHAT_INTENTS,
   buildChatSkillScoreContext,
+  buildRepoComparisonContext,
   detectChatIntent,
+  detectChatIntents,
 } = require('./chatSkillContext.service');
 const { createStatusError } = require('./github/github.utils');
 const { resolveCurrentContext } = require('./currentContext.service');
@@ -54,6 +56,13 @@ const buildSessionResponse = (session) => {
   return {
     _id: session._id,
     userId: session.userId,
+    repositoryId: session.repositoryId || null,
+    roadmapId: session.roadmapId || null,
+    analysisId: session.analysisId || null,
+    snapshotId: session.snapshotId || null,
+    contextSelectionReason: session.contextSelectionReason || '',
+    contextPinnedAt: session.contextPinnedAt || null,
+    contextPinnedBy: session.contextPinnedBy || null,
     title: session.title,
     lastMessage: session.lastMessage || '',
     status: session.status || 'active',
@@ -66,6 +75,10 @@ const buildSessionResponse = (session) => {
     unreadByAdmin: Boolean(session.unreadByAdmin),
     unreadByUser: Boolean(session.unreadByUser),
     lastMessageAt: session.lastMessageAt || null,
+    userDeletedAt: session.userDeletedAt || null,
+    closedAt: session.closedAt || null,
+    closedBy: session.closedBy || null,
+    closeReason: session.closeReason || '',
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   };
@@ -138,6 +151,7 @@ const findOwnedSession = async (userId, sessionId, options = {}) => {
   const query = ChatSession.findOne({
     _id: sessionId,
     userId,
+    userDeletedAt: null,
   });
 
   if (options.lean) {
@@ -145,6 +159,59 @@ const findOwnedSession = async (userId, sessionId, options = {}) => {
   }
 
   return query;
+};
+
+const ensureSessionOpen = (session) => {
+  if ((session?.status || 'active') === 'closed' || session?.closedAt) {
+    const error = createStatusError('Chat session is closed', 400);
+    error.errorCode = 'CHAT_SESSION_CLOSED';
+    throw error;
+  }
+};
+
+const selectorFields = ['repositoryId', 'roadmapId', 'analysisId', 'snapshotId'];
+
+const getContextSelectors = (source = {}) => selectorFields.reduce((selectors, field) => {
+  selectors[field] = source?.[field] ? String(source[field]) : null;
+  return selectors;
+}, {});
+
+const hasContextSelectors = (selectors = {}) => selectorFields.some((field) => Boolean(selectors?.[field]));
+
+const buildContextResponse = (context, contextPinned = false, extras = {}) => ({
+  ...(context?.provenance || {
+    repositoryId: null,
+    repoName: '',
+    analysisId: null,
+    snapshotId: null,
+    roadmapId: null,
+    progressUpdatedAt: null,
+    analysisSource: 'none',
+    contextSelectionReason: 'none',
+  }),
+  contextPinned,
+  ...extras,
+});
+
+const buildSessionContextUpdate = ({ context, userId }) => {
+  const provenance = context?.provenance || {};
+  return {
+    repositoryId: provenance.repositoryId || null,
+    roadmapId: provenance.roadmapId || null,
+    analysisId: provenance.analysisId || null,
+    snapshotId: provenance.snapshotId || null,
+    contextSelectionReason: context?.contextSelectionReason || provenance.contextSelectionReason || '',
+    contextPinnedAt: new Date(),
+    contextPinnedBy: userId,
+  };
+};
+
+const pinSessionContext = async (session, context, userId) => {
+  if (!session || !context) return;
+  Object.assign(session, buildSessionContextUpdate({ context, userId }));
+  if (typeof session.save === 'function') {
+    await session.save();
+  }
 };
 
 const mapLearningRecommendation = (recommendation) => {
@@ -262,7 +329,76 @@ const intentsRequiringSkillScore = new Set([
   CHAT_INTENTS.NEXT_SKILLS,
   CHAT_INTENTS.ROLE_FIT,
   CHAT_INTENTS.REPO_REVIEW,
+  CHAT_INTENTS.REPO_COMPARE,
+  CHAT_INTENTS.ROADMAP_PROGRESS,
+  CHAT_INTENTS.CV_ADVICE,
+  CHAT_INTENTS.INTERVIEW_PREP,
+  CHAT_INTENTS.TIMEBOX_PRIORITY,
 ]);
+
+const hasIntent = (intents, intent) => Array.isArray(intents) && intents.includes(intent);
+
+const buildSelectedAnalysisContext = (selectedContext = {}, skillScoreContext = {}) => {
+  const analysis = selectedContext.analysis || {};
+  return {
+    repositoryId: selectedContext.provenance?.repositoryId || analysis.repositoryId || null,
+    repositoryName: selectedContext.repository?.name || analysis.repoName || '',
+    repoName: selectedContext.repository?.name || analysis.repoName || '',
+    analyzedAt: analysis.analyzedAt || analysis.createdAt || skillScoreContext.analyzedAt || null,
+    modelVersion: skillScoreContext.modelVersion || analysis.dev2vec?.modelVersion || null,
+    evidenceVersion: skillScoreContext.evidenceVersion || analysis.analysisProvenance?.evidenceVersion || null,
+    projectType: analysis.projectType || skillScoreContext.projectType || '',
+    languages: analysis.languages || skillScoreContext.languages || [],
+    frameworks: analysis.frameworks || skillScoreContext.frameworks || [],
+    packages: analysis.packages || skillScoreContext.packages || [],
+    careerDirection: analysis.careerDirection || '',
+    userLevel: analysis.summary?.userLevel || '',
+    readinessScore: skillScoreContext.readinessScore ?? analysis.summary?.userReadinessScore ?? null,
+    roleProbability: skillScoreContext.roleProbability ?? skillScoreContext.topRole?.probability ?? null,
+    roleMatchScore: skillScoreContext.roleMatchScore ?? skillScoreContext.topRole?.matchScore ?? null,
+    overallScore: skillScoreContext.overallScore ?? analysis.summary?.overallScore ?? analysis.scores?.overall ?? null,
+    confidence: skillScoreContext.confidence ?? analysis.summary?.confidence ?? null,
+    scoreBreakdown: skillScoreContext.scoreBreakdown || analysis.scoreBreakdown || {},
+    topRole: skillScoreContext.topRole || null,
+    rolePredictions: skillScoreContext.rolePredictions || [],
+    roleMatches: skillScoreContext.roleMatches || [],
+    topSkills: selectedContext.topSkills || [],
+    strongSkills: skillScoreContext.strongSkills || [],
+    weakSkills: skillScoreContext.weakSkills || [],
+    missingSkills: selectedContext.missingSkills || skillScoreContext.missingSkillNames || [],
+    recommendedNextSkills: skillScoreContext.recommendedNextSkills || [],
+    matchedSkillNames: skillScoreContext.matchedSkillNames || [],
+    weakSkillNames: skillScoreContext.weakSkillNames || [],
+    missingSkillNames: skillScoreContext.missingSkillNames || [],
+    skillGaps: skillScoreContext.skillGaps || {},
+    sourceStats: skillScoreContext.sourceStats || {},
+    evidenceStats: skillScoreContext.evidenceStats || {},
+    skillEvidence: skillScoreContext.skillEvidence || {},
+    targetRole: selectedContext.roadmap?.targetRole || '',
+    progress: selectedContext.progressContext,
+    provenance: selectedContext.provenance,
+    contextSelectionReason: selectedContext.contextSelectionReason || selectedContext.provenance?.contextSelectionReason || '',
+  };
+};
+
+const buildCvInterviewContext = ({ selectedAnalysisContext, comparisonContext }) => {
+  const primary = selectedAnalysisContext?.repoName || selectedAnalysisContext?.repositoryName
+    ? [selectedAnalysisContext]
+    : [];
+  const comparison = Array.isArray(comparisonContext) ? comparisonContext : [];
+  return [...primary, ...comparison].slice(0, 5).map((item) => ({
+    projectName: item.repoName || item.repositoryName || '',
+    targetRole: item.targetRole || item.topRole?.roleName || item.careerDirection || '',
+    strongestSkills: (item.strongSkills || item.topSkills || []).slice(0, 5),
+    relevantTechnologies: [...(item.languages || []), ...(item.frameworks || [])].slice(0, 8),
+    concreteEvidence: item.skillEvidence?.strong || item.topSkills || [],
+    weakPoints: item.weakSkills || item.missingSkills || [],
+    suggestedCvBullets: [],
+    interviewTalkingPoints: [],
+    likelyQuestionsFromWeakSkills: (item.weakSkills || item.missingSkills || []).slice(0, 5),
+    provenance: item.provenance || { repositoryId: item.repositoryId || null, repoName: item.repoName || '' },
+  }));
+};
 
 const buildUserGithubContext = async (userId) => {
   const [studentProfile, repositories, analysisSnapshots, skillSignals] = await Promise.all([
@@ -341,17 +477,27 @@ const buildUserGithubContext = async (userId) => {
 const createSession = async ({ user, body }) => {
   const userId = getUserId(user);
   const title = String(body?.title || '').trim() || DEFAULT_SESSION_TITLE;
+  const bodySelectors = getContextSelectors(body);
+  let selectedContext = null;
+  let contextUpdate = {};
+
+  if (hasContextSelectors(bodySelectors)) {
+    selectedContext = await resolveCurrentContext(userId, { bodySelectors });
+    contextUpdate = buildSessionContextUpdate({ context: selectedContext, userId });
+  }
 
   const session = await ChatSession.create({
     userId,
     title,
     lastMessageAt: new Date(),
+    ...contextUpdate,
   });
 
   return {
     message: 'Chat session created successfully',
     data: {
       session: buildSessionResponse(session.toObject()),
+      context: selectedContext ? buildContextResponse(selectedContext, true) : null,
     },
     statusCode: 201,
   };
@@ -359,7 +505,7 @@ const createSession = async ({ user, body }) => {
 
 const getSessions = async ({ user }) => {
   const userId = getUserId(user);
-  const sessions = await ChatSession.find({ userId })
+  const sessions = await ChatSession.find({ userId, userDeletedAt: null })
     .sort({ updatedAt: -1 })
     .lean();
 
@@ -397,6 +543,35 @@ const getSessionDetail = async ({ user, params }) => {
   };
 };
 
+const deleteSession = async ({ user, params }) => {
+  const userId = getUserId(user);
+  if (!mongoose.Types.ObjectId.isValid(String(params?.sessionId || ''))) {
+    throw createStatusError('Chat session not found', 404);
+  }
+  const session = await ChatSession.findOneAndUpdate(
+    {
+      _id: params?.sessionId,
+      userId,
+      userDeletedAt: null,
+    },
+    { $set: { userDeletedAt: new Date() } },
+    { new: true }
+  ).lean();
+
+  if (!session) {
+    throw createStatusError('Chat session not found', 404);
+  }
+
+  return {
+    message: 'Chat session deleted successfully',
+    data: {
+      sessionId: session._id,
+      deleted: true,
+    },
+    statusCode: 200,
+  };
+};
+
 const sendMessage = async ({ user, params, body }) => {
   const userId = getUserId(user);
   const session = await findOwnedSession(userId, params?.sessionId);
@@ -404,8 +579,47 @@ const sendMessage = async ({ user, params, body }) => {
   if (!session) {
     throw createStatusError('Chat session not found', 404);
   }
+  ensureSessionOpen(session);
 
   const content = String(body?.message || '').trim();
+  const bodySelectors = getContextSelectors(body);
+  const sessionSelectors = getContextSelectors(session);
+  const hasBodySelectors = hasContextSelectors(bodySelectors);
+  const hasSessionSelectors = hasContextSelectors(sessionSelectors);
+  const effectiveMode = await getEffectiveMode(session);
+  let selectedContext = null;
+
+  if (effectiveMode === 'AI_AUTO' || hasBodySelectors) {
+    try {
+      selectedContext = await resolveCurrentContext(userId, { bodySelectors, sessionSelectors });
+    } catch (error) {
+      if (error.statusCode !== 404 || hasBodySelectors || hasSessionSelectors) throw error;
+      selectedContext = {
+        analysis: null,
+        repository: null,
+        roadmap: null,
+        progressContext: null,
+        topSkills: [],
+        missingSkills: [],
+        provenance: {
+          repositoryId: null,
+          repoName: '',
+          analysisId: null,
+          snapshotId: null,
+          roadmapId: null,
+          progressUpdatedAt: null,
+          analysisSource: 'none',
+          contextSelectionReason: 'none',
+        },
+        contextSelectionReason: 'none',
+      };
+    }
+  }
+
+  if (hasBodySelectors && selectedContext) {
+    await pinSessionContext(session, selectedContext, userId);
+  }
+
   const userMessage = await ChatMessage.create({
     sessionId: session._id,
     userId,
@@ -414,8 +628,6 @@ const sendMessage = async ({ user, params, body }) => {
     senderId: userId,
     content,
   });
-
-  const effectiveMode = await getEffectiveMode(session);
 
   if (effectiveMode === 'MANUAL') {
     session.lastMessage = content;
@@ -433,31 +645,17 @@ const sendMessage = async ({ user, params, body }) => {
         status: session.status,
         userMessage: buildMessageResponse(userMessage.toObject()),
         adminMessage: null,
+        context: selectedContext ? buildContextResponse(selectedContext, hasBodySelectors) : null,
       },
       statusCode: 200,
     };
   }
 
+  const intents = detectChatIntents(content);
   const intent = detectChatIntent(content);
-
-  const selectors = {
-    repositoryId: body?.repositoryId || null,
-    roadmapId: body?.roadmapId || null,
-    analysisId: body?.analysisId || null,
-    snapshotId: body?.snapshotId || null,
-  };
-  let selectedContext;
-  try {
-    selectedContext = await resolveCurrentContext(userId, selectors);
-  } catch (error) {
-    if (error.statusCode !== 404 || Object.values(selectors).some(Boolean)) throw error;
-    selectedContext = {
-      analysis: null, repository: null, roadmap: null, progressContext: null,
-      topSkills: [], missingSkills: [],
-      provenance: { repositoryId: null, analysisId: null, snapshotId: null, roadmapId: null, progressUpdatedAt: null, analysisSource: 'none' },
-    };
-  }
-  const [githubContext, recentMessages, skillScoreContext] = await Promise.all([
+  const selectedIsExplicit = /^(body|session)_/.test(selectedContext?.contextSelectionReason || '');
+  const needsComparisonContext = hasIntent(intents, CHAT_INTENTS.REPO_COMPARE);
+  const [githubContext, recentMessages, skillScoreContext, comparisonContext] = await Promise.all([
     buildUserGithubContext(userId),
     ChatMessage.find({
       sessionId: session._id,
@@ -469,37 +667,41 @@ const sendMessage = async ({ user, params, body }) => {
       .lean(),
     buildChatSkillScoreContext(userId, {
       intent,
-      repositoryId: session.repositoryId || session.repoId || body?.repositoryId || body?.repoId || null,
+      repositoryId: selectedContext?.provenance?.repositoryId || null,
       analysis: selectedContext.analysis,
     }),
+    needsComparisonContext || hasIntent(intents, CHAT_INTENTS.CV_ADVICE) || hasIntent(intents, CHAT_INTENTS.INTERVIEW_PREP)
+      ? buildRepoComparisonContext(userId, content)
+      : Promise.resolve([]),
   ]);
-  const selectedAnalysisContext = {
-    repositoryName: selectedContext.repository?.name || selectedContext.analysis?.repoName || '',
-    projectType: selectedContext.analysis?.projectType || '',
-    careerDirection: selectedContext.analysis?.careerDirection || '',
-    userLevel: selectedContext.analysis?.summary?.userLevel || '',
-    topSkills: selectedContext.topSkills,
-    missingSkills: selectedContext.missingSkills,
-    targetRole: selectedContext.roadmap?.targetRole || '',
-    progress: selectedContext.progressContext,
-    provenance: selectedContext.provenance,
-  };
+  const selectedAnalysisContext = buildSelectedAnalysisContext(selectedContext, skillScoreContext);
+  const hasRoadmapIntent = hasIntent(intents, CHAT_INTENTS.ROADMAP_PROGRESS) || hasIntent(intents, CHAT_INTENTS.TIMEBOX_PRIORITY);
+  const roadmapProgressContext = selectedContext.progressContext || null;
+  const cvInterviewContext =
+    hasIntent(intents, CHAT_INTENTS.CV_ADVICE) || hasIntent(intents, CHAT_INTENTS.INTERVIEW_PREP)
+      ? buildCvInterviewContext({ selectedAnalysisContext, comparisonContext })
+      : [];
 
   const shouldShortCircuitNoSkillData =
-    intentsRequiringSkillScore.has(intent) && !skillScoreContext.hasSkillScoreData;
+    intents.some((item) => intentsRequiringSkillScore.has(item)) && !skillScoreContext.hasSkillScoreData;
   const prompt = shouldShortCircuitNoSkillData
     ? ''
     : buildChatContextPrompt({
         intent,
+        intents,
         skillScoreContext,
         studentProfile: githubContext.studentProfile,
-        repositories: githubContext.repositories,
-        analysisSnapshots: githubContext.analysisSnapshots,
-        skillSignals: githubContext.skillSignals,
-        learningRecommendations: githubContext.learningRecommendations,
+        repositories: selectedIsExplicit && !needsComparisonContext ? [] : githubContext.repositories,
+        analysisSnapshots: selectedIsExplicit && !needsComparisonContext ? [] : githubContext.analysisSnapshots,
+        skillSignals: selectedIsExplicit && !needsComparisonContext ? [] : githubContext.skillSignals,
+        learningRecommendations: selectedIsExplicit && !needsComparisonContext ? [] : githubContext.learningRecommendations,
         chatHistory: recentMessages.reverse(),
         userQuestion: content,
         selectedContext: selectedAnalysisContext,
+        selectedContextIsExplicit: selectedIsExplicit,
+        roadmapProgressContext,
+        multiRepoComparisonContext: comparisonContext,
+        cvInterviewContext,
       });
 
   const assistantResult = shouldShortCircuitNoSkillData
@@ -523,8 +725,12 @@ const sendMessage = async ({ user, params, body }) => {
       model: assistantResult.model,
       usedFallback: assistantResult.usedFallback,
       intent,
+      intents,
       contextSource: 'dev2vec',
       context: selectedContext.provenance,
+      hasRoadmapContext: Boolean(roadmapProgressContext),
+      hasComparisonContext: comparisonContext.length > 0,
+      comparedRepoCount: comparisonContext.length,
     },
   });
 
@@ -546,7 +752,13 @@ const sendMessage = async ({ user, params, body }) => {
     userMessage: buildMessageResponse(userMessage.toObject()),
     aiMessage: buildMessageResponse(assistantMessage.toObject()),
     assistantMessage: buildMessageResponse(assistantMessage.toObject()),
-    context: selectedContext.provenance,
+    context: buildContextResponse(selectedContext, hasBodySelectors || hasSessionSelectors, {
+      intent,
+      intents,
+      hasRoadmapContext: Boolean(roadmapProgressContext),
+      hasComparisonContext: comparisonContext.length > 0,
+      comparedRepoCount: comparisonContext.length,
+    }),
   };
 
   if (shouldIncludeChatDebug()) {
@@ -661,6 +873,7 @@ const getAdminChatSessionDetail = async ({ params }) => {
     .populate('userId', 'email fullName name role status')
     .populate('assignedAdminId', 'email fullName name role')
     .populate('aiPausedBy', 'email fullName name role')
+    .populate('closedBy', 'email fullName name role')
     .lean();
   if (!session) {
     throw createStatusError('Chat session not found', 404);
@@ -698,6 +911,7 @@ const sendAdminChatMessage = async ({ user, params, body }) => {
   if (!session) {
     throw createStatusError('Chat session not found', 404);
   }
+  ensureSessionOpen(session);
 
   const adminMessage = await ChatMessage.create({
     sessionId: session._id,
@@ -738,6 +952,12 @@ const updateAdminChatSessionMode = async ({ user, params, body }) => {
     throw createStatusError('Chat session not found', 404);
   }
 
+  const existingSession = await ChatSession.findById(params.sessionId).select('status closedAt').lean();
+  if (!existingSession) {
+    throw createStatusError('Chat session not found', 404);
+  }
+  ensureSessionOpen(existingSession);
+
   const update =
     mode === 'MANUAL'
       ? {
@@ -760,9 +980,6 @@ const updateAdminChatSessionMode = async ({ user, params, body }) => {
         };
 
   const session = await ChatSession.findByIdAndUpdate(params.sessionId, { $set: update }, { new: true }).lean();
-  if (!session) {
-    throw createStatusError('Chat session not found', 404);
-  }
 
   return {
     message:
@@ -782,6 +999,11 @@ const useGlobalChatSessionMode = async ({ params }) => {
   }
 
   const setting = await getOrCreateChatSetting();
+  const existingSession = await ChatSession.findById(params.sessionId).select('status closedAt').lean();
+  if (!existingSession) {
+    throw createStatusError('Chat session not found', 404);
+  }
+  ensureSessionOpen(existingSession);
   const session = await ChatSession.findByIdAndUpdate(
     params.sessionId,
     { $set: { modeSource: 'GLOBAL', mode: setting.mode || 'AI_AUTO' } },
@@ -800,11 +1022,62 @@ const useGlobalChatSessionMode = async ({ params }) => {
   };
 };
 
+const closeAdminChatSession = async ({ user, params, body }) => {
+  const adminId = getAdminId(user);
+  if (!mongoose.Types.ObjectId.isValid(String(params?.sessionId || ''))) {
+    throw createStatusError('Chat session not found', 404);
+  }
+
+  const existingSession = await ChatSession.findById(params.sessionId);
+  if (!existingSession) {
+    throw createStatusError('Chat session not found', 404);
+  }
+  if ((existingSession.status || 'active') === 'closed' || existingSession.closedAt) {
+    return {
+      message: 'Chat session closed successfully',
+      data: {
+        session: buildSessionResponse(existingSession.toObject()),
+      },
+      statusCode: 200,
+    };
+  }
+
+  const now = new Date();
+  const session = await ChatSession.findByIdAndUpdate(
+    params.sessionId,
+    {
+      $set: {
+        status: 'closed',
+        closedAt: now,
+        closedBy: adminId,
+        closeReason: String(body?.reason || '').trim(),
+        unreadByAdmin: false,
+      },
+    },
+    { new: true }
+  )
+    .populate('closedBy', 'email fullName name role')
+    .lean();
+
+  if (!session) {
+    throw createStatusError('Chat session not found', 404);
+  }
+
+  return {
+    message: 'Chat session closed successfully',
+    data: {
+      session: buildSessionResponse(session),
+    },
+    statusCode: 200,
+  };
+};
+
 module.exports = {
   createSession,
   getSessions,
   getSessionDetail,
   sendMessage,
+  deleteSession,
   getChatSettings,
   updateChatSettings,
   getAdminChatSessions,
@@ -812,5 +1085,6 @@ module.exports = {
   sendAdminChatMessage,
   updateAdminChatSessionMode,
   useGlobalChatSessionMode,
+  closeAdminChatSession,
   buildUserGithubContext,
 };

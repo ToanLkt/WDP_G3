@@ -1,3 +1,5 @@
+const mongoose = require('mongoose');
+
 const normalizeOptionalString = (value) => {
   if (value === undefined || value === null) {
     return '';
@@ -21,6 +23,15 @@ const validateCreateChatSessionBody = (req) => {
       errors.push('title must be a string');
     } else if (normalizeOptionalString(title).length > 100) {
       errors.push('title must not exceed 100 characters');
+    }
+  }
+
+  for (const field of ['repositoryId', 'roadmapId', 'analysisId', 'snapshotId']) {
+    const value = req.body && req.body[field];
+    if (value !== undefined && (typeof value !== 'string' || !value.trim())) {
+      errors.push(`${field} must be a non-empty string`);
+    } else if (typeof value === 'string' && value.trim() && !mongoose.Types.ObjectId.isValid(value.trim())) {
+      errors.push(`${field} must be a valid ObjectId`);
     }
   }
 
@@ -55,6 +66,8 @@ const validateSendChatMessageBody = (req) => {
     const value = req.body && req.body[field];
     if (value !== undefined && (typeof value !== 'string' || !value.trim())) {
       errors.push(`${field} must be a non-empty string`);
+    } else if (typeof value === 'string' && value.trim() && !mongoose.Types.ObjectId.isValid(value.trim())) {
+      errors.push(`${field} must be a valid ObjectId`);
     }
   }
 

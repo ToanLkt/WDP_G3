@@ -32,7 +32,7 @@ const getDashboardOverview = async (authUser) => {
     AnalysisSnapshot.distinct('repositoryId', { userId }),
     AnalysisSnapshot.findOne({ userId }).sort({ analyzedAt: -1, createdAt: -1 }).lean(),
     AiFeedback.findOne({ userId }).sort({ generatedAt: -1, createdAt: -1 }).lean(),
-    Roadmap.findOne({ userId }).sort({ updatedAt: -1 }).lean(),
+    Roadmap.findOne({ userId, isDeleted: { $ne: true } }).sort({ updatedAt: -1 }).lean(),
   ]);
 
   if (!user) {

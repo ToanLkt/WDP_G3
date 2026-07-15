@@ -48,7 +48,7 @@ const buildTaskItemId = ({ scope = 'main', phaseIndex = 0, taskIndex = 0, canoni
 };
 
 const getUserRoadmapOrThrow = async (userId, roadmapId) => {
-  const roadmap = await Roadmap.findOne({ _id: roadmapId, userId }).lean();
+  const roadmap = await Roadmap.findOne({ _id: roadmapId, userId, isDeleted: { $ne: true } }).lean();
   if (!roadmap) {
     throw createStatusError('Roadmap not found', 404);
   }

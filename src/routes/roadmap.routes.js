@@ -824,6 +824,40 @@ router.get('/:roadmapId', authMiddleware, roadmapController.getRoadmapDetail);
 
 /**
  * @swagger
+ * /api/roadmaps/{roadmapId}:
+ *   delete:
+ *     tags: [Roadmaps]
+ *     summary: Delete a roadmap
+ *     description: Soft-deletes an owned roadmap. Related progress and generated learning/audit data are not hard-deleted.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: roadmapId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Roadmap deleted successfully
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: Roadmap deleted successfully
+ *               data:
+ *                 roadmapId: 665f1f000000000000000001
+ *                 deleted: true
+ *               errorCode: null
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Roadmap not found
+ */
+router.delete('/:roadmapId', authMiddleware, roadmapController.deleteRoadmap);
+
+/**
+ * @swagger
  * /api/roadmaps/{roadmapId}/archive:
  *   patch:
  *     tags: [Roadmaps]

@@ -133,12 +133,26 @@ Body có context selector:
 }
 ```
 
+FE cũng có thể pin context ngay khi tạo session:
+
+```json
+{
+  "title": "Tư vấn repo WDP_G3",
+  "repositoryId": "665f1f000000000000000010"
+}
+```
+
+Nếu session đã được tạo với `repositoryId`, `roadmapId`, `analysisId`, hoặc `snapshotId`, FE không cần gửi lại selector ở mọi message. Backend sẽ ưu tiên session-pinned context trước khi fallback latest analysis.
+
 Selector priority backend đang dùng:
 
-1. `roadmapId`: ưu tiên cao nhất, có pinned analysis/snapshot và progress hiện tại.
-2. `repositoryId`: dùng latest analysis của repo đó.
-3. `analysisId` hoặc `snapshotId`: dùng đúng record user sở hữu.
-4. Không selector: dùng latest context nếu có.
+1. Body `roadmapId`.
+2. Body `repositoryId`.
+3. Body `analysisId` hoặc `snapshotId`.
+4. Session-pinned `roadmapId`.
+5. Session-pinned `repositoryId`.
+6. Session-pinned `analysisId` hoặc `snapshotId`.
+7. Không selector/session context: dùng latest AnalysisResult của user.
 
 ## 4. User message trong AI_AUTO
 
@@ -171,7 +185,10 @@ Ví dụ:
       "snapshotId": "...",
       "roadmapId": "...",
       "progressUpdatedAt": "2026-07-14T00:00:00.000Z",
-      "analysisSource": "analysis_result"
+      "analysisSource": "analysis_result",
+      "repoName": "WDP_G3",
+      "contextSelectionReason": "session_repository",
+      "contextPinned": true
     }
   }
 }
@@ -184,6 +201,7 @@ FE behavior:
 - Không chờ admin.
 - Có thể show small label: "AI Mentor".
 - Trong dev, response có thể thêm `intent`, `contextSource`, `skillScoreSummary`; FE không nên phụ thuộc các field này ở production.
+- FE có thể dùng `data.context.repoName` và `data.context.contextSelectionReason` để hiển thị/debug "AI đang dùng phân tích repo nào".
 
 ## 5. User message trong MANUAL
 
@@ -540,4 +558,58 @@ FE behavior:
 - [ ] FE không phụ thuộc debug fields `intent`, `contextSource`, `skillScoreSummary` trong production.
 - [ ] FE gửi `roadmapId` khi chat cần context roadmap/progress.
 - [ ] FE gửi `repositoryId` khi chat cần context repo cụ thể.
+- [ ] Khi tạo chat từ repo/roadmap detail, FE pin context ngay trong `POST /api/chat/sessions`.
+- [ ] FE đọc `data.context.repoName`/`contextSelectionReason` để debug mismatch.
 - [ ] FE không log JWT, prompt đầy đủ, source code, hoặc provider payload.
+## Delete And Close Session APIs
+
+User delete/hide session:
+
+- `DELETE /api/chat/sessions/:sessionId`
+- Requires Bearer auth.
+- Only the owner can delete their session.
+- Success response: `{ "sessionId": "...", "deleted": true }`.
+- After success, remove the session from the sidebar/list. If it is the open session, clear detail or select another session.
+- Messages are not hard-deleted; admin audit/support history remains available.
+
+Admin close session:
+
+- `PATCH /api/admin/chat/sessions/:sessionId/close`
+- Requires admin Bearer auth.
+- Optional body: `{ "reason": "Da xu ly xong yeu cau" }`.
+- Success returns the session with `status: "closed"`, `closedAt`, `closedBy`, and `closeReason`.
+- Keep the session visible in admin history, show a closed badge, and disable the composer.
+- User can still view a closed session if they have not deleted it, but sending more messages returns `CHAT_SESSION_CLOSED`.
+- Admin replies and mode switches on a closed session also return `CHAT_SESSION_CLOSED`.
+
+## AI Mentor Context Capabilities
+
+Backend Chat now builds a richer mentor context for `AI_AUTO` answers. FE does not need a new base URL.
+
+FE should still send `repositoryId` when the user chats from a repository screen, and `roadmapId` when the user chats from a roadmap/progress screen. The backend uses that selected context as the source of truth for repo/roadmap-specific questions.
+
+Current mentor answers can cover:
+
+- role explanation and role-fit score interpretation
+- next skill recommendations
+- repository comparison across latest analyzed repos
+- roadmap progress and next task priority
+- CV/resume/portfolio advice
+- interview preparation
+
+`data.context` may include these compact fields:
+
+```json
+{
+  "intent": "REPO_COMPARE",
+  "intents": ["REPO_COMPARE", "CV_ADVICE"],
+  "hasRoadmapContext": false,
+  "hasComparisonContext": true,
+  "comparedRepoCount": 3,
+  "repoName": "WDP_G3",
+  "contextSelectionReason": "session_repository",
+  "contextPinned": true
+}
+```
+
+For comparison questions, FE can send the natural language question for now, for example `Repo nao nen dua vao CV?`. Backend uses the user's latest analyzed repositories per repository. A future FE can send explicit repo IDs if BE adds that selector.

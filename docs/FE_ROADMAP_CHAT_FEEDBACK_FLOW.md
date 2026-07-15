@@ -520,11 +520,25 @@ Request mới có optional selectors:
 
 Priority:
 
-1. Có `roadmapId`: dùng analysis/snapshot pinned trong roadmap và current `RoadmapProgress`.
-2. Không có roadmap nhưng có `repositoryId`: dùng latest `AnalysisResult` của repository thuộc user.
-3. Không có hai field trên nhưng có `analysisId`/`snapshotId`: validate ownership và dùng đúng record.
-4. Không selector: latest current `AnalysisResult` của user.
-5. Legacy snapshot chỉ fallback khi không có current analysis và có safe warning log.
+1. Body `roadmapId`: dùng analysis/snapshot pinned trong roadmap và current `RoadmapProgress`.
+2. Body `repositoryId`: dùng latest `AnalysisResult` của repository thuộc user.
+3. Body `analysisId`/`snapshotId`: validate ownership và dùng đúng record.
+4. Session-pinned `roadmapId`.
+5. Session-pinned `repositoryId`.
+6. Session-pinned `analysisId`/`snapshotId`.
+7. Không selector/session context: latest current `AnalysisResult` của user.
+8. Legacy snapshot chỉ fallback khi không có current analysis và có safe warning log.
+
+FE có thể pin context khi tạo session:
+
+```json
+{
+  "title": "Tư vấn repo WDP_G3",
+  "repositoryId": "665f1f000000000000000010"
+}
+```
+
+Sau đó các message tiếp theo chỉ cần gửi `message`, backend vẫn dùng session-pinned context.
 
 Response giữ message fields cũ và thêm optional:
 
@@ -536,7 +550,10 @@ Response giữ message fields cũ và thêm optional:
     "snapshotId": "...",
     "roadmapId": "...",
     "progressUpdatedAt": "2026-07-14T00:00:00.000Z",
-    "analysisSource": "analysis_result"
+    "analysisSource": "analysis_result",
+    "repoName": "WDP_G3",
+    "contextSelectionReason": "session_repository",
+    "contextPinned": true
   }
 }
 ```
@@ -846,3 +863,28 @@ DELETE account success:
 - [ ] Dùng optional `context` để debug mismatch.
 - [ ] Nếu feedback `isStale=true`, hiển thị CTA regenerate.
 - [ ] Không log Bearer token, source code, patch hoặc provider payload.
+## Roadmap Delete API
+
+- `DELETE /api/roadmaps/:roadmapId`
+- Requires Bearer auth.
+- Only the roadmap owner can delete it.
+- The backend soft-deletes the roadmap using `isDeleted/deletedAt/deletedBy`; related analysis, repository, learning content, progress, and chat data are not hard-deleted.
+- Success response: `{ "roadmapId": "...", "deleted": true }`.
+- After success, remove the roadmap from the list and navigate back to the roadmap list if the deleted roadmap is currently open.
+- Deleted roadmaps no longer appear in `GET /api/roadmaps/me`; detail, learning, and progress endpoints return `404`.
+
+## AI Mentor Chat Notes
+
+For Chat launched from roadmap/progress screens, FE should send the current `roadmapId`. Backend now includes compact progress context with `targetRole`, `durationWeeks`, progress percent, in-progress tasks, pending tasks, recently completed tasks, and next recommended tasks.
+
+For Chat launched from repository/analysis screens, FE should send `repositoryId`, `analysisId`, or `snapshotId` when available. Backend enriches the selected analysis context with readiness score, role probability/match score, overall score, role matches, skill evidence, source stats, and tech stack.
+
+Supported mentor-style questions include:
+
+- `Toi hop Backend hay Frontend hon?`
+- `2 tuan toi nen hoc gi truoc?`
+- `Repo nao nen dua vao CV?`
+- `Tien do roadmap cua toi the nao?`
+- `Toi nen chuan bi phong van Backend ra sao?`
+
+For repository comparison questions, FE can currently send only the question text. Backend compares the user's latest analyzed repositories per repository and returns compact provenance in `data.context.hasComparisonContext` and `data.context.comparedRepoCount`.

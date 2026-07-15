@@ -113,7 +113,7 @@ const getDashboard = async () => {
     Repository.countDocuments(),
     AnalysisSnapshot.countDocuments(),
     AiFeedback.countDocuments(),
-    Roadmap.countDocuments({ status: 'active' }),
+    Roadmap.countDocuments({ status: 'active', isDeleted: { $ne: true } }),
     Report.countDocuments({ status: { $in: ['PENDING', 'pending'] } }),
   ]);
 
@@ -146,7 +146,7 @@ const getDashboard = async () => {
 };
 
 const getUsers = async (filters) => {
-  const query = {};
+  const query = { isDeleted: { $ne: true } };
   const search = String(filters.search || '').trim();
 
   if (search) {
@@ -415,7 +415,9 @@ const getRoadmaps = async (filters) => {
 const getRoadmapById = async (roadmapId) => {
   ensureObjectId(roadmapId, 'Roadmap');
 
-  const roadmap = await Roadmap.findById(roadmapId).populate('userId', 'fullName name email role status').lean();
+  const roadmap = await Roadmap.findOne({ _id: roadmapId, isDeleted: { $ne: true } })
+    .populate('userId', 'fullName name email role status')
+    .lean();
   if (!roadmap) {
     throw createStatusError('Roadmap not found', 404);
   }
@@ -434,7 +436,11 @@ const updateRoadmapStatus = async (roadmapId, status) => {
     throw createStatusError('status must be one of active, archived', 400);
   }
 
-  const roadmap = await Roadmap.findByIdAndUpdate(roadmapId, { $set: { status } }, { new: true })
+  const roadmap = await Roadmap.findOneAndUpdate(
+    { _id: roadmapId, isDeleted: { $ne: true } },
+    { $set: { status } },
+    { new: true }
+  )
     .populate('userId', 'fullName name email role status')
     .lean();
 
