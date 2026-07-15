@@ -60,7 +60,7 @@ const router = express.Router();
  *                 roadmapId: 665f1f000000000000000002
  *     responses:
  *       201:
- *         description: Chat session created successfully
+ *         description: Chat session created successfully. Session includes mode, modeSource, effectiveMode, status, closedAt, closedBy, and closeReason.
  *       401:
  *         description: Unauthorized
  */
@@ -76,7 +76,7 @@ router.post('/sessions', authMiddleware, validate(validateCreateChatSessionBody)
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Chat sessions fetched successfully
+ *         description: Chat sessions fetched successfully. Each session includes mode, modeSource, effectiveMode, status, closedAt, closedBy, and closeReason.
  *       401:
  *         description: Unauthorized
  */
@@ -98,7 +98,7 @@ router.get('/sessions', authMiddleware, chatController.getChatSessions);
  *           type: string
  *     responses:
  *       200:
- *         description: Chat session fetched successfully
+ *         description: Chat session fetched successfully. Session includes mode, modeSource, effectiveMode, status, closedAt, closedBy, and closeReason.
  *       401:
  *         description: Unauthorized
  *       404:
@@ -190,7 +190,7 @@ router.delete('/sessions/:sessionId', authMiddleware, chatController.deleteChatS
  *                 repositoryId: 665f1f000000000000000001
  *     responses:
  *       200:
- *         description: Message sent successfully. In AI_AUTO, the response may include intent, contextSource, and skillScoreSummary outside production for debugging.
+ *         description: Message sent successfully. The backend resolves effectiveMode from session modeSource plus global settings; AI_AUTO returns aiMessage and MANUAL leaves aiMessage null. CHAT_SESSION_CLOSED is returned when the session is closed.
  *         content:
  *           application/json:
  *             schema:
