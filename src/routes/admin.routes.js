@@ -700,6 +700,11 @@ router.get("/ai-feedback/:feedbackId", adminController.getAiFeedbackById);
  *         schema:
  *           type: string
  *           enum: [active, archived]
+ *       - in: query
+ *         name: includeDeleted
+ *         schema:
+ *           type: boolean
+ *         description: Defaults to false. When true, includes soft-deleted roadmaps in the admin list.
  *     responses:
  *       200:
  *         description: Roadmaps fetched successfully
@@ -721,6 +726,11 @@ router.get("/roadmaps", adminController.getRoadmaps);
  *         required: true
  *         schema:
  *           type: string
+ *       - in: query
+ *         name: includeDeleted
+ *         schema:
+ *           type: boolean
+ *         description: Defaults to false. When true, allows viewing a soft-deleted roadmap detail.
  *     responses:
  *       200:
  *         description: Roadmap fetched successfully

@@ -106,6 +106,11 @@ const chatSessionSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    lastResponseAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
     userDeletedAt: {
       type: Date,
       default: null,

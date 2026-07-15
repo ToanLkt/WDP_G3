@@ -33,6 +33,7 @@
     "test:chat-context-pinning": "node scripts/testChatContextPinning.js",
     "test:chat-mentor-context": "node scripts/testChatMentorContext.js",
     "test:chat-mode-effective": "node scripts/testChatModeEffective.js",
+    "test:chat-realtime": "node scripts/testChatRealtimeIntegrationAudit.js",
     "benchmark:analysis-performance": "node scripts/benchmarkAnalysisPerformanceOptimizations.js",
     "migrate:analysis-performance-indexes": "node scripts/createAnalysisPerformanceIndexes.js"
   },
@@ -44,6 +45,7 @@
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.13.2",
+    "socket.io": "^4.8.3",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"
   },
