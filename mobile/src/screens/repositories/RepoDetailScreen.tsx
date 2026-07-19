@@ -20,11 +20,14 @@ import {
   Bot,
   RefreshCw,
   Send,
+  MessageSquare,
   Flag,
   CheckCircle2,
   AlertCircle,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   BookOpen,
   Target,
   Lightbulb,
@@ -38,7 +41,7 @@ import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { githubApi } from '../../api/github';
 import { aiFeedbackApi } from '../../api/aiFeedback';
 import { reportApi } from '../../api/reports';
-import { fetchAnalysisResult } from '../../services/analysis';
+import { fetchAnalysisResult, fetchRoleMatches } from '../../services/analysis';
 import { analyzeRepository } from '../../services/repo';
 import { getApiErrorMessage } from '../../api/client';
 import { useTabBarAwareScroll } from '../../hooks/useTabBarAwareScroll';
@@ -81,6 +84,7 @@ export const RepoDetailScreen: React.FC = () => {
   const [commits, setCommits] = useState<any[]>([]);
   const [latestAnalysis, setLatestAnalysis] = useState<any>(null);
   const [feedback, setFeedback] = useState<AIFeedback | null>(null);
+  const [roleMatches, setRoleMatches] = useState<any[]>([]);
 
   // Loading states
   const [loading, setLoading] = useState(true);
@@ -99,6 +103,11 @@ export const RepoDetailScreen: React.FC = () => {
 
   // Pagination
   const [commitPage, setCommitPage] = useState(1);
+
+  // Expand/collapse toggles
+  const [showAllRoles, setShowAllRoles] = useState(false);
+  const [showAllStrength, setShowAllStrength] = useState(false);
+  const [showAllWeakness, setShowAllWeakness] = useState(false);
 
   // Fetch all initial details
   const loadAllData = async (silent = false) => {
@@ -141,6 +150,14 @@ export const RepoDetailScreen: React.FC = () => {
         if (fb) setFeedback(fb as AIFeedback);
       } catch (err) {
         console.warn('Failed to load AI feedback', err);
+      }
+
+      // 6. Fetch Role Matches
+      try {
+        const matchesData = await fetchRoleMatches({ sourceMode: 'single_repo', repoId: repoId });
+        if (matchesData?.matches) setRoleMatches(matchesData.matches);
+      } catch (err) {
+        console.warn('Failed to load role matches', err);
       }
     } catch (err) {
       console.error('Error loading repo data', err);
@@ -200,6 +217,11 @@ export const RepoDetailScreen: React.FC = () => {
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  const handleAskAi = () => {
+    if (!repository) return;
+    navigation.navigate('ChatTab', { repoId, repoName: repository.name });
   };
 
   const handleGenerateFeedback = async () => {
@@ -264,6 +286,29 @@ export const RepoDetailScreen: React.FC = () => {
     return commits.slice((commitPage - 1) * COMMITS_PER_PAGE, commitPage * COMMITS_PER_PAGE);
   }, [commits, commitPage]);
 
+  // Derived analysis values
+  const latestSummary = latestAnalysis?.summary;
+  const latestScope = latestAnalysis?.analysisScope;
+  const latestScoreValue = latestSummary?.userReadinessScore ?? latestSummary?.overallScore ?? latestAnalysis?.scores?.overallScore ?? latestAnalysis?.scores?.overall;
+  const latestScore = typeof latestScoreValue === 'number' && Number.isFinite(latestScoreValue) ? Math.round(latestScoreValue) : undefined;
+  const latestScoreLabel = latestSummary?.userReadinessScore !== undefined ? 'MỨC SẴN SÀNG' : 'ĐIỂM TỔNG QUAN';
+  const userCommits = latestScope?.userCommits ?? latestAnalysis?.commitSummary?.totalCommits ?? '—';
+  const totalCommits = latestScope?.totalRepoCommits ?? latestAnalysis?.commitSummary?.totalCommits ?? '—';
+  const activeDays = latestScope?.activeDays ?? latestAnalysis?.commitSummary?.activeDays ?? 'Chưa có dữ liệu';
+
+  const hasFeedbackContent = Boolean(
+    feedback && (
+      (feedback.strengthFeedback && feedback.strengthFeedback.length > 0) ||
+      (feedback.weaknessFeedback && feedback.weaknessFeedback.length > 0) ||
+      feedback.careerSuggestion ||
+      feedback.portfolioAdvice ||
+      feedback.learningAdvice ||
+      (feedback.nextSteps && feedback.nextSteps.length > 0) ||
+      (feedback.recommendedTopics && feedback.recommendedTopics.length > 0) ||
+      (feedback.riskNotes && feedback.riskNotes.length > 0)
+    )
+  );
+
   if (loading) {
     return <LoadingSpinner visible message={`Đang tải repository ${repoName || ''}...`} />;
   }
@@ -306,116 +351,91 @@ export const RepoDetailScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Action Buttons Hub Grid */}
-        <View style={styles.actionsGrid}>
-          <Button
-            title={isAnalyzed ? 'Phân tích lại' : 'Phân tích dự án'}
-            onPress={handleAnalyze}
-            loading={isAnalyzing}
-            style={styles.primaryActionBtn}
-            icon={<Play size={14} color={theme.colors.textPrimary} />}
-          />
-
-          <View style={styles.actionRow}>
-            {isAnalyzed && (
-              <Button
-                title="Xem phân tích"
-                variant="outline"
-                fullWidth={false}
-                onPress={() => navigation.navigate('RepoAnalysis', { repoId, repoName })}
-                style={styles.gridActionBtn}
-              />
-            )}
+        {/* Header Action Buttons */}
+        <View style={styles.headerActionsWrap}>
+          <View style={styles.headerActionsRow}>
             <Button
-              title="Tạo AI feedback"
+              title="Cập nhật công nghệ"
               variant="outline"
-              fullWidth={isAnalyzed ? false : true}
-              onPress={handleGenerateFeedback}
-              loading={isGeneratingFeedback}
-              style={isAnalyzed ? styles.gridActionBtn : styles.primaryActionBtn}
-              icon={<Bot size={14} color={theme.colors.textPrimary} />}
-            />
-          </View>
-
-          <View style={styles.actionRow}>
-            <Button
-              title="Tải packages"
-              variant="outline"
-              fullWidth={false}
               onPress={handleFetchPackages}
               loading={packagesLoading}
-              style={styles.gridActionBtn}
+              style={[styles.headerActionBtn, { flex: 1 }]}
+              textStyle={styles.headerActionBtnText}
               icon={<FileJson size={14} color={theme.colors.textPrimary} />}
             />
             <Button
-              title="Tải commits"
+              title="Cập nhật lịch sử"
               variant="outline"
-              fullWidth={false}
               onPress={handleFetchCommits}
               loading={commitsLoading}
-              style={styles.gridActionBtn}
+              style={[styles.headerActionBtn, { flex: 1 }]}
+              textStyle={styles.headerActionBtnText}
               icon={<GitCommit size={14} color={theme.colors.textPrimary} />}
             />
           </View>
+          <View style={styles.headerActionsRow}>
+            <Button
+              title="Tạo AI feedback"
+              variant="outline"
+              onPress={handleGenerateFeedback}
+              loading={isGeneratingFeedback}
+              style={[styles.headerActionBtn, { flex: 1 }]}
+              textStyle={styles.headerActionBtnText}
+              icon={<Bot size={14} color={theme.colors.textPrimary} />}
+            />
+            <Button
+              title="Hỏi AI về repo này"
+              variant="outline"
+              onPress={handleAskAi}
+              style={[styles.headerActionBtn, { flex: 1 }]}
+              textStyle={styles.headerActionBtnText}
+              icon={<MessageSquare size={14} color={theme.colors.textPrimary} />}
+            />
+          </View>
+          <Button
+            title="Phân tích lại"
+            variant="primary"
+            onPress={handleAnalyze}
+            loading={isAnalyzing}
+            style={styles.headerActionBtn}
+            textStyle={styles.headerActionBtnTextPrimary}
+            icon={<Play size={14} color="white" />}
+          />
         </View>
       </View>
 
-      {/* Phân tích dự án này */}
-      <Card style={styles.infoCard}>
-        <Text style={styles.cardTitle}>Phân tích dự án này</Text>
-        <Text style={styles.cardDescription}>
-          Hệ thống sẽ đồng bộ gói thư viện, đóng góp, chạy phân tích và lấy kết quả mới nhất cho dự án đang mở.
-        </Text>
-        <View style={styles.badgeRow}>
-          <Badge label={repository.private ? 'Private' : 'Public'} variant={repository.private ? 'warning' : 'success'} />
-          <Badge label={hasReadme ? 'Có README' : 'Thiếu README'} variant={hasReadme ? 'success' : 'muted'} />
-          <Badge label={isAnalyzed ? 'Đã có phân tích' : 'Chưa có phân tích'} variant={isAnalyzed ? 'success' : 'muted'} />
-        </View>
-        <View style={styles.cardActions}>
-          <Button
-            title={isAnalyzed ? 'Phân tích lại' : 'Phân tích ngay'}
-            onPress={handleAnalyze}
-            loading={isAnalyzing}
-            style={{ flex: 1, marginRight: 8 }}
-          />
-          {isAnalyzed && (
-            <Button
-              title="Xem kết quả"
-              variant="outline"
-              onPress={() => navigation.navigate('RepoAnalysis', { repoId, repoName })}
-              style={{ flex: 1 }}
-            />
-          )}
-        </View>
-      </Card>
-
-      {/* Phân tích gần nhất */}
+      {/* Tổng quan năng lực */}
       {latestAnalysis && (
         <Card style={styles.latestAnalysisCard}>
-          <Text style={styles.cardTitle}>Phân tích gần nhất</Text>
+          <View style={styles.latestAnalysisHeader}>
+            <View>
+              <Text style={styles.cardTitle}>Tổng quan năng lực</Text>
+              <Text style={styles.cardSubtitle}>Kết quả mới nhất từ dữ liệu đã đồng bộ của dự án.</Text>
+            </View>
+          </View>
           <View style={styles.statsGrid}>
             <View style={styles.gridCell}>
-              <Text style={styles.gridLabel}>Định hướng</Text>
+              <Text style={styles.gridLabel}>ĐỊNH HƯỚNG</Text>
               <Text style={styles.gridValue} numberOfLines={1}>
-                {latestAnalysis.careerDirection?.primary || 'Backend Developer'}
+                {latestAnalysis.careerDirection?.primary || 'Chưa có dữ liệu'}
               </Text>
             </View>
             <View style={styles.gridCell}>
-              <Text style={styles.gridLabel}>Mức sẵn sàng / Tổng quan</Text>
+              <Text style={styles.gridLabel}>{latestScoreLabel}</Text>
               <Text style={styles.gridValue}>
-                {Math.round(latestAnalysis.summary?.userReadinessScore ?? 0)}% / {Math.round(latestAnalysis.scores?.overallScore ?? latestAnalysis.scores?.overall ?? 0)}
+                {latestScore !== undefined ? `${latestScore}%` : 'Chưa có dữ liệu'}
               </Text>
             </View>
             <View style={styles.gridCell}>
-              <Text style={styles.gridLabel}>Đóng góp của bạn / toàn bộ</Text>
+              <Text style={styles.gridLabel}>ĐÓNG GÓP CỦA BẠN / TOÀN DỰ ÁN</Text>
               <Text style={styles.gridValue}>
-                {latestAnalysis.analysisScope?.userCommits ?? latestAnalysis.commitSummary?.totalCommits ?? 0} / {latestAnalysis.analysisScope?.totalRepoCommits ?? latestAnalysis.commitSummary?.totalCommits ?? 0}
+                {userCommits} / {totalCommits}
               </Text>
             </View>
             <View style={styles.gridCell}>
-              <Text style={styles.gridLabel}>Ngày hoạt động</Text>
+              <Text style={styles.gridLabel}>NGÀY HOẠT ĐỘNG</Text>
               <Text style={styles.gridValue}>
-                {latestAnalysis.analysisScope?.activeDays ?? latestAnalysis.commitSummary?.activeDays ?? 0} ngày
+                {activeDays}
               </Text>
             </View>
           </View>
@@ -457,95 +477,131 @@ export const RepoDetailScreen: React.FC = () => {
             </View>
           </View>
 
-          <View style={[styles.cardActions, { marginTop: 16 }]}>
-            <Button
-              title="Xem chi tiết phân tích"
-              variant="outline"
-              onPress={() => navigation.navigate('RepoAnalysis', { repoId, repoName })}
-              style={{ flex: 1, marginRight: 8 }}
-            />
-            <Button
-              title="Phân tích lại"
-              onPress={handleAnalyze}
-              loading={isAnalyzing}
-              style={{ flex: 1 }}
-              icon={<RefreshCw size={14} color={theme.colors.textPrimary} />}
-            />
-          </View>
+
         </Card>
       )}
 
-      {/* Báo cáo dự án */}
-      <Card style={styles.reportCard}>
-        <View style={styles.reportHeader}>
-          <Flag size={18} color={theme.colors.warning} />
-          <Text style={styles.reportTitle}>Báo cáo dự án</Text>
-        </View>
-        <Text style={styles.reportDescription}>
-          Nếu dự án này có nội dung không phù hợp hoặc thông tin bất thường, bạn có thể gửi báo cáo để quản trị viên xem xét.
-        </Text>
-
-        {reportMessage ? (
-          <View style={styles.successBox}>
-            <Text style={styles.successText}>{reportMessage}</Text>
+      {/* Role Matches */}
+      {roleMatches && roleMatches.length > 0 && (
+        <Card style={styles.roleMatchesCard}>
+          <View style={styles.cardHeaderWithIcon}>
+            <Target size={20} color={theme.colors.primaryLight} />
+            <Text style={styles.cardTitle}>Mức độ phù hợp với vai trò</Text>
           </View>
-        ) : null}
 
-        {reportError ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{reportError}</Text>
+          <View style={styles.topRoleBanner}>
+            <CheckCircle2 size={18} color={theme.colors.primaryLight} />
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.topRoleBannerSub}>Vai trò gần nhất với repository này</Text>
+              <Text style={styles.topRoleBannerTitle}>{roleMatches[0].roleName}</Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={styles.topRoleBannerScore}>{Math.round(roleMatches[0].matchScore)}%</Text>
+              <Text style={styles.topRoleBannerLabel}>{roleMatches[0].matchLevelLabel}</Text>
+            </View>
           </View>
-        ) : null}
 
-        <View style={styles.formItem}>
-          <Text style={styles.formLabel}>Lý do báo cáo</Text>
-          <TouchableOpacity
-            style={styles.dropdownBtn}
-            onPress={() => setShowReportDropdown(!showReportDropdown)}
-          >
-            <Text style={styles.dropdownBtnText}>{reportReason}</Text>
-          </TouchableOpacity>
-
-          {showReportDropdown && (
-            <View style={styles.dropdownMenu}>
-              {reportReasons.map((reason) => (
-                <TouchableOpacity
-                  key={reason}
-                  style={styles.dropdownItem}
-                  onPress={() => {
-                    setReportReason(reason);
-                    setShowReportDropdown(false);
-                  }}
-                >
-                  <Text style={styles.dropdownItemText}>{reason}</Text>
-                </TouchableOpacity>
-              ))}
+          {roleMatches[0].recommendedNextSkills && roleMatches[0].recommendedNextSkills.length > 0 && (
+            <View style={styles.nextPriorityBox}>
+              <View style={styles.nextPriorityHeader}>
+                <Lightbulb size={14} color={theme.colors.warning} />
+                <Text style={styles.nextPriorityTitle}>Ưu tiên tiếp theo</Text>
+              </View>
+              <Text style={styles.nextPriorityText}>
+                Bổ sung {roleMatches[0].recommendedNextSkills.slice(0, 3).join(', ')} để cải thiện độ sẵn sàng cho {roleMatches[0].roleName}.
+              </Text>
             </View>
           )}
-        </View>
 
-        <View style={styles.formItem}>
-          <Text style={styles.formLabel}>Mô tả chi tiết</Text>
-          <TextInput
-            style={styles.textarea}
-            multiline
-            numberOfLines={4}
-            value={reportDescription}
-            onChangeText={setReportDescription}
-            placeholder="Ví dụ: Repository này có nội dung không phù hợp hoặc thông tin gây hiểu nhầm..."
-            placeholderTextColor={theme.colors.textMuted}
-          />
-        </View>
+          {/* Filtered role list */}
+          <View style={styles.roleList}>
+            {(showAllRoles ? roleMatches : roleMatches.slice(0, 1)).map((role, idx) => {
+              const score = Math.round(role.matchScore);
+              const isTop = idx === 0;
+              const color = isTop ? theme.colors.primaryLight : theme.colors.warning;
 
-        <View style={{ alignItems: 'flex-end', marginTop: 12 }}>
-          <Button
-            title="Gửi báo cáo"
-            onPress={handleSubmitReport}
-            loading={isSubmittingReport}
-            icon={<Send size={14} color={theme.colors.textPrimary} />}
-          />
-        </View>
-      </Card>
+              return (
+                <View key={idx} style={styles.roleMatchItem}>
+                  <View style={styles.roleMatchHeader}>
+                    <Text style={styles.roleMatchName}>{role.roleName}</Text>
+                    <Badge label={role.matchLevelLabel} variant={isTop ? 'primary' : 'warning'} style={{ marginLeft: 8 }} />
+                    <View style={{ flex: 1 }} />
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={[styles.roleMatchScore, { color }]}>{score}%</Text>
+                      <Text style={styles.roleMatchSubScore}>mức độ phù hợp</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.progressBarBg}>
+                    <View style={[styles.progressBarFill, { width: `${score}%`, backgroundColor: color }]} />
+                  </View>
+
+                  {/* Missing/Detected/Recommended skills */}
+                  <View style={styles.roleSkillsContainer}>
+                    <View style={styles.roleSkillsBox}>
+                      <Text style={styles.roleSkillsLabel}>CÒN THIẾU CỐT LÕI ({role.missingSkillNames?.length || 0})</Text>
+                      <View style={styles.badgeWrap}>
+                        {role.missingSkillNames && role.missingSkillNames.length > 0 ? (
+                          role.missingSkillNames.slice(0, 5).map((skill: string, i: number) => (
+                            <Badge key={i} label={skill} variant="muted" style={styles.marginBadge} />
+                          ))
+                        ) : (
+                          <Text style={styles.emptyText}>Không có.</Text>
+                        )}
+                      </View>
+                    </View>
+
+                    <View style={styles.roleSkillsBox}>
+                      <Text style={styles.roleSkillsLabel}>KỸ NĂNG ĐÃ THỂ HIỆN ({role.matchedSkillNames?.length || 0})</Text>
+                      <View style={styles.badgeWrap}>
+                        {role.matchedSkillNames && role.matchedSkillNames.length > 0 ? (
+                          role.matchedSkillNames.slice(0, 5).map((skill: string, i: number) => (
+                            <Badge key={i} label={skill} variant="success" style={styles.marginBadge} />
+                          ))
+                        ) : (
+                          <Text style={styles.emptyText}>Chưa có.</Text>
+                        )}
+                      </View>
+                    </View>
+
+                    <View style={styles.roleSkillsBox}>
+                      <Text style={styles.roleSkillsLabel}>NÊN BỔ SUNG TIẾP</Text>
+                      <View style={styles.badgeWrap}>
+                        {role.recommendedNextSkills && role.recommendedNextSkills.length > 0 ? (
+                          role.recommendedNextSkills.slice(0, 5).map((skill: string, i: number) => (
+                            <Badge key={i} label={skill} variant="warning" style={styles.marginBadge} />
+                          ))
+                        ) : (
+                          <Text style={styles.emptyText}>Chưa có đề xuất.</Text>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+
+                  {idx < (showAllRoles ? roleMatches.length : 1) - 1 && <View style={styles.roleDivider} />}
+                </View>
+              );
+            })}
+          </View>
+
+          {roleMatches.length > 1 && (
+            <TouchableOpacity
+              style={styles.showMoreBtn}
+              onPress={() => setShowAllRoles(!showAllRoles)}
+            >
+              <Text style={styles.showMoreBtnText}>
+                {showAllRoles
+                  ? 'Thu gọn'
+                  : `Xem thêm ${roleMatches.length - 1} vai trò khác`}
+              </Text>
+              {showAllRoles
+                ? <ChevronUp size={14} color={theme.colors.primaryLight} />
+                : <ChevronDown size={14} color={theme.colors.primaryLight} />}
+            </TouchableOpacity>
+          )}
+        </Card>
+      )}
+
 
       {/* Packages và Commits trong Grid / List */}
       <View style={styles.gridContainer}>
@@ -685,14 +741,25 @@ export const RepoDetailScreen: React.FC = () => {
           <Text style={styles.cardTitle}>AI feedback cho repository này</Text>
         </View>
 
-        {feedback ? (
+        {hasFeedbackContent && feedback ? (
           <View style={styles.feedbackContent}>
+            <View style={styles.feedbackMetaRow}>
+              <Badge label={feedback.projectType || repository.language || 'Project'} variant="info" style={styles.marginBadge} />
+              {feedback.careerDirection && <Badge label={feedback.careerDirection} variant="success" style={styles.marginBadge} />}
+            </View>
+            {(feedback.generatedAt || feedback.createdAt) && (
+              <Text style={styles.feedbackMetaDate}>
+                Tạo lúc {new Date(feedback.generatedAt || feedback.createdAt || '').toLocaleDateString()}
+              </Text>
+            )}
+
             {feedback.summary && (
               <View style={styles.feedbackSummaryBox}>
                 <Text style={styles.feedbackSummaryText}>{feedback.summary}</Text>
               </View>
             )}
 
+            {/* Always visible: Điểm mạnh + Điểm yếu */}
             <View style={styles.feedbackSplitGrid}>
               <View style={[styles.feedbackSubCard, styles.strengthBox]}>
                 <View style={styles.feedbackSubHeader}>
@@ -700,10 +767,8 @@ export const RepoDetailScreen: React.FC = () => {
                   <Text style={styles.feedbackSubTitle}>Feedback điểm mạnh</Text>
                 </View>
                 {feedback.strengthFeedback && feedback.strengthFeedback.length > 0 ? (
-                  feedback.strengthFeedback.slice(0, FEEDBACK_LIST_LIMIT).map((item, i) => (
-                    <Text key={i} style={styles.feedbackItemText}>
-                      - {item}
-                    </Text>
+                  feedback.strengthFeedback.map((item, i) => (
+                    <Text key={i} style={styles.feedbackItemText}>- {item}</Text>
                   ))
                 ) : (
                   <Text style={styles.emptyText}>Chưa có feedback điểm mạnh.</Text>
@@ -716,10 +781,8 @@ export const RepoDetailScreen: React.FC = () => {
                   <Text style={styles.feedbackSubTitle}>Feedback điểm yếu</Text>
                 </View>
                 {feedback.weaknessFeedback && feedback.weaknessFeedback.length > 0 ? (
-                  feedback.weaknessFeedback.slice(0, FEEDBACK_LIST_LIMIT).map((item, i) => (
-                    <Text key={i} style={styles.feedbackItemText}>
-                      - {item}
-                    </Text>
+                  feedback.weaknessFeedback.map((item, i) => (
+                    <Text key={i} style={styles.feedbackItemText}>- {item}</Text>
                   ))
                 ) : (
                   <Text style={styles.emptyText}>Chưa có feedback điểm yếu.</Text>
@@ -727,49 +790,91 @@ export const RepoDetailScreen: React.FC = () => {
               </View>
             </View>
 
-            {feedback.learningAdvice && (
-              <View style={styles.adviceBox}>
-                <View style={styles.feedbackSubHeader}>
-                  <BookOpen size={16} color={theme.colors.textPrimary} />
-                  <Text style={styles.feedbackSectionTitle}>Gợi ý học tập</Text>
+            {/* Collapsible: Các phần còn lại */}
+            {showAllStrength && (
+              <>
+                {feedback.learningAdvice && (
+                  <View style={styles.adviceBox}>
+                    <View style={styles.feedbackSubHeader}>
+                      <BookOpen size={16} color={theme.colors.textPrimary} />
+                      <Text style={styles.feedbackSectionTitle}>Gợi ý học tập</Text>
+                    </View>
+                    <Text style={styles.adviceText}>{feedback.learningAdvice}</Text>
+                  </View>
+                )}
+
+                <View style={styles.feedbackSplitGrid}>
+                  <View style={styles.adviceBox}>
+                    <View style={styles.feedbackSubHeader}>
+                      <Target size={16} color={theme.colors.textPrimary} />
+                      <Text style={styles.feedbackSectionTitle}>Bước tiếp theo</Text>
+                    </View>
+                    {feedback.nextSteps && feedback.nextSteps.length > 0 ? (
+                      feedback.nextSteps.map((item, i) => (
+                        <Text key={i} style={styles.feedbackItemText}>- {item}</Text>
+                      ))
+                    ) : (
+                      <Text style={styles.emptyText}>Chưa có gợi ý bước tiếp theo.</Text>
+                    )}
+                  </View>
+
+                  <View style={styles.adviceBox}>
+                    <View style={styles.feedbackSubHeader}>
+                      <Lightbulb size={16} color={theme.colors.textPrimary} />
+                      <Text style={styles.feedbackSectionTitle}>Chủ đề nên học</Text>
+                    </View>
+                    <View style={styles.badgeWrap}>
+                      {feedback.recommendedTopics && feedback.recommendedTopics.length > 0 ? (
+                        feedback.recommendedTopics.map((item, i) => (
+                          <Badge key={i} label={item} variant="primary" style={styles.marginBadge} />
+                        ))
+                      ) : (
+                        <Text style={styles.emptyText}>Chưa có chủ đề gợi ý.</Text>
+                      )}
+                    </View>
+                  </View>
                 </View>
-                <Text style={styles.adviceText}>{feedback.learningAdvice}</Text>
-              </View>
+
+                {(feedback.careerSuggestion || feedback.portfolioAdvice) && (
+                  <View style={styles.feedbackSplitGrid}>
+                    {feedback.careerSuggestion && (
+                      <View style={[styles.adviceBox, styles.careerBox]}>
+                        <Text style={styles.careerBoxTitle}>Gợi ý nghề nghiệp</Text>
+                        <Text style={styles.adviceText}>{feedback.careerSuggestion}</Text>
+                      </View>
+                    )}
+                    {feedback.portfolioAdvice && (
+                      <View style={[styles.adviceBox, styles.portfolioBox]}>
+                        <Text style={styles.portfolioBoxTitle}>Gợi ý portfolio</Text>
+                        <Text style={styles.adviceText}>{feedback.portfolioAdvice}</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {feedback.riskNotes && feedback.riskNotes.length > 0 && (
+                  <View style={[styles.adviceBox, styles.riskBox]}>
+                    <Text style={styles.riskBoxTitle}>Lưu ý rủi ro</Text>
+                    {feedback.riskNotes.map((item, i) => (
+                      <Text key={i} style={styles.feedbackItemText}>- {item}</Text>
+                    ))}
+                  </View>
+                )}
+              </>
             )}
 
-            <View style={styles.feedbackSplitGrid}>
-              <View style={styles.adviceBox}>
-                <View style={styles.feedbackSubHeader}>
-                  <Target size={16} color={theme.colors.textPrimary} />
-                  <Text style={styles.feedbackSectionTitle}>Bước tiếp theo</Text>
-                </View>
-                {feedback.nextSteps && feedback.nextSteps.length > 0 ? (
-                  feedback.nextSteps.slice(0, FEEDBACK_LIST_LIMIT).map((item, i) => (
-                    <Text key={i} style={styles.feedbackItemText}>
-                      - {item}
-                    </Text>
-                  ))
-                ) : (
-                  <Text style={styles.emptyText}>Chưa có gợi ý bước tiếp theo.</Text>
-                )}
-              </View>
-
-              <View style={styles.adviceBox}>
-                <View style={styles.feedbackSubHeader}>
-                  <Lightbulb size={16} color={theme.colors.textPrimary} />
-                  <Text style={styles.feedbackSectionTitle}>Chủ đề nên học</Text>
-                </View>
-                <View style={styles.badgeWrap}>
-                  {feedback.recommendedTopics && feedback.recommendedTopics.length > 0 ? (
-                    feedback.recommendedTopics.map((item, i) => (
-                      <Badge key={i} label={item} variant="primary" style={styles.marginBadge} />
-                    ))
-                  ) : (
-                    <Text style={styles.emptyText}>Chưa có chủ đề gợi ý.</Text>
-                  )}
-                </View>
-              </View>
-            </View>
+            {/* Toggle button */}
+            <TouchableOpacity
+              style={styles.showMoreBtn}
+              onPress={() => setShowAllStrength(!showAllStrength)}
+            >
+              <Text style={styles.showMoreBtnText}>
+                {showAllStrength ? 'Thu gọn' : 'Xem thêm chi tiết'}
+              </Text>
+              {showAllStrength
+                ? <ChevronUp size={14} color={theme.colors.primaryLight} />
+                : <ChevronDown size={14} color={theme.colors.primaryLight} />}
+            </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.emptyFeedbackWrap}>
@@ -794,6 +899,77 @@ export const RepoDetailScreen: React.FC = () => {
             </View>
           </View>
         )}
+      </Card>
+      {/* Báo cáo dự án */}
+      <Card style={styles.reportCard}>
+        <View style={styles.reportHeader}>
+          <Flag size={18} color={theme.colors.warning} />
+          <Text style={styles.reportTitle}>Báo cáo dự án</Text>
+        </View>
+        <Text style={styles.reportDescription}>
+          Nếu dự án này có nội dung không phù hợp hoặc thông tin bất thường, bạn có thể gửi báo cáo để quản trị viên xem xét.
+        </Text>
+
+        {reportMessage ? (
+          <View style={styles.successBox}>
+            <Text style={styles.successText}>{reportMessage}</Text>
+          </View>
+        ) : null}
+
+        {reportError ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{reportError}</Text>
+          </View>
+        ) : null}
+
+        <View style={styles.formItem}>
+          <Text style={styles.formLabel}>Lý do báo cáo</Text>
+          <TouchableOpacity
+            style={styles.dropdownBtn}
+            onPress={() => setShowReportDropdown(!showReportDropdown)}
+          >
+            <Text style={styles.dropdownBtnText}>{reportReason}</Text>
+          </TouchableOpacity>
+
+          {showReportDropdown && (
+            <View style={styles.dropdownMenu}>
+              {reportReasons.map((reason) => (
+                <TouchableOpacity
+                  key={reason}
+                  style={styles.dropdownItem}
+                  onPress={() => {
+                    setReportReason(reason);
+                    setShowReportDropdown(false);
+                  }}
+                >
+                  <Text style={styles.dropdownItemText}>{reason}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+
+        <View style={styles.formItem}>
+          <Text style={styles.formLabel}>Mô tả chi tiết</Text>
+          <TextInput
+            style={styles.textarea}
+            multiline
+            numberOfLines={4}
+            value={reportDescription}
+            onChangeText={setReportDescription}
+            placeholder="Ví dụ: Repository này có nội dung không phù hợp hoặc thông tin gây hiểu nhầm..."
+            placeholderTextColor={theme.colors.textMuted}
+          />
+        </View>
+
+        <View style={{ alignItems: 'flex-end', marginTop: 12 }}>
+          <Button
+            title="Gửi báo cáo"
+            onPress={handleSubmitReport}
+            loading={isSubmittingReport}
+            icon={<Send size={14} color={theme.colors.textPrimary} />}
+          />
+        </View>
       </Card>
     </ScrollView>
   );
@@ -861,21 +1037,31 @@ const styles = StyleSheet.create({
     color: theme.colors.primaryLight,
     fontWeight: '600',
   },
-  actionsGrid: {
+  headerActionsWrap: {
+    paddingVertical: 12,
     gap: 8,
-    marginTop: 12,
-    marginBottom: 4,
   },
-  actionRow: {
+  headerActionsRow: {
     flexDirection: 'row',
     gap: 8,
   },
-  primaryActionBtn: {
-    height: 44,
+  headerActionBtn: {
+    height: 36,
+    backgroundColor: theme.colors.surfaceLight,
+    borderColor: theme.colors.border,
   },
-  gridActionBtn: {
-    flex: 1,
-    height: 40,
+  headerActionBtnText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: theme.colors.textPrimary,
+  },
+  headerActionBtnPrimary: {
+    height: 32,
+    paddingHorizontal: 12,
+  },
+  headerActionBtnTextPrimary: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   infoCard: {
     padding: theme.spacing.md,
@@ -895,6 +1081,11 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginBottom: 12,
   },
+  cardSubtitle: {
+    fontSize: 11,
+    color: theme.colors.textMuted,
+    marginTop: 2,
+  },
   badgeRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -907,6 +1098,12 @@ const styles = StyleSheet.create({
   },
   latestAnalysisCard: {
     padding: theme.spacing.md,
+  },
+  latestAnalysisHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
   },
   statsGrid: {
     flexDirection: 'row',
@@ -954,8 +1151,8 @@ const styles = StyleSheet.create({
   },
   reportCard: {
     padding: theme.spacing.md,
-    backgroundColor: 'rgba(245, 158, 11, 0.03)',
-    borderColor: 'rgba(245, 158, 11, 0.15)',
+    backgroundColor: 'rgba(245, 158, 11, 0.05)',
+    borderColor: 'rgba(245, 158, 11, 0.2)',
     borderWidth: 1,
   },
   reportHeader: {
@@ -967,11 +1164,11 @@ const styles = StyleSheet.create({
   reportTitle: {
     fontSize: theme.typography.sizes.md,
     fontWeight: theme.typography.weights.bold,
-    color: theme.colors.textPrimary,
+    color: theme.colors.warning,
   },
   reportDescription: {
     fontSize: theme.typography.sizes.xs + 1,
-    color: theme.colors.textSecondary,
+    color: theme.colors.warning,
     lineHeight: 18,
     marginBottom: 12,
   },
@@ -1185,6 +1382,16 @@ const styles = StyleSheet.create({
   feedbackContent: {
     gap: 12,
   },
+  feedbackMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  feedbackMetaDate: {
+    fontSize: 11,
+    color: theme.colors.textMuted,
+    marginTop: 4,
+  },
   feedbackSummaryBox: {
     backgroundColor: theme.colors.surfaceLight,
     borderWidth: 1,
@@ -1247,6 +1454,37 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
     lineHeight: 18,
   },
+  careerBox: {
+    backgroundColor: 'rgba(99, 102, 241, 0.08)',
+    borderColor: 'rgba(99, 102, 241, 0.2)',
+  },
+  careerBoxTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgb(55, 48, 163)',
+    marginBottom: 6,
+  },
+  portfolioBox: {
+    backgroundColor: 'rgba(6, 182, 212, 0.08)',
+    borderColor: 'rgba(6, 182, 212, 0.2)',
+  },
+  portfolioBoxTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgb(22, 78, 99)',
+    marginBottom: 6,
+  },
+  riskBox: {
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    borderColor: 'rgba(239, 68, 68, 0.2)',
+    marginTop: 10,
+  },
+  riskBoxTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.error,
+    marginBottom: 8,
+  },
   emptyFeedbackWrap: {
     paddingVertical: 20,
     alignItems: 'center',
@@ -1262,5 +1500,134 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: theme.colors.textMuted,
     fontStyle: 'italic',
+  },
+  roleMatchesCard: {
+    padding: theme.spacing.md,
+  },
+  topRoleBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(59, 130, 246, 0.08)',
+    borderRadius: theme.roundness.sm,
+    padding: 12,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.2)',
+  },
+  topRoleBannerSub: {
+    fontSize: 10,
+    color: theme.colors.textSecondary,
+    marginBottom: 2,
+  },
+  topRoleBannerTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: theme.colors.textPrimary,
+  },
+  topRoleBannerScore: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: theme.colors.primaryLight,
+  },
+  topRoleBannerLabel: {
+    fontSize: 10,
+    color: theme.colors.error, // Will be overridden ideally, but static for now
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  nextPriorityBox: {
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.2)',
+    borderRadius: theme.roundness.sm,
+    padding: 12,
+    marginTop: 12,
+  },
+  nextPriorityHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  nextPriorityTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.warning,
+  },
+  nextPriorityText: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    lineHeight: 18,
+  },
+  roleList: {
+    marginTop: 16,
+  },
+  roleMatchItem: {
+    marginBottom: 16,
+  },
+  roleMatchHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  roleMatchName: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: theme.colors.textPrimary,
+  },
+  roleMatchScore: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  roleMatchSubScore: {
+    fontSize: 10,
+    color: theme.colors.textMuted,
+  },
+  progressBarBg: {
+    height: 6,
+    backgroundColor: theme.colors.border,
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  roleSkillsContainer: {
+    gap: 12,
+  },
+  roleSkillsBox: {
+    backgroundColor: theme.colors.surfaceLight,
+    padding: 10,
+    borderRadius: theme.roundness.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  roleSkillsLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: theme.colors.textSecondary,
+    marginBottom: 8,
+  },
+  roleDivider: {
+    height: 1,
+    backgroundColor: theme.colors.border,
+    marginTop: 16,
+  },
+  showMoreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 8,
+    marginTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  showMoreBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.colors.primaryLight,
   },
 });

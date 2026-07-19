@@ -21,6 +21,17 @@ export interface Profile {
   githubUsername?: string;
 }
 
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+export interface NotificationItem {
+  id: string;
+  title: string;
+  message: string;
+  type: string;
+  read: boolean;
+  createdAt?: string;
+}
+
 // ─── Repository ───────────────────────────────────────────────────────────────
 
 export interface Repository {
@@ -159,6 +170,7 @@ export interface AnalysisResult {
   weaknesses: string[];
   recommendations: Recommendation[];
   missingSkills: Skill[];
+  topSkills?: SkillVectorItem[];
   careerDirection: CareerDirection;
   analysisScope?: {
     type?: string;

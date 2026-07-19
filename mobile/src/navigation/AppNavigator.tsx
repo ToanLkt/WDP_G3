@@ -2,7 +2,7 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
-import { Home, FolderCode, MessageSquareCode, Settings, Milestone } from 'lucide-react-native';
+import { Home, FolderCode, MessageSquareCode, Settings, Milestone, Bell } from 'lucide-react-native';
 import { StyleSheet, View, TouchableOpacity, Platform } from 'react-native';
 
 import { theme } from '../theme';
@@ -22,6 +22,7 @@ import { ConnectGitHubScreen } from '../screens/github/ConnectGitHubScreen';
 import { RoadmapListScreen } from '../screens/roadmap/RoadmapListScreen';
 import { RoadmapDetailScreen } from '../screens/roadmap/RoadmapDetailScreen';
 import { SkillLearningDetailScreen } from '../screens/roadmap/SkillLearningDetailScreen';
+import { NotificationsScreen } from '../screens/notifications/NotificationsScreen';
 
 
 import type {
@@ -30,6 +31,7 @@ import type {
   RepositoriesStackParamList,
   RoadmapStackParamList,
   RootStackParamList,
+  SettingsStackParamList,
 } from './types';
 import { RepoProgressScreen } from '@/screens/repositories/RepoProgressScreen';
 import { RepoDetailScreen } from '@/screens/repositories/RepoDetailScreen';
@@ -41,11 +43,13 @@ export type {
   RepositoriesStackParamList,
   RoadmapStackParamList,
   RootStackParamList,
+  SettingsStackParamList,
 } from './types';
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const RepoStack = createNativeStackNavigator<RepositoriesStackParamList>();
 const RoadmapStack = createNativeStackNavigator<RoadmapStackParamList>();
+const SettingsStack = createNativeStackNavigator<SettingsStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 // 2. Auth Stack Navigator
@@ -64,13 +68,14 @@ const AuthStackNavigator = () => {
 };
 
 // Custom Floating Center Button for the Tab Bar
-const CustomTabBarButton = ({ onPress, accessibilityState }: any) => {
+const CustomTabBarButton = ({ children, onPress, accessibilityState, style, ...rest }: any) => {
   const focused = accessibilityState?.selected;
   return (
     <TouchableOpacity
-      style={styles.customBtnWrapper}
+      style={[style, styles.customBtnWrapper]}
       onPress={onPress}
       activeOpacity={0.9}
+      {...rest}
     >
       <View style={[
         styles.customBtn,
@@ -85,7 +90,7 @@ const CustomTabBarButton = ({ onPress, accessibilityState }: any) => {
   );
 };
 
-// 3. Repositories Nested Stack Navigator
+// 3. Repositories Nested Stack Navigator (ConnectGitHub moved to Settings)
 const RepositoriesStackNavigator = () => {
   return (
     <RepoStack.Navigator
@@ -121,11 +126,6 @@ const RepositoriesStackNavigator = () => {
         name="RepoProgress"
         component={RepoProgressScreen}
         options={({ route }) => ({ title: route.params?.repoName || 'Tiến trình', headerBackTitle: 'Quay lại' })}
-      />
-      <RepoStack.Screen
-        name="ConnectGitHub"
-        component={ConnectGitHubScreen}
-        options={{ title: 'Connect GitHub' }}
       />
     </RepoStack.Navigator>
   );
@@ -169,6 +169,37 @@ const RoadmapStackNavigator = () => {
         })}
       />
     </RoadmapStack.Navigator>
+  );
+};
+
+// Settings Stack Navigator (includes ConnectGitHub)
+const SettingsStackNavigator = () => {
+  return (
+    <SettingsStack.Navigator
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: theme.colors.surface,
+        },
+        headerTintColor: theme.colors.textPrimary,
+        headerTitleStyle: {
+          fontWeight: theme.typography.weights.bold,
+          fontSize: theme.typography.sizes.md + 1,
+        },
+        headerShadowVisible: false,
+        contentStyle: { backgroundColor: theme.colors.background },
+      }}
+    >
+      <SettingsStack.Screen
+        name="SettingsHome"
+        component={SettingsScreen}
+        options={{ headerShown: false }}
+      />
+      <SettingsStack.Screen
+        name="ConnectGitHub"
+        component={ConnectGitHubScreen}
+        options={{ title: 'Kết nối GitHub', headerBackTitle: 'Quay lại' }}
+      />
+    </SettingsStack.Navigator>
   );
 };
 
@@ -228,7 +259,7 @@ const MainTabsNavigator = () => {
         component={RepositoriesStackNavigator}
         options={{
           title: 'Repos',
-          headerShown: false, // Stack navigator has its own headers
+          headerShown: false,
           tabBarLabel: 'Repos',
           tabBarIcon: ({ color, size }) => <FolderCode color={color} size={size - 2} />,
         }}
@@ -253,8 +284,18 @@ const MainTabsNavigator = () => {
         }}
       />
       <Tab.Screen
+        name="NotificationsTab"
+        component={NotificationsScreen}
+        options={{
+          headerShown: false,
+          tabBarLabel: 'Thông báo',
+          tabBarIcon: ({ color, size }) => <Bell color={color} size={size - 2} />,
+          tabBarItemStyle: { display: 'none' },
+        }}
+      />
+      <Tab.Screen
         name="SettingsTab"
-        component={SettingsScreen}
+        component={SettingsStackNavigator}
         options={{
           headerShown: false,
           tabBarLabel: 'Hồ sơ',
@@ -285,27 +326,27 @@ export const AppNavigator: React.FC = () => {
 
 const styles = StyleSheet.create({
   customBtnWrapper: {
-    top: -24, // Elevated higher for that premium floating overlapping style!
+    top: -24,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: theme.colors.primary, // Electric violet glow
+    shadowColor: theme.colors.primary,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.5,
     shadowRadius: 10,
     elevation: 10,
   },
   customBtn: {
-    width: 64, // Slightly larger button
-    height: 64, // Slightly larger button
-    borderRadius: 32, // Perfect circle radius
-    backgroundColor: '#6D28D9', // Restored Electric Violet background!
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#6D28D9',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 4, // Bold negative space divider
-    borderColor: theme.colors.surface, // Matches the tab bar container exactly to give a clean cutout effect!
+    borderWidth: 4,
+    borderColor: theme.colors.surface,
   },
   customBtnFocused: {
-    backgroundColor: theme.colors.secondary, // Bright neon cyan when active!
+    backgroundColor: theme.colors.secondary,
     shadowColor: theme.colors.secondary,
     shadowOpacity: 0.7,
     shadowRadius: 12,

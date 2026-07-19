@@ -6,10 +6,12 @@ import {
   FlatList,
   RefreshControl,
   TextInput,
+  TouchableOpacity,
 } from 'react-native';
-import { Search, GitFork, RefreshCw } from 'lucide-react-native';
-import { useNavigation } from '@react-navigation/native';
+import { Search, GitFork, RefreshCw, Bell } from 'lucide-react-native';
+import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { theme } from '../../theme';
@@ -19,12 +21,15 @@ import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { RepoCard } from '../../components/repo/RepoCard';
-import { RepositoriesStackParamList } from '../../navigation/AppNavigator';
+import { RepositoriesStackParamList, MainTabParamList } from '../../navigation/AppNavigator';
 import { Repository } from '../../services/repo';
 import { getApiErrorMessage } from '../../api/client';
 import { useTabBarAwareScroll } from '../../hooks/useTabBarAwareScroll';
 
-type NavigationProp = NativeStackNavigationProp<RepositoriesStackParamList, 'RepoList'>;
+type NavigationProp = CompositeNavigationProp<
+  NativeStackNavigationProp<RepositoriesStackParamList, 'RepoList'>,
+  BottomTabNavigationProp<MainTabParamList>
+>;
 
 export const RepositoriesScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -80,7 +85,7 @@ export const RepositoriesScreen: React.FC = () => {
           description="Đồng bộ kho lưu trữ từ GitHub, xem dữ liệu bộ nhớ đệm và chạy phân tích cho mỗi kho lưu trữ."
           icon={GitFork}
           actionText="Kết nối GitHub"
-          onAction={() => navigation.navigate('ConnectGitHub')}
+          onAction={() => navigation.navigate('SettingsTab', { screen: 'ConnectGitHub' })}
         />
       </View>
     );
@@ -88,11 +93,16 @@ export const RepositoriesScreen: React.FC = () => {
 
   const listHeader = (
     <View style={styles.pageContent}>
-      <View style={styles.headerText}>
-        <Text style={styles.pageTitle}>Repos</Text>
-        <Text style={styles.pageSubtitle}>
-          Xem, phân tích và theo dõi tiến trình từ các kho lưu trữ GitHub của bạn.
-        </Text>
+      <View style={styles.headerRow}>
+        <View style={styles.headerText}>
+          <Text style={styles.pageTitle}>Repos</Text>
+          <Text style={styles.pageSubtitle}>
+            Xem, phân tích và theo dõi tiến trình từ các kho lưu trữ GitHub của bạn.
+          </Text>
+        </View>
+        <TouchableOpacity onPress={() => navigation.navigate('NotificationsTab')} style={styles.notificationBtn}>
+          <Bell size={24} color={theme.colors.textPrimary} />
+        </TouchableOpacity>
       </View>
 
       <Card style={styles.listCard} padded={false}>
@@ -181,9 +191,19 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.lg,
     gap: theme.spacing.md,
   },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
   headerText: {
+    flex: 1,
     gap: 4,
     marginBottom: theme.spacing.xs,
+  },
+  notificationBtn: {
+    padding: 8,
+    marginRight: -8,
   },
   pageTitle: {
     fontSize: theme.typography.sizes.xxl,

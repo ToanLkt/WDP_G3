@@ -41,13 +41,17 @@ interface AppContextType {
   roadmaps: { [repoId: string]: Roadmap };
   activeRoadmapId: string | null;
   isLoading: boolean;
+  githubLogoutUrl: string | null;
+  githubJustDisconnected: boolean;
+  logoutHintVisible: boolean;
+  setLogoutHintVisible: (visible: boolean) => void;
 
   loginUser: (email: string, password: string) => Promise<AuthResponse>;
   loginWithGoogleAction: (idToken: string) => Promise<AuthResponse>;
   loginWithGithubAction: (accessToken: string) => Promise<AuthResponse>;
   registerUser: (email: string, password: string, name: string) => Promise<AuthResponse>;
   logoutUser: () => Promise<void>;
-  connectToGitHub: () => Promise<void>;
+  connectToGitHub: (options?: { forceAccountSelection?: boolean }) => Promise<void>;
   refreshGitHubStatus: () => Promise<boolean>;
   syncRepositoriesFromGitHub: () => Promise<void>;
   disconnectFromGitHub: () => Promise<void>;
@@ -73,6 +77,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [roadmaps, setRoadmaps] = useState<{ [repoId: string]: Roadmap }>({});
   const [activeRoadmapId, setActiveRoadmapId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [githubLogoutUrl, setGithubLogoutUrl] = useState<string | null>(null);
+  const [githubJustDisconnected, setGithubJustDisconnected] = useState(false);
+  const [logoutHintVisible, setLogoutHintVisible] = useState(false);
 
   const resetSessionState = useCallback(() => {
     setUser(null);
@@ -85,6 +92,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setRepoChatSessions({});
     setRoadmaps({});
     setActiveRoadmapId(null);
+    setGithubLogoutUrl(null);
+    setGithubJustDisconnected(false);
+    setLogoutHintVisible(false);
   }, []);
 
   const syncBackendData = async (userRepos: Repository[]) => {
@@ -323,10 +333,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const connectToGitHub = async () => {
+  const connectToGitHub = async (options?: { forceAccountSelection?: boolean }) => {
     setIsLoading(true);
+    setGithubJustDisconnected(false);
     try {
-      const result = await connectGitHubOAuth();
+      const result = await connectGitHubOAuth(options?.forceAccountSelection);
 
       if (result === 'success') {
         const githubProfile = await fetchGitHubMe();
@@ -351,10 +362,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const disconnectFromGitHub = async () => {
     setIsLoading(true);
     try {
-      await disconnectGitHub();
+      const disconnected = await disconnectGitHub();
       setGithubUser(null);
       setGithubConnected(false);
       setRepositories([]);
+      setGithubJustDisconnected(true);
+      setGithubLogoutUrl(disconnected?.githubLogoutUrl || 'https://github.com/logout');
     } finally {
       setIsLoading(false);
     }
@@ -517,6 +530,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         roadmaps,
         activeRoadmapId,
         isLoading,
+        githubLogoutUrl,
+        githubJustDisconnected,
+        logoutHintVisible,
+        setLogoutHintVisible,
         loginUser,
         loginWithGoogleAction,
         loginWithGithubAction,

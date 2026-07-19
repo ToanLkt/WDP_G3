@@ -12,9 +12,10 @@ import {
   CircleCheck,
   GitFork,
   TrendingUp,
-  Code,
   MessageSquare,
   ArrowRight,
+  Bell,
+  Code,
 } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -165,7 +166,12 @@ export const HomeScreen: React.FC = () => {
       }
     >
       <View style={styles.header}>
-        <Text style={styles.title}>Chào mừng, {displayName}!</Text>
+        <View style={styles.headerTopRow}>
+          <Text style={styles.title}>Chào mừng, {displayName}!</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('NotificationsTab')} style={styles.notificationBtn}>
+            <Bell size={24} color={theme.colors.textPrimary} />
+          </TouchableOpacity>
+        </View>
         <Text style={styles.subtitle}>
           Tổng quan GitHub, kết quả phân tích và các bước tiếp theo cho lộ trình phát triển của bạn.
         </Text>
@@ -219,74 +225,7 @@ export const HomeScreen: React.FC = () => {
         </View>
       </View>
 
-      <Card style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>Nhận xét tổng quan từ các repository</Text>
-        <Text style={styles.sectionDesc}>
-          Dữ liệu được tổng hợp từ API phân tích của bạn, không chỉ từ một repository riêng lẻ.
-        </Text>
 
-        {(analysisOverview || dashboard?.repositories.analyzed) ? (
-          <View style={styles.overviewBody}>
-            <View style={styles.summaryBox}>
-              <Text style={styles.summaryText}>{fallbackSummary}</Text>
-            </View>
-
-            <View style={styles.miniStatsGrid}>
-              <View style={styles.miniStatItem}>
-                <Text style={styles.miniStatValue}>
-                  {analysisOverview?.repositoriesCount ?? dashboard?.repositories.analyzed ?? 0}
-                </Text>
-                <Text style={styles.miniStatLabel}>repo đã phân tích</Text>
-              </View>
-              <View style={styles.miniStatItem}>
-                <Text style={styles.miniStatValue}>{analysisOverview?.averageOverallScore ?? overallScore ?? 0}</Text>
-                <Text style={styles.miniStatLabel}>điểm trung bình</Text>
-              </View>
-              <View style={styles.miniStatItem}>
-                <Text style={styles.miniStatValue}>{analysisOverview?.averageTestingScore ?? 0}</Text>
-                <Text style={styles.miniStatLabel}>testing trung bình</Text>
-              </View>
-              <View style={styles.miniStatItem}>
-                <Text style={styles.miniStatValue}>{analysisOverview?.averageDeploymentScore ?? 0}</Text>
-                <Text style={styles.miniStatLabel}>deployment trung bình</Text>
-              </View>
-            </View>
-
-            <View style={styles.tagSection}>
-              <Text style={styles.tagSectionTitle}>Hướng nghề nghiệp nổi bật</Text>
-              <View style={styles.tagRow}>
-                {careerTags.length ? careerTags.filter(item => item.label).map((item, idx) => (
-                  <Badge key={`career-${idx}-${item.label}`} label={`${item.label} · ${item.count}`} variant="success" style={styles.tag} />
-                )) : <Text style={styles.emptyTagText}>Chưa có dữ liệu.</Text>}
-              </View>
-            </View>
-
-            <View style={styles.tagSection}>
-              <Text style={styles.tagSectionTitle}>Công nghệ nổi bật</Text>
-              <View style={styles.tagRow}>
-                {techTags.length ? techTags.filter(item => item.label).map((item, idx) => (
-                  <Badge key={`tech-${idx}-${item.label}`} label={`${item.label} · ${item.count}`} variant="secondary" style={styles.tag} />
-                )) : <Text style={styles.emptyTagText}>Chưa có dữ liệu.</Text>}
-              </View>
-            </View>
-
-            <View style={styles.tagSection}>
-              <Text style={styles.tagSectionTitle}>Kỹ năng nên bổ sung</Text>
-              <View style={styles.tagRow}>
-                {missingSkillTags.length ? missingSkillTags.filter(label => label).map((label, idx) => (
-                  <Badge key={`skill-${idx}-${label}`} label={label} variant="warning" style={styles.tag} />
-                )) : <Text style={styles.emptyTagText}>Chưa có dữ liệu.</Text>}
-              </View>
-            </View>
-          </View>
-        ) : (
-          <View style={styles.emptyBox}>
-            <Text style={styles.emptyBoxText}>
-              Chưa có phân tích nào. Hãy đồng bộ repository và chạy phân tích để xem nhận xét tổng quan.
-            </Text>
-          </View>
-        )}
-      </Card>
 
       <Card style={styles.sectionCard}>
         <View style={styles.sectionHeaderRow}>
@@ -346,7 +285,7 @@ export const HomeScreen: React.FC = () => {
           <Button
             title="Kết nối GitHub"
             variant="outline"
-            onPress={() => navigation.navigate('RepositoriesTab', { screen: 'ConnectGitHub' })}
+            onPress={() => navigation.navigate('SettingsTab', { screen: 'ConnectGitHub' })}
             icon={<GitFork size={16} color={theme.colors.textPrimary} />}
             style={styles.quickActionBtn}
           />
@@ -388,10 +327,21 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: theme.spacing.lg,
   },
+  headerTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   title: {
     fontSize: theme.typography.sizes.xxl,
     fontWeight: theme.typography.weights.bold,
     color: theme.colors.textPrimary,
+    flex: 1,
+    marginRight: theme.spacing.md,
+  },
+  notificationBtn: {
+    padding: 8,
+    marginRight: -8,
   },
   subtitle: {
     marginTop: theme.spacing.xs,

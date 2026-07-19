@@ -9,7 +9,6 @@ import {
   Modal,
   FlatList,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -20,12 +19,14 @@ import {
   Archive,
   Search,
   ChevronDown,
+  Bell,
 } from 'lucide-react-native';
 
 import { theme } from '../../theme';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { CustomAlert } from '../../components/ui/CustomAlert';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { RoadmapCard } from '../../components/roadmap/RoadmapCard';
 import { useTabBarAwareScroll } from '../../hooks/useTabBarAwareScroll';
@@ -67,6 +68,21 @@ export const RoadmapListScreen: React.FC = () => {
   const [serverJobRoadmaps, setServerJobRoadmaps] = useState<RoadmapRoleRecommendation[]>([]);
   // Full role matches from server (for rich role cards)
   const [serverRoleMatches, setServerRoleMatches] = useState<RoleMatch[]>([]);
+  // Error alert state
+  const [errorAlert, setErrorAlert] = useState<{ visible: boolean; message: string }>({ visible: false, message: '' });
+
+  React.useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => (navigation as any).navigate('NotificationsTab')}
+          style={{ padding: 8, marginRight: -8 }}
+        >
+          <Bell size={24} color={theme.colors.textPrimary} />
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation]);
 
   // Merge server recommendations with local fallback
   const recommendedRoadmap = serverRecommendedRole ?? recommendRoadmapRole(analyses);
@@ -152,7 +168,7 @@ export const RoadmapListScreen: React.FC = () => {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Không thể tạo roadmap.';
       setError(message);
-      Alert.alert('Tạo roadmap thất bại', message);
+      setErrorAlert({ visible: true, message });
     } finally {
       setIsGenerating(false);
       setGeneratingKey(null);
@@ -164,6 +180,7 @@ export const RoadmapListScreen: React.FC = () => {
   };
 
   return (
+    <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={[styles.content, { paddingBottom: tabBarPaddingBottom }]}
@@ -472,6 +489,16 @@ export const RoadmapListScreen: React.FC = () => {
         </View>
       </Modal>
     </ScrollView>
+
+    <CustomAlert
+      visible={errorAlert.visible}
+      title="Tạo roadmap thất bại"
+      message={errorAlert.message}
+      type="error"
+      confirmText="Đóng"
+      onConfirm={() => setErrorAlert({ visible: false, message: '' })}
+    />
+    </View>
   );
 };
 

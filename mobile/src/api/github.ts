@@ -1,8 +1,8 @@
 import { apiClient, encodeRepoId, unwrapResponse } from './client';
 
 export const githubApi = {
-  async getOAuthUrl(platform: 'mobile' | 'web' = 'mobile') {
-    const response = await apiClient.get('/github/oauth', { params: { platform } });
+  async getOAuthUrl(platform: 'mobile' | 'web' = 'mobile', forceAccountSelection?: boolean) {
+    const response = await apiClient.get('/github/oauth', { params: { platform, forceAccountSelection } });
     return unwrapResponse<{
       authorizeUrl?: string;
       authorizationUrl?: string;

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
+    "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-google-signin/google-signin": "^16.1.2",
     "@react-navigation/bottom-tabs": "^7.16.2",
@@ -11,6 +12,7 @@
     "expo": "~56.0.15",
     "expo-auth-session": "~56.0.15",
     "expo-crypto": "~56.0.4",
+    "expo-font": "~56.0.7",
     "expo-linear-gradient": "~56.0.4",
     "expo-status-bar": "~56.0.4",
     "expo-web-browser": "~56.0.5",

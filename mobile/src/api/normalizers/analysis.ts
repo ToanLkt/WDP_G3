@@ -12,6 +12,7 @@ export const normalizeAnalysis = (payload: unknown): AnalysisResult => {
   const commitSummary = asRecord(source.commitSummary);
   const checklist = asRecord(source.checklist);
   const portfolioReadiness = asRecord(source.portfolioReadiness);
+  const analysisScope = asRecord(source.analysisScope ?? source.scope);
   const repository = asRecord(source.repository);
   const repositoryId = firstString(source.repositoryId, repository.repositoryId, repository._id, repository.id);
   const repoName = firstString(source.repoName, source.repositoryName, repository.repoName, repository.name, 'Repository');
@@ -85,6 +86,18 @@ export const normalizeAnalysis = (payload: unknown): AnalysisResult => {
         importance: firstString(record.importance, 'medium') as 'high' | 'medium' | 'low',
       };
     }),
+    topSkills: asArray(source.topSkills ?? source.top_skills).map((item) => {
+      const record = asRecord(item);
+      return {
+        canonicalSkillName: firstString(record.canonicalSkillName, record.name, record.skill),
+        normalizedSkillName: firstString(record.normalizedSkillName),
+        category: firstString(record.category, 'Tổng quát'),
+        score: asNumber(record.score),
+        level: firstString(record.level, 'missing') as 'missing' | 'weak' | 'developing' | 'strong',
+        evidence: asArray(record.evidence).map(String),
+        sources: asArray(record.sources).map(String),
+      };
+    }),
     careerDirection: {
       primary: cleanAnalysisText(firstString(
         careerDirection.primary,
@@ -103,6 +116,15 @@ export const normalizeAnalysis = (payload: unknown): AnalysisResult => {
       userReadinessScore: typeof summary.userReadinessScore === 'number' ? summary.userReadinessScore : undefined,
       careerDirection: firstString(summary.careerDirection) || undefined,
       projectType: firstString(summary.projectType) || undefined,
+    },
+    analysisScope: {
+      type: firstString(analysisScope.type),
+      githubUsername: firstString(analysisScope.githubUsername),
+      totalRepoCommits: asNumber(analysisScope.totalRepoCommits),
+      userCommits: asNumber(analysisScope.userCommits),
+      activeDays: asNumber(analysisScope.activeDays),
+      firstCommitDate: firstString(analysisScope.firstCommitDate) || undefined,
+      lastCommitDate: firstString(analysisScope.lastCommitDate) || undefined,
     },
     commitSummary: {
       totalCommits: asNumber(commitSummary.totalCommits),

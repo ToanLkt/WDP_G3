@@ -6,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import {
@@ -25,6 +24,7 @@ import { theme } from '../../theme';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
+import { CustomAlert } from '../../components/ui/CustomAlert';
 import { SectionHeader } from '../../components/ui/SectionHeader';
 import { useTabBarAwareScroll } from '../../hooks/useTabBarAwareScroll';
 import { roadmapService } from '../../features/roadmaps/api';
@@ -58,6 +58,31 @@ export const RoadmapDetailScreen: React.FC = () => {
   const [nodeItemIdMap, setNodeItemIdMap] = useState<Record<string, string>>({});
   // Authoritative server progress
   const [serverProgress, setServerProgress] = useState<RoadmapProgressRecord | null>(null);
+
+  // Custom Alert state
+  const [alertDialog, setAlertDialog] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: 'info' | 'success' | 'warning' | 'error';
+    showCancel?: boolean;
+    confirmText?: string;
+    onConfirm: () => void;
+  }>({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'info',
+    onConfirm: () => {},
+  });
+
+  const showAlert = (title: string, message: string, type: 'info' | 'success' | 'warning' | 'error' = 'info', onConfirm?: () => void) => {
+    setAlertDialog({ visible: true, title, message, type, showCancel: false, onConfirm: onConfirm ?? (() => setAlertDialog(prev => ({ ...prev, visible: false }))) });
+  };
+
+  const showConfirm = (title: string, message: string, type: 'info' | 'success' | 'warning' | 'error', confirmText: string, onConfirm: () => void) => {
+    setAlertDialog({ visible: true, title, message, type, showCancel: true, confirmText, onConfirm });
+  };
 
   /** Merge server progress items into local node status map.
    * node.id now equals the backend itemId (e.g., "main-1-1-rest-api") so
@@ -193,56 +218,50 @@ export const RoadmapDetailScreen: React.FC = () => {
 
   const handleArchive = async () => {
     if (!roadmap) return;
-    Alert.alert(
+    showConfirm(
       'Lưu trữ Roadmap',
       'Bạn có chắc chắn muốn lưu trữ lộ trình học này không? Bạn có thể tìm lại trong tab Lưu trữ.',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Lưu trữ',
-          style: 'destructive',
-          onPress: async () => {
-            setIsArchiving(true);
-            try {
-              await roadmapService.archiveRoadmap(roadmap.id);
-              Alert.alert('Thành công', 'Đã lưu trữ roadmap.');
-              navigation.goBack();
-            } catch (err: any) {
-              Alert.alert('Lỗi', err?.message || 'Không thể lưu trữ roadmap.');
-            } finally {
-              setIsArchiving(false);
-            }
-          }
+      'warning',
+      'Lưu trữ',
+      async () => {
+        setAlertDialog(prev => ({ ...prev, visible: false }));
+        setIsArchiving(true);
+        try {
+          await roadmapService.archiveRoadmap(roadmap.id);
+          showAlert('Thành công', 'Đã lưu trữ roadmap.', 'success', () => {
+            setAlertDialog(prev => ({ ...prev, visible: false }));
+            navigation.goBack();
+          });
+        } catch (err: any) {
+          showAlert('Lỗi', err?.message || 'Không thể lưu trữ roadmap.', 'error');
+        } finally {
+          setIsArchiving(false);
         }
-      ]
+      }
     );
   };
 
   const handleResetProgress = async () => {
     if (!roadmap) return;
-    Alert.alert(
+    showConfirm(
       'Đặt lại tiến độ',
       'Bạn có chắc chắn muốn xóa toàn bộ tiến độ của lộ trình này không? Hành động này không thể hoàn tác.',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Đặt lại',
-          style: 'destructive',
-          onPress: async () => {
-            setIsResetting(true);
-            try {
-              const updatedProgress = await roadmapService.resetRoadmapProgress(roadmap.id);
-              setServerProgress(updatedProgress);
-              setNodeStatuses(applyServerProgress(roadmap, updatedProgress));
-              Alert.alert('Thành công', 'Đã đặt lại tiến độ học tập.');
-            } catch (err: any) {
-              Alert.alert('Lỗi', err?.message || 'Không thể đặt lại tiến độ.');
-            } finally {
-              setIsResetting(false);
-            }
-          }
+      'warning',
+      'Đặt lại',
+      async () => {
+        setAlertDialog(prev => ({ ...prev, visible: false }));
+        setIsResetting(true);
+        try {
+          const updatedProgress = await roadmapService.resetRoadmapProgress(roadmap.id);
+          setServerProgress(updatedProgress);
+          setNodeStatuses(applyServerProgress(roadmap, updatedProgress));
+          showAlert('Thành công', 'Đã đặt lại tiến độ học tập.', 'success');
+        } catch (err: any) {
+          showAlert('Lỗi', err?.message || 'Không thể đặt lại tiến độ.', 'error');
+        } finally {
+          setIsResetting(false);
         }
-      ]
+      }
     );
   };
 
@@ -267,6 +286,7 @@ export const RoadmapDetailScreen: React.FC = () => {
   }
 
   return (
+    <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={[styles.contentContainer, { paddingBottom: tabBarPaddingBottom }]}
@@ -535,6 +555,19 @@ export const RoadmapDetailScreen: React.FC = () => {
         ))}
       </View>
     </ScrollView>
+
+    <CustomAlert
+      visible={alertDialog.visible}
+      title={alertDialog.title}
+      message={alertDialog.message}
+      type={alertDialog.type}
+      showCancel={alertDialog.showCancel}
+      confirmText={alertDialog.confirmText}
+      cancelText="Hủy"
+      onCancel={() => setAlertDialog(prev => ({ ...prev, visible: false }))}
+      onConfirm={alertDialog.onConfirm}
+    />
+    </View>
   );
 };
 

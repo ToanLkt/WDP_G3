@@ -15,11 +15,12 @@ import {
   AlertTriangle
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { CustomAlert } from '../../components/ui/CustomAlert';
 import { SectionHeader } from '../../components/ui/SectionHeader';
 import { roadmapService } from '../../features/roadmaps/api';
 import type { LearningContent, LearningNode, Roadmap, IntegratedLearningListItem } from '../../features/roadmaps/types';
@@ -44,6 +45,7 @@ export const SkillLearningDetailScreen: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabKey>('theory');
   const [aiResources, setAiResources] = useState<import('../../features/roadmaps/types').AILearningResource[]>([]);
   const [isSearchingVideos, setIsSearchingVideos] = useState(false);
+  const [error, setError] = useState<{ title: string; message: string } | null>(null);
   // Integrated learning state
   const [learningListItem, setLearningListItem] = useState<IntegratedLearningListItem | null>(null);
 
@@ -175,7 +177,7 @@ export const SkillLearningDetailScreen: React.FC = () => {
     } catch (error: any) {
       console.error('Error searching learning resources:', error);
       const msg = error?.message || 'Không thể tìm kiếm video. Vui lòng thử lại.';
-      Alert.alert('Tìm kiếm thất bại', msg);
+      setError({ title: 'Tìm kiếm thất bại', message: msg });
     } finally {
       setIsSearchingVideos(false);
     }
@@ -438,6 +440,7 @@ export const SkillLearningDetailScreen: React.FC = () => {
   };
 
   return (
+    <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={[
@@ -483,6 +486,16 @@ export const SkillLearningDetailScreen: React.FC = () => {
         </Card>
       )}
     </ScrollView>
+
+    <CustomAlert
+      visible={!!error}
+      title={error?.title || ''}
+      message={error?.message || ''}
+      type="error"
+      confirmText="Đóng"
+      onConfirm={() => setError(null)}
+    />
+    </View>
   );
 };
 

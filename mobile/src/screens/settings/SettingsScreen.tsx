@@ -6,8 +6,8 @@ import {
   Image,
   ScrollView,
   TouchableOpacity,
-  Alert,
 } from 'react-native';
+import { CustomAlert } from '../../components/ui/CustomAlert';
 import {
   LogOut,
   User,
@@ -16,6 +16,7 @@ import {
   Save,
   RefreshCw,
   GitBranch,
+  Bell,
 } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -86,6 +87,7 @@ export const SettingsScreen: React.FC = () => {
   const [isRefreshingProfile, setIsRefreshingProfile] = useState(false);
   const [isRefreshingGithub, setIsRefreshingGithub] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [showDisconnectAlert, setShowDisconnectAlert] = useState(false);
 
   const loadProfileForm = useCallback(async () => {
     setIsRefreshingProfile(true);
@@ -167,6 +169,7 @@ export const SettingsScreen: React.FC = () => {
   const githubUsername = githubUser?.username || user?.githubUsername || profileForm.githubUsername || 'not-connected';
 
   return (
+    <View style={styles.rootContainer}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={[
@@ -175,9 +178,14 @@ export const SettingsScreen: React.FC = () => {
       ]}
       keyboardShouldPersistTaps="handled"
     >
-      <View style={styles.pageHeader}>
-        <Text style={styles.pageTitle}>Settings</Text>
-        <Text style={styles.pageSubtitle}>Manage your profile, GitHub, and account.</Text>
+      <View style={styles.headerRow}>
+        <View style={styles.pageHeader}>
+          <Text style={styles.pageTitle}>Settings</Text>
+          <Text style={styles.pageSubtitle}>Manage your profile, GitHub, and account.</Text>
+        </View>
+        <TouchableOpacity onPress={() => navigation.navigate('NotificationsTab')} style={styles.notificationBtn}>
+          <Bell size={24} color={theme.colors.textPrimary} />
+        </TouchableOpacity>
       </View>
 
       {feedback ? (
@@ -303,15 +311,12 @@ export const SettingsScreen: React.FC = () => {
           <Badge label={githubConnected ? 'Active' : 'Inactive'} variant={githubConnected ? 'success' : 'muted'} />
         </View>
         <Button
-          title={githubConnected ? 'Manage GitHub connection' : 'Connect GitHub'}
+          title={githubConnected ? 'Ngắt kết nối GitHub' : 'Kết nối GitHub'}
           variant="outline"
           onPress={() =>
             githubConnected
-              ? Alert.alert('GitHub', 'Disconnect GitHub account?', [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'Disconnect', style: 'destructive', onPress: disconnectFromGitHub },
-                ])
-              : navigation.navigate('RepositoriesTab', { screen: 'ConnectGitHub' })
+              ? setShowDisconnectAlert(true)
+              : navigation.navigate('ConnectGitHub')
           }
           style={styles.githubBtn}
         />
@@ -403,10 +408,30 @@ export const SettingsScreen: React.FC = () => {
 
       <Text style={styles.versionText}>GitAnalyzer Mobile v1.0.0</Text>
     </ScrollView>
+
+    <CustomAlert
+      visible={showDisconnectAlert}
+      title="Ngắt kết nối GitHub"
+      message="Bạn có chắc muốn ngắt kết nối tài khoản GitHub? Bạn sẽ cần kết nối lại để phân tích repositories."
+      type="warning"
+      showCancel
+      cancelText="Hủy"
+      confirmText="Ngắt kết nối"
+      onCancel={() => setShowDisconnectAlert(false)}
+      onConfirm={() => {
+        setShowDisconnectAlert(false);
+        disconnectFromGitHub();
+      }}
+    />
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  rootContainer: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
   container: {
     flex: 1,
     backgroundColor: theme.colors.background,
@@ -415,8 +440,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.lg,
     paddingBottom: theme.spacing.xxl,
   },
-  pageHeader: {
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: theme.spacing.lg,
+  },
+  pageHeader: {
+    flex: 1,
+    paddingRight: theme.spacing.sm,
+  },
+  notificationBtn: {
+    padding: 8,
+    marginRight: -8,
   },
   pageTitle: {
     fontSize: theme.typography.sizes.xxl,

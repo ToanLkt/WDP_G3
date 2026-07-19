@@ -23,8 +23,8 @@ const resolveOAuthUrl = (payload: Record<string, string | undefined>) => {
     ?? payload.url;
 };
 
-export const fetchOAuthUrl = async (): Promise<string> => {
-  const payload = await githubApi.getOAuthUrl('mobile');
+export const fetchOAuthUrl = async (forceAccountSelection?: boolean): Promise<string> => {
+  const payload = await githubApi.getOAuthUrl('mobile', forceAccountSelection);
   const authorizeUrl = resolveOAuthUrl(payload as Record<string, string | undefined>);
 
   if (!authorizeUrl) {
@@ -62,8 +62,8 @@ const dismissAuthBrowser = async () => {
  * Mobile-only OAuth completion: poll /github/me while the browser session is open,
  * then dismiss the browser when the deployed callback finishes linking the account.
  */
-export const connectGitHubOAuth = async (): Promise<GitHubOAuthResult> => {
-  const authorizeUrl = await fetchOAuthUrl();
+export const connectGitHubOAuth = async (forceAccountSelection?: boolean): Promise<GitHubOAuthResult> => {
+  const authorizeUrl = await fetchOAuthUrl(forceAccountSelection);
   const callbackUrl = getOAuthCallbackUrl();
 
   WebBrowser.maybeCompleteAuthSession();
@@ -164,8 +164,8 @@ export const fetchGitHubMe = async (): Promise<GitHubUser | null> => {
   }
 };
 
-export const disconnectGitHub = async (): Promise<void> => {
-  await githubApi.disconnect();
+export const disconnectGitHub = async (): Promise<any> => {
+  return await githubApi.disconnect();
 };
 
 export const syncRepositories = async (includeForks?: boolean) => {

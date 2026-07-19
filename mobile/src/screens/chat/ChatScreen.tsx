@@ -13,7 +13,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Send, Sparkles, Plus, Menu, X } from 'lucide-react-native';
+import { Send, Sparkles, Plus, Menu, X, Bell } from 'lucide-react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -311,6 +311,9 @@ export const ChatScreen: React.FC = () => {
           </Text>
           {repoName ? <Badge label={`Context: ${repoName}`} variant="secondary" style={styles.contextBadge} /> : null}
         </View>
+        <TouchableOpacity onPress={() => navigation.navigate('NotificationsTab')} style={styles.notificationBtn}>
+          <Bell size={24} color={theme.colors.textPrimary} />
+        </TouchableOpacity>
       </View>
 
       {error ? (
@@ -700,6 +703,10 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.lg,
     fontWeight: theme.typography.weights.bold,
     color: theme.colors.textPrimary,
+  },
+  notificationBtn: {
+    padding: 8,
+    marginRight: -8,
   },
   contextSection: {
     marginTop: theme.spacing.lg,

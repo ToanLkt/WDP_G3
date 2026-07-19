@@ -6,3 +6,4 @@ export { ErrorDisplay } from './ErrorDisplay';
 export { Input } from './Input';
 export { LoadingSpinner } from './LoadingSpinner';
 export { SectionHeader } from './SectionHeader';
+export { CustomAlert } from './CustomAlert';

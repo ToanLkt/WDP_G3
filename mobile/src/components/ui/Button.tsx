@@ -1,5 +1,5 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, View, ViewStyle, TextStyle } from 'react-native';
+import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, View, ViewStyle, TextStyle, StyleProp } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../../theme';
 
@@ -10,8 +10,8 @@ interface ButtonProps {
   disabled?: boolean;
   loading?: boolean;
   fullWidth?: boolean;
-  style?: ViewStyle;
-  textStyle?: TextStyle;
+  style?: StyleProp<ViewStyle>;
+  textStyle?: StyleProp<TextStyle>;
   icon?: React.ReactNode;
 }
 

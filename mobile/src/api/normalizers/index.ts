@@ -5,6 +5,7 @@ export * from './chat';
 export * from './helpers';
 export * from './repository';
 export * from './user';
+export * from './feedback';
 
 export const normalizeFiles = (payload: unknown) => asArray(payload);
 export const normalizeCommits = (payload: unknown) => asArray(payload);
