@@ -52,6 +52,7 @@ const buildInput = ({ commits, packages = [packageRecord], repository = baseRepo
   repository,
   packages,
   commits,
+  contributionSummary: { accepted: true, selectedCommitShas: commits.map((commit) => commit.sha), selectedPullRequests: [] },
   issues: [],
   topN: 3,
   requestId: `test-${Date.now()}`,
@@ -73,8 +74,8 @@ assert(frontendInput.repoFeatureEvidence.Frontend.detected, 'frontend repo conte
 assert(!frontendInput.repoFeatureEvidence['REST API'].detected, 'React Router must not be treated as backend REST API');
 assert(frontendInput.sourceStats.userContributionFrontendFileCount >= 3, 'frontend changed files should be user contribution evidence');
 assert.strictEqual(frontendInput.sourceStats.userContributionBackendFileCount, 0, 'frontend changed files should not become backend evidence');
-assert(frontendInput.repoDocument.includes('User contribution evidence'), 'repoDocument should include user contribution section');
-assert(frontendInput.repoDocument.includes('src/routes/ProtectedRoute.tsx'), 'repoDocument should include ProtectedRoute changed file');
+assert(frontendInput.repoDocument.includes('user changed paths'), 'repoDocument should include user contribution section');
+assert(frontendInput.repoDocument.includes('src/routes/protectedroute.tsx'), 'repoDocument should include ProtectedRoute changed file');
 
 const backendInput = buildInput({
   packages: [{

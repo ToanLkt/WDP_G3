@@ -11,16 +11,18 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from infer import load_artifacts, run_inference
+from artifact_integrity import validate_artifact_set
 
 HOST = os.environ.get("DEV2VEC_SERVICE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("DEV2VEC_SERVICE_PORT", "8001"))
 MAX_BODY = int(os.environ.get("DEV2VEC_SERVICE_MAX_BODY_BYTES", "10485760"))
 CONCURRENCY = max(1, int(os.environ.get("DEV2VEC_SERVICE_CONCURRENCY", "1")))
-ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
+ARTIFACTS = Path(os.environ.get("DEV2VEC_ARTIFACTS_DIR", Path(__file__).resolve().parent / "artifacts"))
 
 STARTED = time.perf_counter()
 LOAD_COUNT = 0
 LOAD_STARTED = time.perf_counter()
+INTEGRITY = validate_artifact_set(ARTIFACTS)
 LOADED = load_artifacts(ARTIFACTS)
 LOAD_COUNT += 1
 LOAD_MS = int((time.perf_counter() - LOAD_STARTED) * 1000)
@@ -53,6 +55,7 @@ class Handler(BaseHTTPRequestHandler):
             "vectorDimension": 580,
             "artifactLoadCount": LOAD_COUNT,
             "artifactLoadMs": LOAD_MS,
+            "artifactStatus": "ready",
             "uptimeMs": int((time.perf_counter() - STARTED) * 1000),
         })
 

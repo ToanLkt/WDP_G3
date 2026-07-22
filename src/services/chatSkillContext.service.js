@@ -4,6 +4,7 @@ const AnalysisResult = require('../models/AnalysisResult');
 const Repository = require('../models/Repository');
 const StudentProfile = require('../models/StudentProfile');
 const { mapDev2VecOutputToRoleMatches } = require('./dev2vec/dev2vecRoleMapper.service');
+const { buildCompatibleAnalysisQuery } = require('./dev2vec/dev2vecCompatibility.service');
 
 const NO_DEV2VEC_CONTEXT_MESSAGE = 'User has not analyzed a repository with Dev2Vec yet.';
 
@@ -326,11 +327,14 @@ const recommendRepoUse = ({ topRoleName = '', readinessScore = 0, roleMatchScore
   return score >= 60 ? 'Fullstack CV' : 'Needs improvement';
 };
 
-const buildRepoComparisonContext = async (userId, userQuestion = '') => {
-  const analyses = await AnalysisResult.find({
+const buildRepoComparisonContext = async (userId, repositoryIds = []) => {
+  const explicitRepositoryIds = [...new Set((Array.isArray(repositoryIds) ? repositoryIds : []).map(String).filter((id) => mongoose.Types.ObjectId.isValid(id)))].slice(0, 5);
+  if (explicitRepositoryIds.length < 2) return [];
+  const analyses = await AnalysisResult.find(buildCompatibleAnalysisQuery({
     userId,
+    repositoryId: { $in: explicitRepositoryIds },
     'dev2vec.rolePredictions.0': { $exists: true },
-  })
+  }))
     .sort({ analyzedAt: -1, createdAt: -1 })
     .limit(30)
     .select('repositoryId repoName fullName analyzedAt createdAt summary careerDirection projectType languages frameworks packages missingSkills skillVector dev2vec scores scoreBreakdown recommendations strengths weaknesses')
@@ -343,15 +347,13 @@ const buildRepoComparisonContext = async (userId, userQuestion = '') => {
   }
 
   const selected = Array.from(latestByRepo.values());
-  const repositoryIds = selected.map((analysis) => analysis.repositoryId).filter(Boolean);
-  const repositories = repositoryIds.length
-    ? await Repository.find({ userId, _id: { $in: repositoryIds } })
+  const selectedRepositoryIds = selected.map((analysis) => analysis.repositoryId).filter(Boolean);
+  const repositories = selectedRepositoryIds.length
+    ? await Repository.find({ userId, _id: { $in: selectedRepositoryIds } })
         .select('name fullName description language topics pushedAt updatedAtGithub')
         .lean()
     : [];
   const repoMap = new Map(repositories.map((repo) => [String(repo._id), repo]));
-  const question = normalizeText(userQuestion);
-
   return selected.map((analysis) => {
     const dev2vecOutput = buildDev2VecOutputFromAnalysis(analysis);
     const roleMatches = mapDev2VecOutputToRoleMatches(dev2vecOutput, { includeDetails: false, limit: 3 }).matches;
@@ -400,7 +402,7 @@ const buildRepoComparisonContext = async (userId, userQuestion = '') => {
         roleMatchScore: scoreSummary.roleMatchScore,
         weakCount: weakSkillNames.length + missingSkillNames.length,
       }),
-      mentioned: Boolean(repoName && question.includes(normalizeText(repoName))),
+      mentioned: explicitRepositoryIds.indexOf(String(analysis.repositoryId)) >= 0,
     };
   })
     .sort((left, right) => {

@@ -1,5 +1,6 @@
 const fs = require('fs/promises');
 const path = require('path');
+const { getCurrentDev2VecPipelineMetadata } = require('./dev2vecPipelineMetadata.service');
 
 const REQUIRED_ARTIFACTS = {
   doc2vecRepo: 'doc2vec_repo.model',
@@ -8,7 +9,9 @@ const REQUIRED_ARTIFACTS = {
   classifier: 'role_classifier.joblib',
   labelEncoder: 'label_encoder.joblib',
   skillVectors: 'skill_vectors.json',
+  skillPrototypes: 'skill_prototypes.json',
   metadata: 'model_metadata.json',
+  manifest: 'artifact_manifest.json',
 };
 
 const DEFAULT_VECTOR_DIMS = {
@@ -89,6 +92,11 @@ const getDev2VecStatus = async () => {
       samplesPerRole: {},
     },
     artifacts,
+    enabled,
+    pipelineVersion: getCurrentDev2VecPipelineMetadata().analysisPipelineVersion,
+    mappingVersion: getCurrentDev2VecPipelineMetadata().mappingVersion,
+    cachePolicyVersion: getCurrentDev2VecPipelineMetadata().cachePolicyVersion,
+    transportMode: process.env.DEV2VEC_SERVICE_URL ? 'http_worker' : 'process',
   };
 
   return {

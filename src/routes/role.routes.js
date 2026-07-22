@@ -39,7 +39,7 @@ const router = express.Router();
  *                     requiredSkillCount: 5
  *                     optionalSkillCount: 0
  *                     modelRoleLabel: Backend
- *                     modelVersion: dev2vec-demo-v1
+ *                     modelVersion: dev2vec-demo-v4
  *                     isSupportedByModel: true
  *                     scoringMethod: dev2vec_doc2vec_classifier
  *               errorCode: null

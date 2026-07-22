@@ -1,6 +1,6 @@
 {
   "status": "ready",
-  "modelVersion": "dev2vec-demo-v1",
+  "modelVersion": "dev2vec-demo-v4",
   "modelType": "classifier_ria",
   "inputDimension": 580,
   "channels": [
@@ -8,9 +8,9 @@
     "issue",
     "api"
   ],
-  "supportsMissingChannels": false,
-  "trainingStrategy": "full-channel-training-current-artifact",
-  "trainedAt": "2026-07-06T07:06:34.458Z",
+  "supportsMissingChannels": true,
+  "trainingStrategy": "missing-channel-augmentation",
+  "trainedAt": "2026-07-22T13:59:45.369Z",
   "roles": [
     "Backend",
     "Frontend",
@@ -34,7 +34,7 @@
   "artifactCompatibility": {
     "requiresInputDimension": 580,
     "zeroVectorMissingChannelFallback": true,
-    "missingChannelSupportNote": "Runtime can preserve shape with zero placeholders, but this artifact was not trained with missing-channel augmentation."
+    "missingChannelSupportNote": "Runtime can preserve shape with zero placeholders, but this training script does not apply missing-channel augmentation yet."
   },
   "roleScoring": {
     "strategy": "classifier_only",
@@ -42,17 +42,162 @@
     "beta": 0.0,
     "calibrationMethod": "none",
     "scoringVersion": "classifier-only-v1",
-    "validationStrategy": "not_promoted",
-    "metrics": {}
+    "validationStrategy": "stratified_group_5_fold_out_of_fold",
+    "metrics": {
+      "foldCount": 5,
+      "randomState": 42,
+      "groupedBySharedRepository": true,
+      "duplicateRepositoryCount": 2,
+      "accuracy": 0.92,
+      "accuracyFoldStd": 0.035129,
+      "balancedAccuracy": 0.92,
+      "macroF1": 0.91814,
+      "macroF1FoldStd": 0.037218,
+      "weightedF1": 0.91814,
+      "top3Accuracy": 0.98,
+      "top3AccuracyFoldStd": 0.027475,
+      "logLoss": 0.280653,
+      "confusionMatrixLabels": [
+        "Backend",
+        "Frontend",
+        "Mobile",
+        "DevOps",
+        "Data Scientist"
+      ],
+      "confusionMatrix": [
+        [
+          24,
+          2,
+          0,
+          3,
+          1
+        ],
+        [
+          0,
+          30,
+          0,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          25,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          30,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          29
+        ]
+      ],
+      "perRole": {
+        "Backend": {
+          "precision": 0.923077,
+          "recall": 0.8,
+          "f1": 0.857143,
+          "support": 30
+        },
+        "Frontend": {
+          "precision": 0.882353,
+          "recall": 1.0,
+          "f1": 0.9375,
+          "support": 30
+        },
+        "Mobile": {
+          "precision": 0.961538,
+          "recall": 0.833333,
+          "f1": 0.892857,
+          "support": 30
+        },
+        "DevOps": {
+          "precision": 0.909091,
+          "recall": 1.0,
+          "f1": 0.952381,
+          "support": 30
+        },
+        "Data Scientist": {
+          "precision": 0.935484,
+          "recall": 0.966667,
+          "f1": 0.95082,
+          "support": 30
+        }
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "trainSize": 120,
+          "testSize": 30,
+          "accuracy": 0.933333,
+          "macroF1": 0.928827,
+          "top3Accuracy": 1.0
+        },
+        {
+          "fold": 2,
+          "trainSize": 121,
+          "testSize": 29,
+          "accuracy": 0.862069,
+          "macroF1": 0.858897,
+          "top3Accuracy": 0.931034
+        },
+        {
+          "fold": 3,
+          "trainSize": 120,
+          "testSize": 30,
+          "accuracy": 0.933333,
+          "macroF1": 0.930878,
+          "top3Accuracy": 1.0
+        },
+        {
+          "fold": 4,
+          "trainSize": 119,
+          "testSize": 31,
+          "accuracy": 0.903226,
+          "macroF1": 0.8931,
+          "top3Accuracy": 1.0
+        },
+        {
+          "fold": 5,
+          "trainSize": 120,
+          "testSize": 30,
+          "accuracy": 0.966667,
+          "macroF1": 0.968485,
+          "top3Accuracy": 0.966667
+        }
+      ]
+    }
+  },
+  "skillGapScoring": {
+    "strategy": "channel_weighted_v1",
+    "weights": {
+      "repo": 0.35,
+      "issue": 0.15,
+      "api": 0.5
+    },
+    "repoIssueSimilarity": "positive_cosine",
+    "apiSimilarity": "direct_token_overlap_two_matches_full_score",
+    "renormalizeMissingChannels": true
   },
   "dataset": {
-    "sampleCount": 75,
+    "sampleCount": 150,
+    "classifierSampleCount": 600,
+    "missingChannelAugmentation": true,
     "samplesPerRole": {
-      "Backend": 15,
-      "Frontend": 15,
-      "Mobile": 15,
-      "DevOps": 15,
-      "Data Scientist": 15
+      "Backend": 30,
+      "Frontend": 30,
+      "Mobile": 30,
+      "DevOps": 30,
+      "Data Scientist": 30
     }
   },
   "artifacts": {
@@ -61,5 +206,2567 @@
     "doc2vecApi": true,
     "classifier": true,
     "skillPrototypes": true
+  },
+  "skillGapThresholds": {
+    "weak": 0.125,
+    "matched": 0.3
+  },
+  "skillGapEvaluation": {
+    "status": "held_out_test_evaluated",
+    "annotationSchemaVersion": "dev2vec-skill-annotations-v2",
+    "modelVersion": "dev2vec-demo-v4",
+    "skillGapScoring": {
+      "strategy": "channel_weighted_v1",
+      "weights": {
+        "repo": 0.35,
+        "issue": 0.15,
+        "api": 0.5
+      }
+    },
+    "thresholds": {
+      "weak": 0.125,
+      "matched": 0.3
+    },
+    "annotationSummary": {
+      "developerCount": 70,
+      "annotationCount": 350,
+      "splitCounts": {
+        "legacy_test_v3": 20,
+        "test": 20,
+        "validation": 30
+      },
+      "roleCounts": {
+        "legacy_test_v3:Backend": 4,
+        "legacy_test_v3:Data Scientist": 4,
+        "legacy_test_v3:DevOps": 4,
+        "legacy_test_v3:Frontend": 4,
+        "legacy_test_v3:Mobile": 4,
+        "test:Backend": 4,
+        "test:Data Scientist": 4,
+        "test:DevOps": 4,
+        "test:Frontend": 4,
+        "test:Mobile": 4,
+        "validation:Backend": 6,
+        "validation:Data Scientist": 6,
+        "validation:DevOps": 6,
+        "validation:Frontend": 6,
+        "validation:Mobile": 6
+      },
+      "labelCounts": {
+        "legacy_test_v3:not_observed": 36,
+        "legacy_test_v3:partial_evidence": 35,
+        "legacy_test_v3:unknown": 5,
+        "legacy_test_v3:verified": 24,
+        "test:not_observed": 51,
+        "test:partial_evidence": 23,
+        "test:verified": 26,
+        "validation:not_observed": 53,
+        "validation:partial_evidence": 27,
+        "validation:unknown": 5,
+        "validation:verified": 65
+      }
+    },
+    "validation": {
+      "sampleCount": 145,
+      "accuracy": 0.751724,
+      "macroF1": 0.668024,
+      "weightedF1": 0.74558,
+      "confusionMatrixLabels": [
+        "verified",
+        "partial_evidence",
+        "not_observed"
+      ],
+      "confusionMatrix": [
+        [
+          63,
+          2,
+          0
+        ],
+        [
+          12,
+          9,
+          6
+        ],
+        [
+          1,
+          15,
+          37
+        ]
+      ],
+      "perLabel": {
+        "verified": {
+          "precision": 0.828947,
+          "recall": 0.969231,
+          "f1": 0.893617,
+          "support": 65
+        },
+        "partial_evidence": {
+          "precision": 0.346154,
+          "recall": 0.333333,
+          "f1": 0.339623,
+          "support": 27
+        },
+        "not_observed": {
+          "precision": 0.860465,
+          "recall": 0.698113,
+          "f1": 0.770833,
+          "support": 53
+        }
+      },
+      "perSkill": {
+        "API Integration": {
+          "sampleCount": 6,
+          "accuracy": 0.833333,
+          "macroF1": 0.333333,
+          "weightedF1": 0.833333,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              5
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 5
+            }
+          }
+        },
+        "API Testing": {
+          "sampleCount": 6,
+          "accuracy": 0.833333,
+          "macroF1": 0.555556,
+          "weightedF1": 0.888889,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              4,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              1
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 4
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "not_observed": {
+              "precision": 1.0,
+              "recall": 0.5,
+              "f1": 0.666667,
+              "support": 2
+            }
+          }
+        },
+        "App State Management": {
+          "sampleCount": 6,
+          "accuracy": 0.833333,
+          "macroF1": 0.822222,
+          "weightedF1": 0.844444,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              2,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 2
+            },
+            "partial_evidence": {
+              "precision": 0.5,
+              "recall": 1.0,
+              "f1": 0.666667,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 1.0,
+              "recall": 0.666667,
+              "f1": 0.8,
+              "support": 3
+            }
+          }
+        },
+        "Authentication": {
+          "sampleCount": 6,
+          "accuracy": 0.833333,
+          "macroF1": 0.555556,
+          "weightedF1": 0.777778,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              4,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 4
+            },
+            "partial_evidence": {
+              "precision": 0.5,
+              "recall": 1.0,
+              "f1": 0.666667,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 1
+            }
+          }
+        },
+        "CI/CD": {
+          "sampleCount": 6,
+          "accuracy": 0.833333,
+          "macroF1": 0.333333,
+          "weightedF1": 0.833333,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              5
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 5
+            }
+          }
+        },
+        "Component Design": {
+          "sampleCount": 5,
+          "accuracy": 1.0,
+          "macroF1": 1.0,
+          "weightedF1": 1.0,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              3,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 3
+            },
+            "partial_evidence": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 1
+            }
+          }
+        },
+        "Data Analysis": {
+          "sampleCount": 6,
+          "accuracy": 0.833333,
+          "macroF1": 0.62963,
+          "weightedF1": 0.759259,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              4,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.8,
+              "recall": 1.0,
+              "f1": 0.888889,
+              "support": 4
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 1
+            }
+          }
+        },
+        "Data Visualization": {
+          "sampleCount": 6,
+          "accuracy": 0.833333,
+          "macroF1": 0.6,
+          "weightedF1": 0.766667,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              3,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ],
+            [
+              0,
+              0,
+              2
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 3
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 0.666667,
+              "recall": 1.0,
+              "f1": 0.8,
+              "support": 2
+            }
+          }
+        },
+        "Database": {
+          "sampleCount": 6,
+          "accuracy": 1.0,
+          "macroF1": 0.333333,
+          "weightedF1": 1.0,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              6,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 6
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "not_observed": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            }
+          }
+        },
+        "Docker": {
+          "sampleCount": 6,
+          "accuracy": 1.0,
+          "macroF1": 0.666667,
+          "weightedF1": 1.0,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              4,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              2
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 4
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "not_observed": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 2
+            }
+          }
+        },
+        "Docker Basics": {
+          "sampleCount": 6,
+          "accuracy": 0.5,
+          "macroF1": 0.433333,
+          "weightedF1": 0.35,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              2,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              2,
+              0
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.666667,
+              "recall": 1.0,
+              "f1": 0.8,
+              "support": 2
+            },
+            "partial_evidence": {
+              "precision": 0.333333,
+              "recall": 1.0,
+              "f1": 0.5,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 3
+            }
+          }
+        },
+        "Frontend Testing": {
+          "sampleCount": 5,
+          "accuracy": 1.0,
+          "macroF1": 0.333333,
+          "weightedF1": 1.0,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              5,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 5
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "not_observed": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            }
+          }
+        },
+        "Infrastructure as Code": {
+          "sampleCount": 6,
+          "accuracy": 0.833333,
+          "macroF1": 0.6,
+          "weightedF1": 0.9,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              2,
+              0
+            ],
+            [
+              0,
+              0,
+              3
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "partial_evidence": {
+              "precision": 1.0,
+              "recall": 0.666667,
+              "f1": 0.8,
+              "support": 3
+            },
+            "not_observed": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 3
+            }
+          }
+        },
+        "Kubernetes": {
+          "sampleCount": 6,
+          "accuracy": 0.666667,
+          "macroF1": 0.452381,
+          "weightedF1": 0.595238,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              3,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.75,
+              "recall": 1.0,
+              "f1": 0.857143,
+              "support": 3
+            },
+            "partial_evidence": {
+              "precision": 0.5,
+              "recall": 0.5,
+              "f1": 0.5,
+              "support": 2
+            },
+            "not_observed": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 1
+            }
+          }
+        },
+        "Local Storage": {
+          "sampleCount": 6,
+          "accuracy": 0.166667,
+          "macroF1": 0.095238,
+          "weightedF1": 0.190476,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              2,
+              1,
+              1
+            ],
+            [
+              0,
+              2,
+              0
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "partial_evidence": {
+              "precision": 0.333333,
+              "recall": 0.25,
+              "f1": 0.285714,
+              "support": 4
+            },
+            "not_observed": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 2
+            }
+          }
+        },
+        "Machine Learning": {
+          "sampleCount": 6,
+          "accuracy": 0.5,
+          "macroF1": 0.52381,
+          "weightedF1": 0.357143,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              2,
+              0,
+              0
+            ],
+            [
+              3,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.4,
+              "recall": 1.0,
+              "f1": 0.571429,
+              "support": 2
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 3
+            },
+            "not_observed": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 1
+            }
+          }
+        },
+        "Mobile UI": {
+          "sampleCount": 6,
+          "accuracy": 0.833333,
+          "macroF1": 0.30303,
+          "weightedF1": 0.757576,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              5,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.833333,
+              "recall": 1.0,
+              "f1": 0.909091,
+              "support": 5
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            }
+          }
+        },
+        "Model Training": {
+          "sampleCount": 6,
+          "accuracy": 0.0,
+          "macroF1": 0.0,
+          "weightedF1": 0.0,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              6,
+              0
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "not_observed": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 6
+            }
+          }
+        },
+        "Monitoring": {
+          "sampleCount": 6,
+          "accuracy": 0.833333,
+          "macroF1": 0.6,
+          "weightedF1": 0.9,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              3,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 3
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "not_observed": {
+              "precision": 1.0,
+              "recall": 0.666667,
+              "f1": 0.8,
+              "support": 3
+            }
+          }
+        },
+        "NLP Basics": {
+          "sampleCount": 6,
+          "accuracy": 0.833333,
+          "macroF1": 0.30303,
+          "weightedF1": 0.757576,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ],
+            [
+              0,
+              0,
+              5
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 0.833333,
+              "recall": 1.0,
+              "f1": 0.909091,
+              "support": 5
+            }
+          }
+        },
+        "Navigation": {
+          "sampleCount": 6,
+          "accuracy": 0.833333,
+          "macroF1": 0.6,
+          "weightedF1": 0.766667,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              3,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ],
+            [
+              0,
+              0,
+              2
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 3
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 0.666667,
+              "recall": 1.0,
+              "f1": 0.8,
+              "support": 2
+            }
+          }
+        },
+        "REST API": {
+          "sampleCount": 6,
+          "accuracy": 0.666667,
+          "macroF1": 0.266667,
+          "weightedF1": 0.8,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              4,
+              2,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 0.666667,
+              "f1": 0.8,
+              "support": 6
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "not_observed": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            }
+          }
+        },
+        "React UI": {
+          "sampleCount": 5,
+          "accuracy": 0.8,
+          "macroF1": 0.619048,
+          "weightedF1": 0.714286,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              3,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.75,
+              "recall": 1.0,
+              "f1": 0.857143,
+              "support": 3
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 1
+            }
+          }
+        },
+        "Responsive Design": {
+          "sampleCount": 5,
+          "accuracy": 0.8,
+          "macroF1": 0.555556,
+          "weightedF1": 0.733333,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              3,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 3
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 0.5,
+              "recall": 1.0,
+              "f1": 0.666667,
+              "support": 1
+            }
+          }
+        },
+        "State Management": {
+          "sampleCount": 5,
+          "accuracy": 0.8,
+          "macroF1": 0.507937,
+          "weightedF1": 0.780952,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              1
+            ],
+            [
+              0,
+              0,
+              3
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "partial_evidence": {
+              "precision": 1.0,
+              "recall": 0.5,
+              "f1": 0.666667,
+              "support": 2
+            },
+            "not_observed": {
+              "precision": 0.75,
+              "recall": 1.0,
+              "f1": 0.857143,
+              "support": 3
+            }
+          }
+        }
+      }
+    },
+    "evaluatedAt": "2026-07-22T14:10:56.572Z",
+    "testSetFingerprint": "9ba335b10c6185c648fc709c8b659dc889a195e78bd7472bd1417eca5297b21a",
+    "test": {
+      "sampleCount": 100,
+      "accuracy": 0.61,
+      "macroF1": 0.596838,
+      "weightedF1": 0.61946,
+      "confusionMatrixLabels": [
+        "verified",
+        "partial_evidence",
+        "not_observed"
+      ],
+      "confusionMatrix": [
+        [
+          22,
+          4,
+          0
+        ],
+        [
+          2,
+          8,
+          13
+        ],
+        [
+          3,
+          17,
+          31
+        ]
+      ],
+      "perLabel": {
+        "verified": {
+          "precision": 0.814815,
+          "recall": 0.846154,
+          "f1": 0.830189,
+          "support": 26
+        },
+        "partial_evidence": {
+          "precision": 0.275862,
+          "recall": 0.347826,
+          "f1": 0.307692,
+          "support": 23
+        },
+        "not_observed": {
+          "precision": 0.704545,
+          "recall": 0.607843,
+          "f1": 0.652632,
+          "support": 51
+        }
+      },
+      "perSkill": {
+        "API Integration": {
+          "sampleCount": 4,
+          "accuracy": 0.25,
+          "macroF1": 0.133333,
+          "weightedF1": 0.3,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ],
+            [
+              0,
+              2,
+              1
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 0.5,
+              "recall": 0.333333,
+              "f1": 0.4,
+              "support": 3
+            }
+          }
+        },
+        "API Testing": {
+          "sampleCount": 4,
+          "accuracy": 0.75,
+          "macroF1": 0.555556,
+          "weightedF1": 0.833333,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              2,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              1
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 2
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "not_observed": {
+              "precision": 1.0,
+              "recall": 0.5,
+              "f1": 0.666667,
+              "support": 2
+            }
+          }
+        },
+        "App State Management": {
+          "sampleCount": 4,
+          "accuracy": 0.25,
+          "macroF1": 0.333333,
+          "weightedF1": 0.25,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              3,
+              0
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 1
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "not_observed": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 3
+            }
+          }
+        },
+        "Authentication": {
+          "sampleCount": 4,
+          "accuracy": 0.5,
+          "macroF1": 0.222222,
+          "weightedF1": 0.333333,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              2,
+              0
+            ],
+            [
+              0,
+              2,
+              0
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "partial_evidence": {
+              "precision": 0.5,
+              "recall": 1.0,
+              "f1": 0.666667,
+              "support": 2
+            },
+            "not_observed": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 2
+            }
+          }
+        },
+        "CI/CD": {
+          "sampleCount": 4,
+          "accuracy": 0.75,
+          "macroF1": 0.285714,
+          "weightedF1": 0.857143,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              3
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "not_observed": {
+              "precision": 1.0,
+              "recall": 0.75,
+              "f1": 0.857143,
+              "support": 4
+            }
+          }
+        },
+        "Component Design": {
+          "sampleCount": 4,
+          "accuracy": 0.25,
+          "macroF1": 0.333333,
+          "weightedF1": 0.25,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              2
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 1
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 2
+            },
+            "not_observed": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 1
+            }
+          }
+        },
+        "Data Analysis": {
+          "sampleCount": 4,
+          "accuracy": 0.75,
+          "macroF1": 0.6,
+          "weightedF1": 0.65,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              2,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.666667,
+              "recall": 1.0,
+              "f1": 0.8,
+              "support": 2
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 1
+            }
+          }
+        },
+        "Data Visualization": {
+          "sampleCount": 4,
+          "accuracy": 0.75,
+          "macroF1": 0.285714,
+          "weightedF1": 0.642857,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ],
+            [
+              0,
+              0,
+              3
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 0.75,
+              "recall": 1.0,
+              "f1": 0.857143,
+              "support": 3
+            }
+          }
+        },
+        "Database": {
+          "sampleCount": 4,
+          "accuracy": 0.25,
+          "macroF1": 0.333333,
+          "weightedF1": 0.25,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              3
+            ],
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 1
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 3
+            },
+            "not_observed": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            }
+          }
+        },
+        "Docker": {
+          "sampleCount": 4,
+          "accuracy": 1.0,
+          "macroF1": 1.0,
+          "weightedF1": 1.0,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              2,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 1
+            },
+            "partial_evidence": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 2
+            },
+            "not_observed": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 1
+            }
+          }
+        },
+        "Docker Basics": {
+          "sampleCount": 4,
+          "accuracy": 1.0,
+          "macroF1": 0.666667,
+          "weightedF1": 1.0,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              3
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "partial_evidence": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 3
+            }
+          }
+        },
+        "Frontend Testing": {
+          "sampleCount": 4,
+          "accuracy": 1.0,
+          "macroF1": 0.333333,
+          "weightedF1": 1.0,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              4,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 4
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "not_observed": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            }
+          }
+        },
+        "Infrastructure as Code": {
+          "sampleCount": 4,
+          "accuracy": 0.5,
+          "macroF1": 0.222222,
+          "weightedF1": 0.666667,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              2,
+              2
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "not_observed": {
+              "precision": 1.0,
+              "recall": 0.5,
+              "f1": 0.666667,
+              "support": 4
+            }
+          }
+        },
+        "Kubernetes": {
+          "sampleCount": 4,
+          "accuracy": 0.5,
+          "macroF1": 0.266667,
+          "weightedF1": 0.4,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              2,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              0
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.666667,
+              "recall": 1.0,
+              "f1": 0.8,
+              "support": 2
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "not_observed": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 2
+            }
+          }
+        },
+        "Local Storage": {
+          "sampleCount": 4,
+          "accuracy": 0.25,
+          "macroF1": 0.166667,
+          "weightedF1": 0.375,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              1,
+              0,
+              0
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "partial_evidence": {
+              "precision": 1.0,
+              "recall": 0.333333,
+              "f1": 0.5,
+              "support": 3
+            },
+            "not_observed": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 1
+            }
+          }
+        },
+        "Machine Learning": {
+          "sampleCount": 4,
+          "accuracy": 0.75,
+          "macroF1": 0.6,
+          "weightedF1": 0.85,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 1
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "not_observed": {
+              "precision": 1.0,
+              "recall": 0.666667,
+              "f1": 0.8,
+              "support": 3
+            }
+          }
+        },
+        "Mobile UI": {
+          "sampleCount": 4,
+          "accuracy": 0.75,
+          "macroF1": 0.777778,
+          "weightedF1": 0.75,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              1
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 1
+            },
+            "partial_evidence": {
+              "precision": 1.0,
+              "recall": 0.5,
+              "f1": 0.666667,
+              "support": 2
+            },
+            "not_observed": {
+              "precision": 0.5,
+              "recall": 1.0,
+              "f1": 0.666667,
+              "support": 1
+            }
+          }
+        },
+        "Model Training": {
+          "sampleCount": 4,
+          "accuracy": 0.25,
+          "macroF1": 0.222222,
+          "weightedF1": 0.166667,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              2,
+              0
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.5,
+              "recall": 1.0,
+              "f1": 0.666667,
+              "support": 1
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 2
+            }
+          }
+        },
+        "Monitoring": {
+          "sampleCount": 4,
+          "accuracy": 1.0,
+          "macroF1": 0.666667,
+          "weightedF1": 1.0,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              3,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 3
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "not_observed": {
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 1
+            }
+          }
+        },
+        "NLP Basics": {
+          "sampleCount": 4,
+          "accuracy": 0.75,
+          "macroF1": 0.285714,
+          "weightedF1": 0.857143,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              3
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "not_observed": {
+              "precision": 1.0,
+              "recall": 0.75,
+              "f1": 0.857143,
+              "support": 4
+            }
+          }
+        },
+        "Navigation": {
+          "sampleCount": 4,
+          "accuracy": 0.75,
+          "macroF1": 0.285714,
+          "weightedF1": 0.642857,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ],
+            [
+              0,
+              0,
+              3
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 0.75,
+              "recall": 1.0,
+              "f1": 0.857143,
+              "support": 3
+            }
+          }
+        },
+        "REST API": {
+          "sampleCount": 4,
+          "accuracy": 0.5,
+          "macroF1": 0.333333,
+          "weightedF1": 0.5,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              1,
+              2,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 1.0,
+              "recall": 0.333333,
+              "f1": 0.5,
+              "support": 3
+            },
+            "partial_evidence": {
+              "precision": 0.333333,
+              "recall": 1.0,
+              "f1": 0.5,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            }
+          }
+        },
+        "React UI": {
+          "sampleCount": 4,
+          "accuracy": 0.5,
+          "macroF1": 0.388889,
+          "weightedF1": 0.583333,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              1
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.5,
+              "recall": 0.5,
+              "f1": 0.5,
+              "support": 2
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "not_observed": {
+              "precision": 1.0,
+              "recall": 0.5,
+              "f1": 0.666667,
+              "support": 2
+            }
+          }
+        },
+        "Responsive Design": {
+          "sampleCount": 4,
+          "accuracy": 0.5,
+          "macroF1": 0.266667,
+          "weightedF1": 0.4,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ],
+            [
+              0,
+              0,
+              2
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 1
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 0.666667,
+              "recall": 1.0,
+              "f1": 0.8,
+              "support": 2
+            }
+          }
+        },
+        "State Management": {
+          "sampleCount": 4,
+          "accuracy": 0.75,
+          "macroF1": 0.285714,
+          "weightedF1": 0.642857,
+          "confusionMatrixLabels": [
+            "verified",
+            "partial_evidence",
+            "not_observed"
+          ],
+          "confusionMatrix": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ],
+            [
+              0,
+              0,
+              3
+            ]
+          ],
+          "perLabel": {
+            "verified": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 0
+            },
+            "partial_evidence": {
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support": 1
+            },
+            "not_observed": {
+              "precision": 0.75,
+              "recall": 1.0,
+              "f1": 0.857143,
+              "support": 3
+            }
+          }
+        }
+      }
+    }
   }
 }

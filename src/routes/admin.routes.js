@@ -51,7 +51,7 @@ router.use(authMiddleware, adminMiddleware);
  *                     modelVersion:
  *                       type: string
  *                       nullable: true
- *                       example: dev2vec-demo-v1
+ *                       example: dev2vec-demo-v4
  *                     trainedAt:
  *                       type: string
  *                       nullable: true

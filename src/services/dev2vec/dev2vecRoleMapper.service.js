@@ -13,7 +13,7 @@ const toArray = (value) => (Array.isArray(value) ? value : []);
 const SKILL_SCORE_SCALE = '0-100';
 const SKILL_PRESENT_THRESHOLD = 60;
 const SKILL_WEAK_THRESHOLD = 20;
-const SKILL_MAPPING_VERSION = 'canonical-skill-mapping-v3';
+const SKILL_MAPPING_VERSION = 'python-skill-gap-direct-v4';
 
 const roundPercent = (probability) => (
   Math.round((Number(probability) || 0) * 10000) / 100
@@ -104,9 +104,7 @@ const mapPredictionToRoleMatch = (prediction = {}, skillGap = {}, dev2vecOutput 
 };
 
 const mapDev2VecOutputToRoleMatches = (dev2vecOutput = {}, options = {}) => {
-  const predictions = [...toArray(dev2vecOutput.rolePredictions)]
-    .sort((left, right) => Number(left.rank || 999) - Number(right.rank || 999))
-    .slice(0, clampLimit(options.limit));
+  const predictions = toArray(dev2vecOutput.rolePredictions).slice(0, clampLimit(options.limit));
   const matches = predictions.map((prediction) => (
     mapPredictionToRoleMatch(
       prediction,
@@ -127,8 +125,7 @@ const mapDev2VecOutputToRoleMatches = (dev2vecOutput = {}, options = {}) => {
 };
 
 const getTopPrediction = (dev2vecOutput = {}) => (
-  [...toArray(dev2vecOutput.rolePredictions)]
-    .sort((left, right) => Number(left.rank || 999) - Number(right.rank || 999))[0] || null
+  toArray(dev2vecOutput.rolePredictions)[0] || null
 );
 
 const getPredictionForRole = (dev2vecOutput = {}, roleId = '') => {
@@ -340,6 +337,47 @@ const buildAnalysisSkillsFromDev2Vec = (dev2vecOutput = {}, options = {}) => {
   const category = options.category || roleId;
   const repoFeatureEvidence = options.repoFeatureEvidence || dev2vecOutput.repoFeatureEvidence || dev2vecOutput.evidencePreview?.repoFeatures || {};
   const skillGap = topPrediction ? getSkillGapForPrediction(dev2vecOutput, topPrediction) : {};
+  if (topPrediction) {
+    const details = new Map(toArray(skillGap.details).map((detail) => [
+      String(detail?.skillName || detail?.canonicalSkillName || '').toLowerCase(), detail,
+    ]));
+    const makeItem = (skillName, status) => {
+      const detail = details.get(String(skillName || '').toLowerCase()) || {};
+      const canonicalSkillName = detail.canonicalSkillName || detail.skillName || skillName;
+      const similarity = Number.isFinite(Number(detail.similarity)) ? Number(detail.similarity) : null;
+      return {
+        skill: canonicalSkillName,
+        canonicalSkillName,
+        category,
+        priority: status === 'missing' ? 'high' : status === 'weak' ? 'medium' : 'low',
+        score: similarity === null ? 0 : toPercentScore(similarity),
+        level: status === 'matched' ? 'strong' : status,
+        similarity,
+        dev2vecStatus: status,
+        evidenceDetected: false,
+        evidenceStatus: 'python_skill_gap',
+        evidence: [],
+        evidenceDetails: [],
+        reason: 'Dev2Vec skill-gap status is used directly as recommendation evidence.',
+      };
+    };
+    const matched = toArray(skillGap.matchedSkillNames).map((name) => makeItem(name, 'matched'));
+    const weak = toArray(skillGap.weakSkillNames).map((name) => makeItem(name, 'weak'));
+    const missing = toArray(skillGap.missingSkillNames).map((name) => makeItem(name, 'missing'));
+    return {
+      topSkills: [...matched, ...weak],
+      missingSkills: missing,
+      strengths: matched.map((item) => item.canonicalSkillName),
+      weaknesses: weak,
+      recommendations: toArray(skillGap.recommendedNextSkills),
+      debug: {
+        skillMappingVersion: SKILL_MAPPING_VERSION,
+        scoreScale: SKILL_SCORE_SCALE,
+        evidenceRecordCount: toArray(skillGap.details).length,
+        statusSource: 'python_skill_gaps',
+      },
+    };
+  }
   const canonicalRoleSkillItems = buildCanonicalRoleSkillItems({
     roleId,
     category,

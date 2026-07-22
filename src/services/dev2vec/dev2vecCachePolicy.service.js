@@ -1,6 +1,48 @@
 const {
   getCurrentDev2VecPipelineMetadata,
 } = require('./dev2vecPipelineMetadata.service');
+const crypto = require('crypto');
+
+const canonicalize = (value) => {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (!value || typeof value !== 'object') return value ?? null;
+  return Object.keys(value).sort().reduce((output, key) => {
+    output[key] = canonicalize(value[key]);
+    return output;
+  }, {});
+};
+const sortedUnique = (values = []) => [...new Set(values.filter(Boolean).map(String))].sort();
+const buildEvidenceFingerprintPayload = ({ contributionSummary = {}, issues = [], apiTokens = [], topN = 3, metadata = getCurrentDev2VecPipelineMetadata() } = {}) => ({
+  accepted: contributionSummary.accepted === true,
+  verifiedChangedLines: Number(contributionSummary.verifiedChangedLines || 0),
+  selectedCommitShas: sortedUnique(contributionSummary.selectedCommitShas),
+  selectedPullRequests: (contributionSummary.selectedPullRequests || []).map((item) => ({ number: Number(item.number), updatedAt: item.updatedAt || null }))
+    .sort((a, b) => a.number - b.number || String(a.updatedAt).localeCompare(String(b.updatedAt))),
+  retainedChangedPaths: sortedUnique(contributionSummary.changedPaths),
+  selectedIssues: (issues || []).filter((issue) => Array.isArray(issue.relations) && issue.relations.length).map((issue) => ({
+    number: Number(issue.number),
+    updatedAt: issue.updatedAt || null,
+    userCommentUpdatedAt: sortedUnique((issue.userComments || []).map((comment) => comment.updatedAt || comment.createdAt)),
+  })).sort((a, b) => a.number - b.number),
+  apiTokens: sortedUnique(apiTokens),
+  repoDocumentVersion: metadata.repoDocumentVersion,
+  issueDocumentVersion: metadata.issueDocumentVersion,
+  apiEvidenceVersion: metadata.apiEvidenceVersion,
+  topN: Math.min(3, Math.max(1, Number(topN) || 3)),
+});
+const buildEvidenceFingerprint = (input = {}) => crypto.createHash('sha256')
+  .update(JSON.stringify(canonicalize(buildEvidenceFingerprintPayload(input))))
+  .digest('hex');
+
+const decideEvidenceCache = ({ cachedMetadata = {}, currentMetadata = getCurrentDev2VecPipelineMetadata(), evidenceFingerprint, topN = 3, refreshAvailable = true, allowStaleFallback = false } = {}) => {
+  if (!refreshAvailable) return { useCache: Boolean(allowStaleFallback && cachedMetadata.evidenceFingerprint), status: allowStaleFallback ? 'stale_fallback' : 'refresh_unavailable' };
+  const compatibility = compareMetadata(cachedMetadata, currentMetadata);
+  if (compatibility !== 'compatible') return { useCache: false, status: compatibility === 'model_version_mismatch' ? 'model_changed' : 'version_mismatch' };
+  if (Number(cachedMetadata.topN || 3) !== Number(topN || 3)) return { useCache: false, status: 'topn_changed' };
+  if (!cachedMetadata.evidenceFingerprint) return { useCache: false, status: 'cache_missing' };
+  if (cachedMetadata.evidenceFingerprint !== evidenceFingerprint) return { useCache: false, status: 'evidence_changed' };
+  return { useCache: true, status: 'exact_hit' };
+};
 
 const hasCachedDev2VecResult = (analysis = {}) => (
   Array.isArray(analysis?.dev2vec?.rolePredictions)
@@ -55,9 +97,19 @@ const isRepositoryChanged = ({ analysis = {}, repository = {} } = {}) => {
 const compareMetadata = (cached = {}, current = {}) => {
   if (!cached || typeof cached !== 'object') return 'legacy_cache';
   const checks = [
+    ['modelVersion', 'model_version_mismatch'],
     ['analysisPipelineVersion', 'pipeline_version_mismatch'],
+    ['consumerCompatibilityVersion', 'pipeline_version_mismatch'],
+    ['roleSelectionVersion', 'pipeline_version_mismatch'],
+    ['aiContextBoundaryVersion', 'pipeline_version_mismatch'],
+    ['roadmapSourceVersion', 'pipeline_version_mismatch'],
     ['evidenceBuilderVersion', 'pipeline_version_mismatch'],
+    ['mappingVersion', 'pipeline_version_mismatch'],
+    ['cachePolicyVersion', 'pipeline_version_mismatch'],
     ['issueEvidenceVersion', 'pipeline_version_mismatch'],
+    ['repoDocumentVersion', 'pipeline_version_mismatch'],
+    ['apiEvidenceVersion', 'pipeline_version_mismatch'],
+    ['issueDocumentVersion', 'pipeline_version_mismatch'],
     ['sourceUsageParserVersion', 'pipeline_version_mismatch'],
     ['roleResolverVersion', 'pipeline_version_mismatch'],
     ['skillMappingVersion', 'pipeline_version_mismatch'],
@@ -119,6 +171,9 @@ const shouldUseCachedDev2Vec = ({
 };
 
 module.exports = {
+  buildEvidenceFingerprintPayload,
+  buildEvidenceFingerprint,
+  decideEvidenceCache,
   getCacheMetadata,
   getRepositoryFingerprint,
   hasReliableFingerprint,

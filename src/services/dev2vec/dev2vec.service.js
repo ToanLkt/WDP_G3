@@ -3,16 +3,17 @@ const axios = require('axios');
 const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
-const { promisify } = require('util');
 const { createDev2VecTimer } = require('../../utils/dev2vecTiming');
-
-const execFileAsync = promisify(execFile);
 
 const DEFAULT_INFER_PATH = 'ml_service/infer.py';
 const DEFAULT_PYTHON_BIN = 'python';
 const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_MAX_BUFFER_BYTES = 10485760;
 const TMP_DIR = 'tmp';
+const EXPECTED_VECTOR_DIMS = Object.freeze({ repo: 230, issue: 150, api: 200, combined: 580 });
+const VALID_ROLE_IDS = new Set(['backend', 'frontend', 'mobile', 'devops', 'data_scientist']);
+const VALID_SKILL_STATUSES = new Set(['matched', 'weak', 'missing']);
+const FLOAT_TOLERANCE = 1e-12;
 
 const createDev2VecError = (message, errorCode, statusCode = 503, details = {}) => {
   const error = new Error(message);
@@ -31,7 +32,88 @@ const clampTopN = (value) => {
   if (!Number.isFinite(parsed)) {
     return 3;
   }
-  return Math.max(1, Math.min(parsed, 5));
+  return Math.max(1, Math.min(parsed, 3));
+};
+
+const isPlainObject = (value) => Boolean(
+  value && typeof value === 'object' && !Array.isArray(value)
+  && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null)
+);
+
+const contractError = (field, message) => createDev2VecError(
+  `Invalid Dev2Vec output: ${field}${message ? ` ${message}` : ''}`,
+  'DEV2VEC_OUTPUT_CONTRACT_INVALID',
+  502,
+);
+
+const requirePlainObject = (value, field) => {
+  if (!isPlainObject(value)) throw contractError(field, 'must be an object');
+};
+
+const requireNonEmptyString = (value, field) => {
+  if (typeof value !== 'string' || !value.trim()) throw contractError(field, 'must be a non-empty string');
+};
+
+const requireStringArray = (value, field) => {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    throw contractError(field, 'must be an array of strings');
+  }
+};
+
+const validateVector = (value, field, expectedLength) => {
+  if (!Array.isArray(value) || value.length !== expectedLength) {
+    throw contractError(field, `must contain ${expectedLength} numbers`);
+  }
+  if (value.some((item) => typeof item !== 'number' || !Number.isFinite(item))) {
+    throw contractError(field, 'must contain only finite numbers');
+  }
+};
+
+const numbersEqual = (left, right) => Math.abs(left - right) <= FLOAT_TOLERANCE;
+
+const validateVectorContract = ({ vectorDims, vectors, vectorSources }) => {
+  for (const [source, expected] of Object.entries(EXPECTED_VECTOR_DIMS)) {
+    if (vectorDims[source] !== expected) throw contractError(`vectorDims.${source}`, `must equal ${expected}`);
+  }
+
+  const vectorSpecs = [
+    ['repoVector', EXPECTED_VECTOR_DIMS.repo],
+    ['issueVector', EXPECTED_VECTOR_DIMS.issue],
+    ['apiVector', EXPECTED_VECTOR_DIMS.api],
+    ['combinedVector', EXPECTED_VECTOR_DIMS.combined],
+  ];
+  vectorSpecs.forEach(([field, length]) => validateVector(vectors[field], `vectors.${field}`, length));
+
+  const expectedCombined = [...vectors.repoVector, ...vectors.issueVector, ...vectors.apiVector];
+  if (expectedCombined.some((value, index) => !numbersEqual(value, vectors.combinedVector[index]))) {
+    throw contractError('vectors.combinedVector', 'must concatenate repoVector, issueVector, and apiVector');
+  }
+
+  const sourceVectors = { repos: vectors.repoVector, issues: vectors.issueVector, apis: vectors.apiVector };
+  for (const [source, vector] of Object.entries(sourceVectors)) {
+    if (typeof vectorSources[source] !== 'boolean') throw contractError(`vectorSources.${source}`, 'must be boolean');
+    if (!vectorSources[source] && vector.some((value) => value !== 0)) {
+      throw contractError(`vectors.${source}`, 'must be zero when its source is unavailable');
+    }
+  }
+};
+
+const validateSkillGap = (skillGap, roleId) => {
+  requirePlainObject(skillGap, `skillGaps.${roleId}`);
+  ['matchedSkillNames', 'weakSkillNames', 'missingSkillNames', 'recommendedNextSkills']
+    .forEach((field) => requireStringArray(skillGap[field], `skillGaps.${roleId}.${field}`));
+  if (!Array.isArray(skillGap.details)) throw contractError(`skillGaps.${roleId}.details`, 'must be an array');
+  skillGap.details.forEach((detail, index) => {
+    const field = `skillGaps.${roleId}.details[${index}]`;
+    requirePlainObject(detail, field);
+    requireNonEmptyString(detail.skillName, `${field}.skillName`);
+    requireNonEmptyString(detail.canonicalSkillName, `${field}.canonicalSkillName`);
+    if (typeof detail.similarity !== 'number' || !Number.isFinite(detail.similarity)
+      || detail.similarity < 0 || detail.similarity > 1) {
+      throw contractError(`${field}.similarity`, 'must be a finite number from 0 to 1');
+    }
+    if (!VALID_SKILL_STATUSES.has(detail.status)) throw contractError(`${field}.status`, 'is invalid');
+  });
 };
 
 const normalizeRequestId = (requestId) => {
@@ -144,39 +226,59 @@ const runServiceInference = async (payload, timeoutMs) => {
 };
 
 const validateDev2VecOutput = (output) => {
-  if (!output || typeof output !== 'object') {
-    throw createDev2VecError(
-      'Dev2Vec output must be a JSON object',
-      'DEV2VEC_INVALID_OUTPUT',
-      502,
-    );
-  }
+  requirePlainObject(output, 'output');
 
   if (output.success === false) {
     throw createDev2VecError(
       output.message || 'Dev2Vec inference failed',
       output.errorCode || 'DEV2VEC_INFERENCE_FAILED',
       502,
-      { dev2vecOutput: output },
     );
   }
 
-  if (
-    output.success !== true
-    || !Array.isArray(output.rolePredictions)
-    || !output.skillGaps
-    || typeof output.skillGaps !== 'object'
-    || Array.isArray(output.skillGaps)
-    || !output.vectorDims
-    || typeof output.vectorDims !== 'object'
-  ) {
-    throw createDev2VecError(
-      'Dev2Vec output is missing required fields',
-      'DEV2VEC_INVALID_OUTPUT',
-      502,
-      { dev2vecOutput: output },
-    );
+  if (output.success !== true) throw contractError('success', 'must equal true');
+  requireNonEmptyString(output.modelVersion, 'modelVersion');
+  requirePlainObject(output.vectorDims, 'vectorDims');
+  requirePlainObject(output.vectors, 'vectors');
+  if (!Array.isArray(output.rolePredictions)) throw contractError('rolePredictions', 'must be an array');
+  requirePlainObject(output.skillGaps, 'skillGaps');
+  requirePlainObject(output.vectorSources, 'vectorSources');
+  requirePlainObject(output.sourceStats, 'sourceStats');
+
+  if (output.rolePredictions.length < 1 || output.rolePredictions.length > 3) {
+    throw contractError('rolePredictions', 'must contain 1 to 3 items');
   }
+  const roleIds = new Set();
+  let previousProbability = Infinity;
+  output.rolePredictions.forEach((prediction, index) => {
+    const field = `rolePredictions[${index}]`;
+    requirePlainObject(prediction, field);
+    if (!VALID_ROLE_IDS.has(prediction.roleId)) throw contractError(`${field}.roleId`, 'is invalid');
+    if (roleIds.has(prediction.roleId)) throw contractError(`${field}.roleId`, 'must be unique');
+    roleIds.add(prediction.roleId);
+    requireNonEmptyString(prediction.roleName, `${field}.roleName`);
+    requireNonEmptyString(prediction.modelLabel, `${field}.modelLabel`);
+    if (typeof prediction.probability !== 'number' || !Number.isFinite(prediction.probability)
+      || prediction.probability < 0 || prediction.probability > 1) {
+      throw contractError(`${field}.probability`, 'must be a finite number from 0 to 1');
+    }
+    if (prediction.probability > previousProbability + FLOAT_TOLERANCE) {
+      throw contractError(`${field}.probability`, 'must be in non-increasing order');
+    }
+    previousProbability = prediction.probability;
+    if (!Number.isInteger(prediction.rank) || prediction.rank !== index + 1) {
+      throw contractError(`${field}.rank`, `must equal ${index + 1}`);
+    }
+    validateSkillGap(output.skillGaps[prediction.roleId], prediction.roleId);
+  });
+
+  validateVectorContract(output);
+  ['repoTextLength', 'issueTextLength', 'apiTokenCount'].forEach((field) => {
+    const value = output.sourceStats[field];
+    if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value) || value < 0) {
+      throw contractError(`sourceStats.${field}`, 'must be a non-negative integer');
+    }
+  });
 
   return output;
 };
@@ -189,7 +291,7 @@ const parseStdoutJson = (stdout) => {
       'Dev2Vec stdout is not valid JSON',
       'DEV2VEC_INVALID_OUTPUT',
       502,
-      { parseError: error.message, stdoutPreview: String(stdout || '').slice(0, 500) },
+      { parseError: error.message, stdoutBytes: Buffer.byteLength(String(stdout || ''), 'utf8') },
     );
   }
 };
@@ -202,7 +304,7 @@ const writeTempInput = async (payload) => {
     tmpDir,
     `dev2vec-input-${sanitizeRequestIdForFilename(payload.requestId)}.json`,
   );
-  await fs.writeFile(tmpFile, JSON.stringify(payload), 'utf8');
+  await fs.writeFile(tmpFile, JSON.stringify(payload), { encoding: 'utf8', mode: 0o600 });
   return tmpFile;
 };
 
@@ -218,29 +320,47 @@ const removeTempInput = async (tmpFile) => {
   }
 };
 
-const runPythonInference = async ({ pythonBin, inferPath, tmpFile, timeoutMs, maxBuffer }) => {
+const runPythonInference = ({ pythonBin, inferPath, tmpFile, timeoutMs, maxBuffer }) => new Promise((resolve) => {
+  let settled = false;
+  let timedOut = false;
+  let observedExitCode = null;
+  let observedSignal = null;
+  const finish = (result) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timeoutHandle);
+    resolve({ ...result, timedOut, exitCode: result.exitCode ?? observedExitCode, signal: result.signal ?? observedSignal });
+  };
+  let child;
+  const timeoutHandle = setTimeout(() => {
+    timedOut = true;
+    if (child && !child.killed) child.kill('SIGTERM');
+  }, timeoutMs);
   try {
-    return await execFileAsync(
+    child = execFile(
       pythonBin,
       [inferPath, '--input', tmpFile],
       {
         cwd: process.cwd(),
         env: { ...process.env, PYTHONHASHSEED: process.env.PYTHONHASHSEED || '0' },
-        timeout: timeoutMs,
         maxBuffer,
         windowsHide: true,
       },
+      (error, stdout, stderr) => finish({
+        stdout: stdout || error?.stdout || '',
+        stderr: stderr || error?.stderr || '',
+        exitCode: error?.code,
+        signal: error?.signal,
+        processError: error || null,
+      }),
     );
+    child.once('error', (error) => finish({ stdout: '', stderr: '', exitCode: error.code, signal: error.signal, processError: error }));
+    child.once('exit', (code, signal) => { observedExitCode = code; observedSignal = signal; });
+    child.once('close', (code, signal) => { observedExitCode = code; observedSignal = signal; });
   } catch (error) {
-    return {
-      stdout: error.stdout || '',
-      stderr: error.stderr || '',
-      exitCode: error.code,
-      signal: error.signal,
-      processError: error,
-    };
+    finish({ stdout: '', stderr: '', exitCode: error.code, signal: error.signal, processError: error });
   }
-};
+});
 
 const runDev2VecInference = async (input = {}, options = {}) => {
   if (!isDev2VecEnabled()) {
@@ -258,7 +378,7 @@ const runDev2VecInference = async (input = {}, options = {}) => {
     DEFAULT_INFER_PATH,
   );
   const timeoutMs = parsePositiveInteger(
-    options.timeoutMs || process.env.DEV2VEC_TIMEOUT_MS,
+    options.timeoutMs || process.env.DEV2VEC_PROCESS_TIMEOUT_MS || process.env.DEV2VEC_TIMEOUT_MS,
     DEFAULT_TIMEOUT_MS,
   );
   const maxBuffer = parsePositiveInteger(
@@ -286,6 +406,7 @@ const runDev2VecInference = async (input = {}, options = {}) => {
       }
       return service.output;
     } catch (error) {
+      if (error?.errorCode === 'DEV2VEC_OUTPUT_CONTRACT_INVALID') throw error;
       if (!isTrue(process.env.DEV2VEC_SERVICE_FALLBACK_ENABLED, true)) throw error;
       fallbackReason = error.code || error.message;
       console.warn('[Dev2VecClient]', JSON.stringify({
@@ -310,21 +431,38 @@ const runDev2VecInference = async (input = {}, options = {}) => {
     }));
 
     if (result.stderr) {
-      console.warn('[dev2vec] infer.py stderr:', result.stderr.trim());
+      console.warn('[dev2vec] infer.py stderr:', JSON.stringify({ stderrBytes: Buffer.byteLength(String(result.stderr), 'utf8') }));
+    }
+
+    if (result.timedOut) {
+      throw createDev2VecError(
+        'Dev2Vec local process timed out',
+        'DEV2VEC_PROCESS_TIMEOUT',
+        504,
+        { timeoutMs, signal: result.signal },
+      );
     }
 
     if (!result.stdout) {
       const error = result.processError;
+      const executableMissing = ['ENOENT', 'EACCES', 'EPERM'].includes(error?.code);
+      const processFailed = error && !executableMissing;
       throw createDev2VecError(
-        error?.killed || result.signal
-          ? 'Dev2Vec inference timed out or was terminated'
-          : 'Dev2Vec inference produced empty stdout',
-        'DEV2VEC_INVALID_OUTPUT',
-        502,
+        executableMissing
+          ? 'Dev2Vec Python executable is unavailable'
+          : processFailed
+            ? 'Dev2Vec local process failed'
+            : 'Dev2Vec inference produced empty stdout',
+        executableMissing
+          ? 'DEV2VEC_PROCESS_UNAVAILABLE'
+          : processFailed
+            ? 'DEV2VEC_PROCESS_FAILED'
+            : 'DEV2VEC_INVALID_OUTPUT',
+        executableMissing ? 503 : 502,
         {
           exitCode: result.exitCode,
           signal: result.signal,
-          stderr: result.stderr,
+          stderrBytes: Buffer.byteLength(String(result.stderr || ''), 'utf8'),
         },
       );
     }
@@ -357,4 +495,5 @@ module.exports = {
   normalizeDev2VecInput,
   validateDev2VecOutput,
   runDev2VecInference,
+  runPythonInference,
 };

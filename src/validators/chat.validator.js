@@ -34,6 +34,11 @@ const validateCreateChatSessionBody = (req) => {
       errors.push(`${field} must be a valid ObjectId`);
     }
   }
+  if (req.body?.repositoryIds !== undefined) {
+    if (!Array.isArray(req.body.repositoryIds) || req.body.repositoryIds.some((id) => typeof id !== 'string' || !mongoose.Types.ObjectId.isValid(id))) {
+      errors.push('repositoryIds must be an array of valid ObjectIds');
+    }
+  }
 
   return buildValidationResult(errors);
 };
@@ -68,6 +73,11 @@ const validateSendChatMessageBody = (req) => {
       errors.push(`${field} must be a non-empty string`);
     } else if (typeof value === 'string' && value.trim() && !mongoose.Types.ObjectId.isValid(value.trim())) {
       errors.push(`${field} must be a valid ObjectId`);
+    }
+  }
+  if (req.body?.repositoryIds !== undefined) {
+    if (!Array.isArray(req.body.repositoryIds) || req.body.repositoryIds.some((id) => typeof id !== 'string' || !mongoose.Types.ObjectId.isValid(id))) {
+      errors.push('repositoryIds must be an array of valid ObjectIds');
     }
   }
 

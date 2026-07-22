@@ -5,6 +5,7 @@ const RepoAnalysisSnapshot = require('../models/RepoAnalysisSnapshot');
 const { canonicalizeSkillName, getCanonicalSkillCategory } = require('../utils/skillCanonicalizer');
 const { createStatusError } = require('./github/github.utils');
 const { findRepositoryForUser } = require('./github/github.repository.service');
+const { buildCompatibleAnalysisQuery, buildCompatibleSnapshotQuery } = require('./dev2vec/dev2vecCompatibility.service');
 
 const SOURCE_MODES = ['single_repo', 'all_analyzed_repos', 'selected_repos'];
 
@@ -21,12 +22,10 @@ const getAnalysisRepositoryKey = (analysis = {}) =>
 
 const findLatestUserContributionAnalysis = async ({ userId, repository, repoId }) => {
   const repositoryId = repository?._id || toObjectId(repoId);
-  const query = {
+  const query = buildCompatibleAnalysisQuery({
     userId,
-    analysisScope: { $type: 'object' },
-    'analysisScope.type': 'user_contribution',
     $or: [],
-  };
+  });
   if (repositoryId) query.$or.push({ repositoryId });
   if (repository?.githubRepoId) query.$or.push({ githubRepoId: repository.githubRepoId });
   if (!query.$or.length) return null;
@@ -35,11 +34,9 @@ const findLatestUserContributionAnalysis = async ({ userId, repository, repoId }
 };
 
 const findLatestUserContributionAnalysesForUser = async (userId) => {
-  const analyses = await AnalysisResult.find({
+  const analyses = await AnalysisResult.find(buildCompatibleAnalysisQuery({
     userId,
-    analysisScope: { $type: 'object' },
-    'analysisScope.type': 'user_contribution',
-  })
+  }))
     .sort({ analyzedAt: -1, createdAt: -1 })
     .lean();
   const latestByRepository = new Map();
@@ -100,7 +97,7 @@ const buildAnalysisSourceSummary = ({ analysis, repository, sourceMode = 'single
 
 const findSnapshotForAnalysis = async (userId, analysisId) => {
   if (!analysisId || !mongoose.Types.ObjectId.isValid(String(analysisId))) return null;
-  return RepoAnalysisSnapshot.findOne({ userId, analysisResultId: analysisId })
+  return RepoAnalysisSnapshot.findOne(buildCompatibleSnapshotQuery({ userId, analysisResultId: analysisId }))
     .sort({ createdAt: -1 })
     .select('_id analysisResultId repositoryId analyzedAt createdAt dev2vec.cacheMetadata')
     .lean();
@@ -155,6 +152,7 @@ const getUserLevelFromScore = (score) => {
   return 'beginner';
 };
 
+// Deprecated compatibility helper. Never use this to produce authoritative role predictions or roadmap gaps.
 const mergeUserContributionAnalyses = (analyses) => {
   const grouped = new Map();
   for (const analysis of analyses || []) {
@@ -220,6 +218,7 @@ const dedupeText = (values, limit = 12) => {
   return result;
 };
 
+// Deprecated presentation-only aggregate retained for legacy callers/tests; active Batch 2 flows use per-repository rank-1 roles.
 const mergeMultiRepoAnalysisContext = ({ analyses, targetRole, sourceMode = 'all_analyzed_repos' }) => {
   const sources = (analyses || []).map((item) => (item.analysis ? item.analysis : item));
   const firstCommitDates = sources.map((analysis) => analysis.analysisScope?.firstCommitDate).filter(Boolean);
@@ -328,15 +327,19 @@ const resolveUserContributionSource = async ({ userId, sourceMode, repoId, repoI
 
   if (normalizedSourceMode === 'all_analyzed_repos') {
     const analyses = await findLatestUserContributionAnalysesForUser(userId);
-    const merged = mergeMultiRepoAnalysisContext({ analyses, targetRole, sourceMode: normalizedSourceMode });
+    const repositories = analyses.map((analysis) => buildAnalysisSourceSummary({ analysis, sourceMode: 'single_repo' }));
     return {
       sourceMode: normalizedSourceMode,
       analyses,
-      analysisForGap: merged.mergedAnalysis,
-      analysisSource: merged.analysisSource,
-      mergedAnalysis: merged.mergedAnalysis,
-      selectedAnalysisIds: merged.analysisSource.analysisIds.map(String),
-      selectedRepositoryIds: merged.analysisSource.repositoryIds.map(String),
+      analysisForGap: null,
+      analysisSource: {
+        type: 'repository_primary_role_aggregation', sourceMode: normalizedSourceMode,
+        repositories, totalRepositories: analyses.length,
+        analysisIds: analyses.map((analysis) => analysis._id),
+        repositoryIds: analyses.map((analysis) => analysis.repositoryId).filter(Boolean),
+      },
+      selectedAnalysisIds: analyses.map((analysis) => String(analysis._id)),
+      selectedRepositoryIds: analyses.map((analysis) => String(analysis.repositoryId)).filter(Boolean),
     };
   }
 
@@ -350,19 +353,18 @@ const resolveUserContributionSource = async ({ userId, sourceMode, repoId, repoI
     error.missingRepoIds = selected.missingRepoIds;
     throw error;
   }
-  const merged = mergeMultiRepoAnalysisContext({
-    analyses: selected.analyses,
-    targetRole,
-    sourceMode: normalizedSourceMode,
-  });
-  merged.analysisSource.repositoryIds = repoIds.map(String);
+  const analyses = selected.analyses.map((item) => item.analysis || item);
   return {
     sourceMode: normalizedSourceMode,
     analyses: selected.analyses,
-    analysisForGap: merged.mergedAnalysis,
-    analysisSource: merged.analysisSource,
-    mergedAnalysis: merged.mergedAnalysis,
-    selectedAnalysisIds: merged.analysisSource.analysisIds.map(String),
+    analysisForGap: null,
+    analysisSource: {
+      type: 'repository_primary_role_aggregation', sourceMode: normalizedSourceMode,
+      repositories: selected.analyses.map((item) => buildAnalysisSourceSummary(item)),
+      totalRepositories: analyses.length,
+      analysisIds: analyses.map((analysis) => analysis._id), repositoryIds: repoIds.map(String),
+    },
+    selectedAnalysisIds: analyses.map((analysis) => String(analysis._id)),
     selectedRepositoryIds: repoIds.map(String),
   };
 };

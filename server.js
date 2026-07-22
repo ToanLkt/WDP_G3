@@ -1,5 +1,6 @@
 const dotenv = require('dotenv');
 const http = require('http');
+const mongoose = require('mongoose');
 
 dotenv.config();
 
@@ -8,11 +9,28 @@ const connectDB = require('./src/config/database');
 const { initSocket } = require('./src/services/socket.service');
 
 const PORT = process.env.PORT || 5000;
+let activeServer = null;
+let shuttingDown = false;
+
+const shutdown = async (signal) => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log('[shutdown]', { signal });
+  const forceTimer = setTimeout(() => process.exit(1), 10000);
+  forceTimer.unref();
+  if (activeServer) await new Promise((resolve) => activeServer.close(resolve));
+  await mongoose.connection.close().catch(() => {});
+  clearTimeout(forceTimer);
+  process.exit(0);
+};
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 const startServer = async () => {
   try {
     await connectDB();
     const server = http.createServer(app);
+    activeServer = server;
     initSocket(server);
 
     server.listen(PORT, () => {

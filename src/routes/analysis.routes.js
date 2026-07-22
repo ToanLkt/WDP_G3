@@ -20,6 +20,14 @@ const router = express.Router();
  *     summary: Analyze a repository and create a new analysis snapshot
  *     security:
  *       - bearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             additionalProperties: false
+ *           example: {}
  *     parameters:
  *       - in: path
  *         name: repoId
@@ -66,8 +74,19 @@ const router = express.Router();
  *         description: Unauthorized
  *       404:
  *         description: Repository not found
+ *       502:
+ *         description: Dev2Vec local process failed or returned invalid output
+ *       503:
+ *         description: Dev2Vec Python executable or model process is unavailable
+ *       504:
+ *         description: Dev2Vec local process timed out
  */
-router.post('/repositories/:repoId', authMiddleware, analysisController.analyzeRepository);
+router.post(
+  '/repositories/:repoId',
+  analysisController.logAnalysisRequestReceived,
+  authMiddleware,
+  analysisController.analyzeRepository,
+);
 
 /**
  * @swagger
@@ -110,8 +129,8 @@ router.post('/repositories/:repoId', authMiddleware, analysisController.analyzeR
  *                 description: Required when sourceMode is selected_repos.
  *               limit:
  *                 type: number
- *                 default: 5
- *                 maximum: 20
+ *                 default: 3
+ *                 maximum: 3
  *               view:
  *                 type: string
  *                 enum: [summary, detail]
@@ -134,7 +153,7 @@ router.post('/repositories/:repoId', authMiddleware, analysisController.analyzeR
  *               summary: All analyzed repos
  *               value:
  *                 sourceMode: all_analyzed_repos
- *                 limit: 5
+ *                 limit: 3
  *             selectedRepos:
  *               summary: Selected repos
  *               value:
@@ -205,7 +224,7 @@ router.post('/repositories/:repoId', authMiddleware, analysisController.analyzeR
  *                       - CI/CD
  *                     probability: 0.781326
  *                     rank: 1
- *                     modelVersion: dev2vec-demo-v1
+ *                     modelVersion: dev2vec-demo-v4
  *                     scoringMethod: dev2vec_doc2vec_classifier
  *               errorCode: null
  *       400:
@@ -234,7 +253,9 @@ router.post('/role-matches', authMiddleware, analysisController.generateRoleMatc
  *         name: limit
  *         schema:
  *           type: integer
- *           default: 5
+ *           default: 3
+ *           minimum: 1
+ *           maximum: 3
  *       - in: query
  *         name: targetRole
  *         schema:

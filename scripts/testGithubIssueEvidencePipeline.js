@@ -93,6 +93,12 @@ const unrelatedIssue = {
   assignees: [],
   updated_at: '2026-07-07T00:00:00Z',
 };
+const commentedIssue = {
+  ...unrelatedIssue,
+  number: 7,
+  title: 'Issue discussed by linked user',
+  comments: 4,
+};
 
 const normalized = [
   authoredIssue,
@@ -117,8 +123,20 @@ assert(selected.every((issue) => issue.relevanceType !== 'repository_fallback'))
 const fallbackOnly = selectRelevantIssues([
   normalizeGithubIssue(unrelatedIssue, context, config),
 ], config);
-assert.strictEqual(fallbackOnly.length, 1);
-assert.strictEqual(fallbackOnly[0].relevanceType, 'repository_fallback');
+assert.strictEqual(fallbackOnly.length, 0);
+
+const normalizedCommented = normalizeGithubIssue(commentedIssue, {
+  ...context,
+  userComments: [
+    { body: 'My first technical comment', user: { login: 'student-dev' } },
+    { body: 'My second technical comment', user: { login: 'student-dev' } },
+    { body: 'My third technical comment', user: { login: 'student-dev' } },
+    { body: 'Must be capped', user: { login: 'student-dev' } },
+  ],
+}, { ...config, maxUserComments: 3 });
+assert.deepStrictEqual(normalizedCommented.relations, ['commented']);
+assert.strictEqual(normalizedCommented.userComments.length, 3);
+assert.strictEqual(selectRelevantIssues([normalizedCommented], config).length, 1);
 
 const emptyInput = buildDev2VecInputFromRepositoryAnalysis({
   repository: {
@@ -154,6 +172,14 @@ assert(dev2vecInput.issueDocument.includes('react router'));
 assert(dev2vecInput.issueDocument.includes('add express authentication middleware'));
 assert(!dev2vecInput.issueDocument.includes('"title"'));
 assert(dev2vecInput.issueDocument.length <= config.documentMaxChars);
+
+const noFallbackInput = buildDev2VecInputFromRepositoryAnalysis({
+  repository: { name: 'no-fallback', fullName: 'owner/no-fallback' },
+  issues: fallbackOnly,
+  channelStatus: { issue: 'no_user_relevant_issues' },
+});
+assert.strictEqual(noFallbackInput.issueDocument, '');
+assert.strictEqual(noFallbackInput.evidenceChannels.availableChannels.issue, false);
 
 const payload = normalizeDev2VecInput(dev2vecInput);
 assert(payload.issueDocument.includes('fix react authentication redirect'));

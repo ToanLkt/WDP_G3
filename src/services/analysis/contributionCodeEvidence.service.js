@@ -198,6 +198,7 @@ const parseContributionCodeEvidence = ({ filename, content = '', evidenceSource 
     deletions: Number(file.deletions || 0),
     changes: Number(file.changes || 0),
     evidenceSource,
+    evidenceContent: text.slice(0, 12000),
     detectedLanguages: [...languages],
     detectedFrameworks: [...frameworks],
     detectedLibraries: [...libraries],

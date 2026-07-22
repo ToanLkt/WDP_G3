@@ -19,12 +19,11 @@ const {
   getDev2VecRoleName,
   normalizeDev2VecRoleId,
 } = require('./roadmapSkillGap.service');
-const {
-  buildDev2VecInputFromAnalysisSource,
-} = require('./dev2vec/dev2vecInputBuilder.service');
-const { runDev2VecInference } = require('./dev2vec/dev2vec.service');
 const { mapDev2VecOutputToRoleMatches } = require('./dev2vec/dev2vecRoleMapper.service');
 const analysisSourceService = require('./analysisSource.service');
+const { buildCompatibleAnalysisQuery, buildCompatibleSnapshotQuery, getRecordVersions, getRecordMetadata } = require('./dev2vec/dev2vecCompatibility.service');
+const { aggregateRepositoryPrimaryRoles, primaryPrediction } = require('./dev2vec/dev2vecRoleCandidate.service');
+const RepoAnalysisSnapshot = require('../models/RepoAnalysisSnapshot');
 
 let LearningRecommendation = null;
 
@@ -484,38 +483,19 @@ const buildDev2VecOutputFromAnalysis = (analysis = {}) => ({
   scoringMethod: analysis.dev2vec?.scoringMethod || 'dev2vec_doc2vec_classifier',
 });
 
-const buildRoadmapDev2VecInput = ({ analysisSource, analysisForGap, userId, topN = 3 }) => (
-  buildDev2VecInputFromAnalysisSource({
-    ...analysisSource,
-    analysis: analysisForGap,
-    topN,
-    requestId: `roadmap-${userId}-${analysisSource?.sourceMode || 'source'}-${Date.now()}`,
-  })
+const getDev2VecOutputForRoadmap = async ({ analysisForGap }) => (
+  hasCachedDev2VecResult(analysisForGap) ? buildDev2VecOutputFromAnalysis(analysisForGap) : null
 );
-
-const getDev2VecOutputForRoadmap = async ({ analysisSource, analysisForGap, userId, useRoleMatching }) => {
-  if (useRoleMatching === false && hasCachedDev2VecResult(analysisForGap)) {
-    return buildDev2VecOutputFromAnalysis(analysisForGap);
-  }
-  if (hasCachedDev2VecResult(analysisForGap) && analysisSource?.sourceMode === 'single_repo') {
-    return buildDev2VecOutputFromAnalysis(analysisForGap);
-  }
-  if (useRoleMatching === false) return null;
-
-  const dev2vecInput = buildRoadmapDev2VecInput({
-    analysisSource,
-    analysisForGap,
-    userId,
-    topN: 3,
-  });
-  return runDev2VecInference(dev2vecInput);
-};
 
 const buildRoadmapSourceWithDev2Vec = ({
   roadmapSource,
   dev2vecOutput,
   requestedRoleId,
   resolvedRoleId,
+  roleSelectionType,
+  sourceRepositoryId,
+  sourceAnalysisId,
+  sourceSnapshotId,
 }) => ({
   ...(roadmapSource || {}),
   modelVersion: dev2vecOutput?.modelVersion || null,
@@ -524,6 +504,11 @@ const buildRoadmapSourceWithDev2Vec = ({
   sourceStats: dev2vecOutput?.sourceStats || {},
   requestedRoleId: requestedRoleId || '',
   resolvedRoleId: resolvedRoleId || '',
+  selectedRoleId: resolvedRoleId || '',
+  roleSelectionType: roleSelectionType || 'current_repository_primary',
+  sourceRepositoryId: sourceRepositoryId || roadmapSource?.repositoryId || null,
+  sourceAnalysisId: sourceAnalysisId || roadmapSource?.analysisId || null,
+  sourceSnapshotId: sourceSnapshotId || roadmapSource?.snapshotId || null,
 });
 
 const safeCreateRoadmapNotification = async (payload) => {
@@ -557,29 +542,31 @@ const buildFallbackRecommendations = (analysisSnapshots) => {
   }));
 };
 
-const buildRoadmapGithubContext = async (userId) => {
+const buildRoadmapGithubContext = async (userId, sourceRepositoryId = null) => {
+  const repositoryFilter = { userId, ...(sourceRepositoryId ? { _id: sourceRepositoryId } : {}) };
+  const analysisFilter = buildCompatibleAnalysisQuery({ userId, ...(sourceRepositoryId ? { repositoryId: sourceRepositoryId } : {}) });
   const [studentProfile, repositories, latestAnalysisSnapshots, skillSignals, aiFeedbacks] = await Promise.all([
     StudentProfile.findOne({ userId })
       .select('university major year targetCareer currentSkills githubUsername githubConnected')
       .lean(),
-    Repository.find({ userId })
+    Repository.find(repositoryFilter)
       .sort({ updatedAtGithub: -1, pushedAt: -1, createdAt: -1 })
       .limit(MAX_REPOSITORIES)
       .select('name fullName description language topics pushedAt updatedAtGithub')
       .lean(),
-    AnalysisResult.find({ userId })
+    AnalysisResult.find(analysisFilter)
       .sort({ analyzedAt: -1, createdAt: -1 })
       .limit(MAX_ANALYSIS_SNAPSHOTS)
       .select(
         'repositoryId repoName projectType languages frameworks packages skillSignals careerDirection strengths weaknesses missingSkills recommendations scores commitSummary checklist analyzedAt createdAt'
       )
       .lean(),
-    SkillSignal.find({ userId })
+    SkillSignal.find({ userId, ...(sourceRepositoryId ? { repositoryId: sourceRepositoryId } : {}) })
       .sort({ score: -1, createdAt: -1 })
       .limit(MAX_SKILL_SIGNALS)
       .select('repositoryId skillName score evidence')
       .lean(),
-    AiFeedback.find({ userId })
+    AiFeedback.find({ userId, ...(sourceRepositoryId ? { repositoryId: sourceRepositoryId } : {}) })
       .sort({ generatedAt: -1, createdAt: -1 })
       .limit(MAX_AI_FEEDBACKS)
       .select(
@@ -1604,6 +1591,11 @@ const generateRoadmap = async (
     duration,
     language,
     useRoleMatching,
+    selectedRoleId,
+    sourceRepositoryId,
+    sourceAnalysisId,
+    sourceSnapshotId,
+    currentRepositoryId,
   } = {}
 ) => {
   const userId = getUserId(userIdOrAuthUser);
@@ -1631,64 +1623,79 @@ const generateRoadmap = async (
     duration
   );
 
-  if (normalizedSourceMode === 'single_repo') {
-    if (!repoId) {
-      throw createStatusError('repoId is required when sourceMode is single_repo.', 400);
-    }
-    repository = await findRepositoryForUser({ userId }, repoId);
-    latestAnalysis = await analysisSourceService.findLatestUserContributionAnalysis({ userId, repository, repoId });
-    if (!latestAnalysis) {
-      throw createStatusError('Please analyze this repository first before generating roadmap.', 400);
-    }
-
-    roadmapSource = analysisSourceService.buildAnalysisSourceSummary({ analysis: latestAnalysis, repository });
-    effectiveLevel = latestAnalysis.summary?.userLevel || requestedLevel || 'beginner';
-    analysisForGap = latestAnalysis;
-    selectedAnalysisIds = [String(latestAnalysis._id)];
-    selectedRepositoryIds = [String(repository._id)];
-  } else if (normalizedSourceMode === 'all_analyzed_repos') {
-    const analyses = await analysisSourceService.findLatestUserContributionAnalysesForUser(userId);
-    if (!analyses.length) {
-      throw createStatusError('Please analyze at least one repository before generating a multi-repo roadmap.', 400);
-    }
-    const merged = analysisSourceService.mergeMultiRepoAnalysisContext({ analyses, targetRole: normalizedTargetRole });
-    roadmapSource = { ...merged.roadmapSource, sourceMode: 'all_analyzed_repos' };
-    analysisForGap = merged.mergedAnalysis;
-    effectiveLevel = analysisForGap.summary?.userLevel || requestedLevel || 'beginner';
-    selectedAnalysisIds = roadmapSource.analysisIds.map(String);
-    selectedRepositoryIds = roadmapSource.repositoryIds.map(String);
-  } else if (normalizedSourceMode === 'selected_repos') {
-    if (!Array.isArray(repoIds) || repoIds.length < 1) {
-      throw createStatusError('repoIds is required when sourceMode is selected_repos.', 400);
-    }
-    const selected = await analysisSourceService.findLatestUserContributionAnalysesByRepoIds(userId, repoIds);
-    if (selected.missingRepoIds.length) {
-      const error = createStatusError('Some selected repositories have not been analyzed yet.', 400);
-      error.errors = [{ missingRepoIds: selected.missingRepoIds }];
-      throw error;
-    }
-    const merged = analysisSourceService.mergeMultiRepoAnalysisContext({ analyses: selected.analyses, targetRole: normalizedTargetRole });
-    roadmapSource = { ...merged.roadmapSource, sourceMode: 'selected_repos' };
-    analysisForGap = merged.mergedAnalysis;
-    effectiveLevel = analysisForGap.summary?.userLevel || requestedLevel || 'beginner';
-    selectedAnalysisIds = roadmapSource.analysisIds.map(String);
-    selectedRepositoryIds = repoIds.map(String);
-    roadmapSource.repositoryIds = selectedRepositoryIds;
-  } else {
+  if (!['single_repo', 'all_analyzed_repos', 'selected_repos'].includes(normalizedSourceMode)) {
     throw createStatusError('sourceMode must be one of: single_repo, all_analyzed_repos, selected_repos.', 400);
   }
 
+  const requestedSourceRepositoryId = sourceRepositoryId || currentRepositoryId || repoId;
+  if (sourceAnalysisId) {
+    latestAnalysis = await AnalysisResult.findOne(buildCompatibleAnalysisQuery({ _id: sourceAnalysisId, userId })).lean();
+    if (!latestAnalysis) throw createStatusError('Selected role source analysis is unavailable or incompatible.', 400);
+  } else if (sourceSnapshotId) {
+    const selectedSnapshot = await RepoAnalysisSnapshot.findOne(buildCompatibleSnapshotQuery({ _id: sourceSnapshotId, userId })).lean();
+    if (!selectedSnapshot?.analysisResultId) throw createStatusError('Selected role source snapshot is unavailable or incompatible.', 400);
+    latestAnalysis = await AnalysisResult.findOne(buildCompatibleAnalysisQuery({ _id: selectedSnapshot.analysisResultId, userId })).lean();
+  } else if (requestedSourceRepositoryId) {
+    repository = await findRepositoryForUser({ userId }, requestedSourceRepositoryId);
+    latestAnalysis = await analysisSourceService.findLatestUserContributionAnalysis({ userId, repository, repoId: requestedSourceRepositoryId });
+  } else {
+    const analyses = normalizedSourceMode === 'selected_repos'
+      ? (await analysisSourceService.findLatestUserContributionAnalysesByRepoIds(userId, repoIds || [])).analyses.map((item) => item.analysis)
+      : await analysisSourceService.findLatestUserContributionAnalysesForUser(userId);
+    const selection = aggregateRepositoryPrimaryRoles({ compatibleAnalyses: analyses, userId, maxAdditionalRoles: 2 });
+    latestAnalysis = analyses.find((analysis) => String(analysis._id) === String(selection.primaryRole?.sourceAnalysisId)) || null;
+  }
+  if (!latestAnalysis) throw createStatusError('Please analyze a compatible repository before generating roadmap.', 400);
+
+  repository = repository || await findRepositoryForUser({ userId }, latestAnalysis.repositoryId);
+  if (requestedSourceRepositoryId && String(repository._id) !== String(requestedSourceRepositoryId)) {
+    throw createStatusError('Selected role provenance does not match source repository.', 400);
+  }
+  const sourcePrimary = primaryPrediction(latestAnalysis);
+  const sourcePrimaryRoleId = normalizeDev2VecRoleId(sourcePrimary?.roleId || sourcePrimary?.modelLabel);
+  if (!sourcePrimaryRoleId) throw createStatusError('Selected role source has no rank-1 Dev2Vec prediction.', 400);
+  roleCatalogEntry = findRoleCatalogEntry({ roleId: sourcePrimaryRoleId });
+  const requestedSelectedRoleId = normalizeDev2VecRoleId(selectedRoleId || roleId);
+  if (requestedSelectedRoleId && requestedSelectedRoleId !== sourcePrimaryRoleId) {
+    throw createStatusError('selectedRoleId must be the rank-1 role of its compatible source analysis.', 400);
+  }
+  const sourceSnapshot = sourceSnapshotId
+    ? await RepoAnalysisSnapshot.findOne(buildCompatibleSnapshotQuery({ _id: sourceSnapshotId, userId, analysisResultId: latestAnalysis._id })).lean()
+    : await RepoAnalysisSnapshot.findOne(buildCompatibleSnapshotQuery({ userId, analysisResultId: latestAnalysis._id })).sort({ createdAt: -1 }).lean();
+  if (sourceSnapshotId && !sourceSnapshot) throw createStatusError('Selected role source snapshot does not match its analysis.', 400);
+
+  const versions = getRecordVersions(latestAnalysis);
+  const sourceMetadata = getRecordMetadata(latestAnalysis);
+  const anchorRepositoryId = repoId || currentRepositoryId;
+  const selectionType = anchorRepositoryId
+    ? (String(repository._id) === String(anchorRepositoryId) ? 'current_repository_primary' : 'portfolio_repository_primary')
+    : ((sourceAnalysisId || sourceSnapshotId || sourceRepositoryId) ? 'portfolio_repository_primary' : 'portfolio_suggestion');
+  roadmapSource = {
+    ...analysisSourceService.buildAnalysisSourceSummary({ analysis: latestAnalysis, repository }),
+    sourceMode: normalizedSourceMode,
+    selectedRoleId: sourcePrimaryRoleId,
+    roleSelectionType: selectionType,
+    sourceRepositoryId: repository._id,
+    sourceAnalysisId: latestAnalysis._id,
+    sourceSnapshotId: sourceSnapshot?._id || null,
+    modelVersion: versions.modelVersion,
+    pipelineVersion: versions.pipelineVersion,
+    repoDocumentVersion: versions.repoDocumentVersion,
+    issueDocumentVersion: versions.issueDocumentVersion,
+    apiEvidenceVersion: versions.apiEvidenceVersion,
+    evidenceFingerprint: sourceMetadata.evidenceFingerprint || null,
+  };
+  effectiveLevel = latestAnalysis.summary?.userLevel || requestedLevel || 'beginner';
+  analysisForGap = latestAnalysis;
+  selectedAnalysisIds = [String(latestAnalysis._id)];
+  selectedRepositoryIds = [String(repository._id)];
+
   roadmapSource = await analysisSourceService.attachSnapshotProvenance({ userId, roadmapSource });
 
-  const requestedRoleId = normalizeDev2VecRoleId(roleId) || normalizeDev2VecRoleId(normalizedTargetRole);
+  const requestedRoleId = sourcePrimaryRoleId;
   let dev2vecOutput = null;
   if (useRoleMatching !== false || hasCachedDev2VecResult(analysisForGap)) {
-    dev2vecOutput = await getDev2VecOutputForRoadmap({
-      analysisSource: roadmapSource,
-      analysisForGap,
-      userId,
-      useRoleMatching,
-    });
+    dev2vecOutput = await getDev2VecOutputForRoadmap({ analysisForGap });
   }
   const roleMatches = dev2vecOutput
     ? mapDev2VecOutputToRoleMatches(dev2vecOutput, { includeDetails: true, limit: 3 }).matches
@@ -1713,6 +1720,10 @@ const generateRoadmap = async (
     dev2vecOutput,
     requestedRoleId: requestedRoleId || roleId || '',
     resolvedRoleId,
+    roleSelectionType: roadmapSource.roleSelectionType,
+    sourceRepositoryId: roadmapSource.sourceRepositoryId,
+    sourceAnalysisId: roadmapSource.sourceAnalysisId,
+    sourceSnapshotId: roadmapSource.sourceSnapshotId,
   });
 
   const sameSet = (left = [], right = []) => {
@@ -1728,7 +1739,7 @@ const generateRoadmap = async (
   if (!forceRegenerate) {
     const baseExistingQuery = {
       userId,
-      targetRole: normalizedTargetRole,
+      targetRole: resolvedTargetRole,
       status: 'active',
       isDeleted: { $ne: true },
     };
@@ -1736,10 +1747,7 @@ const generateRoadmap = async (
     if (resolvedRoleId || roleCatalogEntry?.roleId || roleId) baseExistingQuery.roleId = resolvedRoleId || roleCatalogEntry?.roleId || roleId;
     const existingQuery = {
       ...baseExistingQuery,
-      'roadmapSource.type':
-        normalizedSourceMode === 'single_repo'
-          ? 'user_contribution_analysis'
-          : 'multi_repo_user_contribution_analysis',
+      'roadmapSource.type': 'user_contribution_analysis',
       'roadmapSource.sourceMode': normalizedSourceMode,
       effectiveLevel: { $nin: [null, ''] },
     };
@@ -1749,13 +1757,7 @@ const generateRoadmap = async (
       .lean();
     const existingRoadmap = existingRoadmaps.find((candidate) => {
       const source = candidate.roadmapSource || {};
-      if (normalizedSourceMode === 'single_repo') {
-        return String(source.analysisId || '') === String(roadmapSource.analysisId || '');
-      }
-      return (
-        sameSet(source.analysisIds || [], selectedAnalysisIds) &&
-        (normalizedSourceMode !== 'selected_repos' || sameSet(source.repositoryIds || [], selectedRepositoryIds))
-      );
+      return String(source.sourceAnalysisId || source.analysisId || '') === String(roadmapSource.sourceAnalysisId || roadmapSource.analysisId || '');
     });
 
     if (
@@ -1798,7 +1800,7 @@ const generateRoadmap = async (
     await Roadmap.updateMany(archiveQuery, { $set: { status: 'archived' } });
   }
 
-  const githubContext = await buildRoadmapGithubContext(userId);
+  const githubContext = await buildRoadmapGithubContext(userId, roadmapSource.sourceRepositoryId);
   const prompt = buildRoadmapPrompt({
     targetRole: resolvedTargetRole || normalizedTargetRole,
     githubContext,

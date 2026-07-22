@@ -1,0 +1,31 @@
+{
+  "version": "coursera-roadmap-crawl-report-v1",
+  "generatedAt": "2026-07-23T00:00:00+07:00",
+  "mode": "reviewed_candidates_public_pages_verified",
+  "topicCount": 15,
+  "inputCourseCount": 15,
+  "uniqueCourseCount": 15,
+  "validDirectUrlCount": 15,
+  "remoteValidatedCount": 15,
+  "remoteValidationResult": "15/15 URLs resolved to public Coursera course, specialization, or professional-certificate pages on 2026-07-23",
+  "rejectedCount": 0,
+  "remoteResults": [],
+  "seedSha256": "b49ef56f0a81a2f68ef841a850507c754b546b511c4b94946205e1113fefa117",
+  "coursesPerTopic": {
+    "backend-beginner": 3,
+    "backend-intermediate": 2,
+    "backend-advanced": 2,
+    "frontend-beginner": 3,
+    "frontend-intermediate": 2,
+    "frontend-advanced": 2,
+    "mobile-beginner": 3,
+    "mobile-intermediate": 3,
+    "mobile-advanced": 2,
+    "devops-beginner": 2,
+    "devops-intermediate": 2,
+    "devops-advanced": 2,
+    "data-scientist-beginner": 3,
+    "data-scientist-intermediate": 3,
+    "data-scientist-advanced": 1
+  }
+}

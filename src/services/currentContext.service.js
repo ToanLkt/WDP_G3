@@ -2,12 +2,18 @@ const mongoose = require('mongoose');
 
 const AnalysisResult = require('../models/AnalysisResult');
 const RepoAnalysisSnapshot = require('../models/RepoAnalysisSnapshot');
-const LegacyAnalysisSnapshot = require('../models/AnalysisSnapshot');
 const Repository = require('../models/Repository');
 const Roadmap = require('../models/Roadmap');
 const RoadmapProgress = require('../models/RoadmapProgress');
 const { createStatusError } = require('./github/github.utils');
 const { canonicalizeSkillName } = require('../utils/skillCanonicalizer');
+const {
+  buildCompatibleAnalysisQuery,
+  buildCompatibleSnapshotQuery,
+  isCompatibleAnalysisResult,
+  isCompatibleSnapshot,
+  getCurrentDev2VecVersions,
+} = require('./dev2vec/dev2vecCompatibility.service');
 
 const validId = (value) => mongoose.Types.ObjectId.isValid(String(value || ''));
 const stringId = (value) => (value ? String(value) : null);
@@ -35,35 +41,50 @@ const ownedById = async (Model, userId, id, label) => {
   return document;
 };
 
+const compatibilityError = (reason, message = 'Compatible Dev2Vec analysis required') => {
+  const error = createStatusError(message, 409);
+  error.errorCode = reason;
+  error.analysisStatus = 'analysis_required';
+  error.reason = reason;
+  error.errors = [{ analysisStatus: error.analysisStatus, reason }];
+  return error;
+};
+
+const ownedCompatibleById = async (Model, userId, id, label, predicate) => {
+  const document = await ownedById(Model, userId, id, label);
+  if (!predicate(document)) throw compatibilityError('incompatible_analysis_history');
+  return document;
+};
+
 const readAnalysisIdFromRoadmap = (roadmap = {}) => {
   const source = roadmap.roadmapSource && typeof roadmap.roadmapSource === 'object' ? roadmap.roadmapSource : {};
   return source.analysisId || source.analysisIds?.[0] || null;
 };
 
 const findSnapshot = async (userId, { snapshotId, analysisId } = {}) => {
-  if (snapshotId) return ownedById(RepoAnalysisSnapshot, userId, snapshotId, 'Snapshot');
+  if (snapshotId) return ownedCompatibleById(RepoAnalysisSnapshot, userId, snapshotId, 'Snapshot', isCompatibleSnapshot);
   if (!analysisId) return null;
-  return RepoAnalysisSnapshot.findOne({ userId, analysisResultId: analysisId })
+  return RepoAnalysisSnapshot.findOne(buildCompatibleSnapshotQuery({ userId, analysisResultId: analysisId }))
     .sort({ createdAt: -1 })
     .lean();
 };
 
 const findCurrentAnalysis = async (userId, selectors = {}, roadmap = null) => {
   const pinnedAnalysisId = roadmap ? readAnalysisIdFromRoadmap(roadmap) : null;
-  if (pinnedAnalysisId) return ownedById(AnalysisResult, userId, pinnedAnalysisId, 'Analysis');
+  if (pinnedAnalysisId) return ownedCompatibleById(AnalysisResult, userId, pinnedAnalysisId, 'Analysis', isCompatibleAnalysisResult);
   if (selectors.repositoryId) {
     const repository = await ownedById(Repository, userId, selectors.repositoryId, 'Repository');
-    return AnalysisResult.findOne({ userId, repositoryId: repository._id }).sort({ analyzedAt: -1, createdAt: -1 }).lean();
+    return AnalysisResult.findOne(buildCompatibleAnalysisQuery({ userId, repositoryId: repository._id })).sort({ analyzedAt: -1, createdAt: -1 }).lean();
   }
-  if (selectors.analysisId) return ownedById(AnalysisResult, userId, selectors.analysisId, 'Analysis');
+  if (selectors.analysisId) return ownedCompatibleById(AnalysisResult, userId, selectors.analysisId, 'Analysis', isCompatibleAnalysisResult);
   if (selectors.snapshotId) {
-    const snapshot = await ownedById(RepoAnalysisSnapshot, userId, selectors.snapshotId, 'Snapshot');
+    const snapshot = await ownedCompatibleById(RepoAnalysisSnapshot, userId, selectors.snapshotId, 'Snapshot', isCompatibleSnapshot);
     if (snapshot.analysisResultId) {
-      return ownedById(AnalysisResult, userId, snapshot.analysisResultId, 'Analysis');
+      return ownedCompatibleById(AnalysisResult, userId, snapshot.analysisResultId, 'Analysis', isCompatibleAnalysisResult);
     }
     return null;
   }
-  const query = { userId };
+  const query = buildCompatibleAnalysisQuery({ userId });
   return AnalysisResult.findOne(query).sort({ analyzedAt: -1, createdAt: -1 }).lean();
 };
 
@@ -179,23 +200,18 @@ const resolveCurrentContext = async (userId, selectors = {}) => {
     roadmap = await Roadmap.findOne({ _id: selectedSelectors.roadmapId, userId, isDeleted: { $ne: true } }).lean();
     if (!roadmap) throw createStatusError('Roadmap not found', 404);
   }
-  const analysis = await findCurrentAnalysis(userId, selectedSelectors, roadmap);
-  let legacyFallback = false;
-  let resolvedAnalysis = analysis;
-  let contextSelectionReason = input.reason;
-  if (!resolvedAnalysis && !selectedSelectors.analysisId && !selectedSelectors.snapshotId && !roadmap) {
-    const legacyQuery = { userId };
-    if (selectedSelectors.repositoryId) legacyQuery.repositoryId = selectedSelectors.repositoryId;
-    resolvedAnalysis = await LegacyAnalysisSnapshot.findOne(legacyQuery).sort({ analyzedAt: -1, createdAt: -1 }).lean();
-    legacyFallback = Boolean(resolvedAnalysis);
-    if (legacyFallback) contextSelectionReason = 'legacy_snapshot';
-    if (legacyFallback) console.warn('[context-resolver]', { reasonCode: 'legacy_analysis_snapshot_fallback', userId: String(userId), repositoryId: stringId(resolvedAnalysis.repositoryId) });
+  const resolvedAnalysis = await findCurrentAnalysis(userId, selectedSelectors, roadmap);
+  const contextSelectionReason = input.reason;
+  if (!resolvedAnalysis) {
+    const historyQuery = { userId };
+    if (selectedSelectors.repositoryId) historyQuery.repositoryId = selectedSelectors.repositoryId;
+    const hasHistory = await AnalysisResult.exists(historyQuery);
+    throw compatibilityError(hasHistory ? 'incompatible_analysis_history' : 'no_compatible_dev2vec_analysis');
   }
-  if (!resolvedAnalysis) throw createStatusError('Repository analysis not found', 404);
 
   const source = roadmap?.roadmapSource && typeof roadmap.roadmapSource === 'object' ? roadmap.roadmapSource : {};
   const requestedSnapshotId = roadmap ? source.snapshotId : selectedSelectors.snapshotId;
-  const snapshot = legacyFallback ? null : await findSnapshot(userId, {
+  const snapshot = await findSnapshot(userId, {
     snapshotId: requestedSnapshotId,
     analysisId: resolvedAnalysis._id,
   });
@@ -210,12 +226,14 @@ const resolveCurrentContext = async (userId, selectors = {}) => {
   const provenance = {
     repositoryId: stringId(repository?._id || resolvedAnalysis.repositoryId),
     repoName: repository?.name || resolvedAnalysis.repoName || '',
-    analysisId: legacyFallback ? null : stringId(resolvedAnalysis._id),
+    analysisId: stringId(resolvedAnalysis._id),
     snapshotId: stringId(snapshot?._id),
     roadmapId: stringId(roadmap?._id),
     progressUpdatedAt: progress?.updatedAt || null,
-    analysisSource: legacyFallback ? 'legacy_analysis_snapshot' : 'analysis_result',
+    analysisSource: 'analysis_result',
     contextSelectionReason,
+    compatibilityStatus: snapshot ? 'current' : 'compatible_snapshot_missing',
+    versions: getCurrentDev2VecVersions(),
   };
   return {
     analysis: resolvedAnalysis,
@@ -228,7 +246,7 @@ const resolveCurrentContext = async (userId, selectors = {}) => {
     missingSkills: getMissingSkills(resolvedAnalysis),
     provenance,
     contextSelectionReason,
-    legacyFallback,
+    legacyFallback: false,
   };
 };
 

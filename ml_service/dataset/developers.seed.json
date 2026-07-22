@@ -63,8 +63,7 @@
   "repositories": [
     "https://github.com/callicoder/spring-boot-postgresql-jpa-hibernate-rest-api-demo",
     "https://github.com/callicoder/spring-boot-mysql-rest-api-tutorial",
-    "https://github.com/callicoder/spring-boot-file-upload-download-rest-api-example",
-    "https://github.com/callicoder/spring-boot-flyway-example",
+      "https://github.com/callicoder/spring-boot-file-upload-download-rest-api-example",
     "https://github.com/callicoder/spring-boot-websocket-chat-demo"
   ]
 },
@@ -74,14 +73,7 @@
   "label": "Backend",
   "githubUsername": "bezkoder",
   "repositories": [
-    "https://github.com/bezkoder/spring-boot-spring-security-jwt-authentication",
-    "https://github.com/bezkoder/spring-boot-security-jwt-auth-mongodb",
-    "https://github.com/bezkoder/node-js-jwt-auth-mongodb",
-    "https://github.com/bezkoder/spring-boot-data-jpa-mysql",
-    "https://github.com/bezkoder/spring-boot-data-jpa-postgresql",
-    "https://github.com/bezkoder/spring-boot-mongodb-crud",
-    "https://github.com/bezkoder/node-js-express-sequelize-mysql",
-    "https://github.com/bezkoder/node-js-express-sequelize-postgresql"
+      "https://github.com/bezkoder/spring-boot-spring-security-jwt-authentication"
     ]
 },
 
@@ -177,6 +169,154 @@
     "https://github.com/adonisjs/create-adonisjs"
   ]
 },
+{
+    "developerId": "backend_016",
+    "label": "Backend",
+    "githubUsername": "sindresorhus",
+    "repositories": [
+      "https://github.com/sindresorhus/got",
+      "https://github.com/sindresorhus/p-map",
+      "https://github.com/sindresorhus/p-queue",
+      "https://github.com/sindresorhus/execa"
+    ]
+  },
+  {
+    "developerId": "backend_017",
+    "label": "Backend",
+    "githubUsername": "jbogard",
+    "repositories": [
+      "https://github.com/jbogard/MediatR",
+      "https://github.com/jbogard/ContosoUniversity",
+      "https://github.com/jbogard/Respawn"
+    ]
+  },
+  {
+    "developerId": "backend_018",
+    "label": "Backend",
+    "githubUsername": "khellang",
+    "repositories": [
+      "https://github.com/khellang/Middleware",
+      "https://github.com/khellang/Scrutor"
+    ]
+  },
+  {
+    "developerId": "backend_019",
+    "label": "Backend",
+    "githubUsername": "jasnell",
+    "repositories": [
+      "https://github.com/nodejs/node"
+    ]
+  },
+  {
+    "developerId": "backend_020",
+    "label": "Backend",
+    "githubUsername": "isaacs",
+    "repositories": [
+      "https://github.com/isaacs/node-tar",
+      "https://github.com/npm/cli",
+      "https://github.com/isaacs/minimatch"
+    ]
+  },
+  {
+    "developerId": "backend_021",
+    "label": "Backend",
+    "githubUsername": "jaredhanson",
+    "repositories": [
+      "https://github.com/jaredhanson/passport",
+      "https://github.com/jaredhanson/passport-local",
+      "https://github.com/jaredhanson/passport-http"
+    ]
+  },
+  {
+    "developerId": "backend_022",
+    "label": "Backend",
+    "githubUsername": "mattn",
+    "repositories": [
+      "https://github.com/mattn/go-sqlite3",
+      "https://github.com/mattn/goreman",
+      "https://github.com/mattn/go-runewidth",
+      "https://github.com/mattn/go-isatty"
+    ]
+  },
+  {
+    "developerId": "backend_023",
+    "label": "Backend",
+    "githubUsername": "thomaslevesque",
+    "repositories": [
+      "https://github.com/thomaslevesque/FakeItEasy",
+      "https://github.com/thomaslevesque/FluentAssertions",
+      "https://github.com/dotnet/runtime"
+    ]
+  },
+  {
+    "developerId": "backend_024",
+    "label": "Backend",
+    "githubUsername": "nlohmann",
+    "repositories": [
+      "https://github.com/nlohmann/json",
+      "https://github.com/nlohmann/fifo_map"
+    ]
+  },
+  {
+    "developerId": "backend_025",
+    "label": "Backend",
+    "githubUsername": "seanmonstar",
+    "repositories": [
+      "https://github.com/seanmonstar/reqwest",
+      "https://github.com/seanmonstar/warp",
+      "https://github.com/tokio-rs/tokio",
+      "https://github.com/hyperium/hyper"
+    ]
+  },
+  {
+    "developerId": "backend_026",
+    "label": "Backend",
+    "githubUsername": "snoyberg",
+    "repositories": [
+      "https://github.com/snoyberg/keter",
+      "https://github.com/snoyberg/http-client",
+      "https://github.com/snoyberg/mime-mail"
+    ]
+  },
+  {
+    "developerId": "backend_027",
+    "label": "Backend",
+    "githubUsername": "staudenmeir",
+    "repositories": [
+      "https://github.com/staudenmeir/eloquent-json-relations",
+      "https://github.com/staudenmeir/laravel-adjacency-list",
+      "https://github.com/staudenmeir/eloquent-has-many-deep"
+    ]
+  },
+  {
+    "developerId": "backend_028",
+    "label": "Backend",
+    "githubUsername": "SaiUpadhyayula",
+    "repositories": [
+      "https://github.com/SaiUpadhyayula/spring-ai-rag-ollama",
+      "https://github.com/SaiUpadhyayula/spring-boot-websocket-chat-pubsub",
+      "https://github.com/SaiUpadhyayula/spring-boot-3-microservices-course"
+    ]
+  },
+  {
+    "developerId": "backend_029",
+    "label": "Backend",
+    "githubUsername": "sadrax4",
+    "repositories": [
+      "https://github.com/sadrax4/crypto-graphy",
+      "https://github.com/sadrax4/ecom",
+      "https://github.com/sadrax4/nest-drizzle"
+    ]
+  },
+  {
+    "developerId": "backend_030",
+    "label": "Backend",
+    "githubUsername": "shajibsikder",
+    "repositories": [
+      "https://github.com/shajibsikder/weekmotion-platform",
+      "https://github.com/shajibsikder/shajibsikder"
+    ]
+  },
 
   {
     "developerId": "frontend_001",
@@ -277,8 +417,7 @@
     "githubUsername": "ryansolid",
     "repositories": [
       "https://github.com/solidjs/solid",
-      "https://github.com/solidjs/solid-start",
-      "https://github.com/solidjs-community/solid-primitives"
+      "https://github.com/solidjs/solid-start"
     ]
   },
   {
@@ -287,7 +426,6 @@
     "githubUsername": "FredKSchott",
     "repositories": [
       "https://github.com/withastro/astro",
-      "https://github.com/withastro/starlight",
       "https://github.com/FredKSchott/snowpack"
     ]
   },
@@ -331,13 +469,158 @@
       "https://github.com/kentcdodds/react-fundamentals"
     ]
   },
-  
+   {
+    "developerId": "frontend_016",
+    "label": "Frontend",
+    "githubUsername": "bradtraversy",
+    "repositories": [
+      "https://github.com/bradtraversy/react-crash-2024",
+      "https://github.com/bradtraversy/50projects50days"
+    ]
+  },
+  {
+    "developerId": "frontend_017",
+    "label": "Frontend",
+    "githubUsername": "ixartz",
+    "repositories": [
+      "https://github.com/ixartz/Next-js-Boilerplate",
+      "https://github.com/ixartz/SaaS-Boilerplate"
+    ]
+  },
+  {
+    "developerId": "frontend_018",
+    "label": "Frontend",
+    "githubUsername": "wesbos",
+    "repositories": [
+      "https://github.com/wesbos/JavaScript30",
+      "https://github.com/wesbos/Advanced-React"
+    ]
+  },
+  {
+    "developerId": "frontend_019",
+    "label": "Frontend",
+    "githubUsername": "ustbhuangyi",
+    "repositories": [
+      "https://github.com/ustbhuangyi/better-scroll",
+      "https://github.com/ustbhuangyi/vue-analysis",
+      "https://github.com/ustbhuangyi/vue3-lazy"
+    ]
+  },
+  {
+    "developerId": "frontend_020",
+    "label": "Frontend",
+    "githubUsername": "sadanandpai",
+    "repositories": [
+      "https://github.com/sadanandpai/frontend-mini-challenges",
+      "https://github.com/sadanandpai/javascript-code-challenges",
+      "https://github.com/sadanandpai/sorting-visualizer"
+    ]
+  },
+  {
+    "developerId": "frontend_021",
+    "label": "Frontend",
+    "githubUsername": "gaearon",
+    "repositories": [
+      "https://github.com/gaearon/react",
+      "https://github.com/gaearon/react-hot-loader",
+      "https://github.com/gaearon/overreacted.io"
+    ]
+  },
+  {
+    "developerId": "frontend_022",
+    "label": "Frontend",
+    "githubUsername": "jaredLunde",
+    "repositories": [
+      "https://github.com/jaredLunde/react-hook"
+    ]
+  },
+  {
+    "developerId": "frontend_023",
+    "label": "Frontend",
+    "githubUsername": "shadcn",
+    "repositories": [
+      "https://github.com/shadcn-ui/ui",
+      "https://github.com/shadcn-ui/taxonomy",
+      "https://github.com/shadcn-ui/next-template"
+    ]
+  },
+  {
+    "developerId": "frontend_024",
+    "label": "Frontend",
+    "githubUsername": "LinusBorg",
+    "repositories": [
+      "https://github.com/LinusBorg/portal-vue",
+      "https://github.com/LinusBorg/vue-reactive-provide",
+      "https://github.com/LinusBorg/vue-cli-plugin-test-attrs"
+    ]
+  },
+  {
+    "developerId": "frontend_025",
+    "label": "Frontend",
+    "githubUsername": "t3dotgg",
+    "repositories": [
+      "https://github.com/t3dotgg/create-t3-app",
+      "https://github.com/t3-oss/create-t3-app"
+    ]
+  },
+  {
+    "developerId": "frontend_026",
+    "label": "Frontend",
+    "githubUsername": "KittyGiraudel",
+    "repositories": [
+      "https://github.com/KittyGiraudel/a11y-dialog",
+      "https://github.com/KittyGiraudel/react-a11y-disclosure",
+      "https://github.com/KittyGiraudel/accessible-footnotes"
+    ]
+  },
+  {
+    "developerId": "frontend_027",
+    "label": "Frontend",
+    "githubUsername": "ireade",
+    "repositories": [
+      "https://github.com/ireade/caniuse-embed",
+      "https://github.com/ireade/caniuse-embed-api"
+    ]
+  },
+  {
+    "developerId": "frontend_028",
+    "label": "Frontend",
+    "githubUsername": "andreasbm",
+    "repositories": [
+      "https://github.com/andreasbm/weightless",
+      "https://github.com/andreasbm/web-skills",
+      "https://github.com/andreasbm/masonry-layout"
+    ]
+  },
+  {
+    "developerId": "frontend_029",
+    "label": "Frontend",
+    "githubUsername": "tanhauhau",
+    "repositories": [
+      "https://github.com/tanhauhau/svelte-ai-components",
+      "https://github.com/tanhauhau/svelte-json-tree",
+      "https://github.com/tanhauhau/advent-of-typescript-clone"
+    ]
+  },
+  {
+    "developerId": "frontend_030",
+    "label": "Frontend",
+    "githubUsername": "Archakov06",
+    "repositories": [
+      "https://github.com/Archakov06/mern-blog-frontend",
+      "https://github.com/Archakov06/next-pizza",
+      "https://github.com/Archakov06/react-pizza-v2"
+    ]
+  },
+
   {
     "developerId": "mobile_001",
     "label": "Mobile",
     "githubUsername": "felangel",
     "repositories": [
-      "https://github.com/felangel/bloc"
+      "https://github.com/felangel/bloc",
+      "https://github.com/felangel/equatable",
+      "https://github.com/felangel/hydrated_bloc"
     ]
   },
   {
@@ -364,8 +647,7 @@
     "githubUsername": "mrousavy",
     "repositories": [
       "https://github.com/mrousavy/react-native-vision-camera",
-      "https://github.com/mrousavy/react-native-mmkv",
-      "https://github.com/mrousavy/react-native-nitro-modules"
+      "https://github.com/mrousavy/react-native-mmkv"
     ]
   },
   {
@@ -452,30 +734,172 @@
     "githubUsername": "nicklockwood",
     "repositories": [
       "https://github.com/nicklockwood/SwiftFormat",
-      "https://github.com/nicklockwood/iCarousel",
-      "https://github.com/nicklockwood/SwiftFormatForXcode"
+      "https://github.com/nicklockwood/iCarousel"
     ]
   },
   {
     "developerId": "mobile_014",
     "label": "Mobile",
-    "githubUsername": "ReactiveCocoa",
+    "githubUsername": "CarGuo",
     "repositories": [
-      "https://github.com/ReactiveCocoa/ReactiveSwift",
-      "https://github.com/ReactiveCocoa/ReactiveCocoa",
-      "https://github.com/ReactiveCocoa/ReactiveObjC"
+      "https://github.com/CarGuo/gsy_github_app_flutter",
+      "https://github.com/CarGuo/GSYVideoPlayer",
+      "https://github.com/CarGuo/gsy_flutter_book"
     ]
   },
   {
     "developerId": "mobile_015",
     "label": "Mobile",
-    "githubUsername": "android",
+    "githubUsername": "ArisGuimera",
     "repositories": [
-      "https://github.com/android/nowinandroid",
-      "https://github.com/android/compose-samples",
-      "https://github.com/android/architecture-samples"
+      "https://github.com/ArisGuimera/Curso-TestingAndroid",
+      "https://github.com/ArisGuimera/JetpackComposePro"
     ]
   },
+  {
+    "developerId": "mobile_016",
+    "label": "Mobile",
+    "githubUsername": "diegoveloper",
+    "repositories": [
+      "https://github.com/diegoveloper/flutter_keyboard_actions",
+      "https://github.com/diegoveloper/flutter-samples",
+      "https://github.com/diegoveloper/flutter_percent_indicator"
+    ]
+  },
+  {
+    "developerId": "mobile_017",
+    "label": "Mobile",
+    "githubUsername": "kishikawakatsumi",
+    "repositories": [
+      "https://github.com/kishikawakatsumi/KeychainAccess",
+      "https://github.com/kishikawakatsumi/SpreadsheetView"
+    ]
+  },
+  {
+    "developerId": "mobile_018",
+    "label": "Mobile",
+    "githubUsername": "Dimezis",
+    "repositories": [
+      "https://github.com/Dimezis/BlurView"
+    ]
+  },
+  {
+    "developerId": "mobile_019",
+    "label": "Mobile",
+    "githubUsername": "hitherejoe",
+    "repositories": [
+      "https://github.com/hitherejoe/Android-Boilerplate"
+    ]
+  },
+  {
+    "developerId": "mobile_020",
+    "label": "Mobile",
+    "githubUsername": "FilledStacks",
+    "repositories": [
+      "https://github.com/FilledStacks/expression-ui",
+      "https://github.com/FilledStacks/places_service",
+      "https://github.com/FilledStacks/firebase-backend"
+    ]
+  },
+  {
+    "developerId": "mobile_021",
+    "label": "Mobile",
+    "githubUsername": "JohnSundell",
+    "repositories": [
+      "https://github.com/JohnSundell/Publish",
+      "https://github.com/JohnSundell/Plot",
+      "https://github.com/JohnSundell/Ink",
+      "https://github.com/JohnSundell/Splash",
+      "https://github.com/JohnSundell/Files",
+      "https://github.com/JohnSundell/Codextended"
+    ]
+  },
+  {
+    "developerId": "mobile_022",
+    "label": "Mobile",
+    "githubUsername": "skydoves",
+    "repositories": [
+      "https://github.com/google/accompanist",
+      "https://github.com/skydoves/Pokedex",
+      "https://github.com/skydoves/Balloon"
+    ]
+  },
+  {
+    "developerId": "mobile_023",
+    "label": "Mobile",
+    "githubUsername": "ThomasGorisse",
+    "repositories": [
+      "https://github.com/google/filament"
+    ]
+  },
+  {
+    "developerId": "mobile_024",
+    "label": "Mobile",
+    "githubUsername": "lihenggui",
+    "repositories": [
+      "https://github.com/android/nowinandroid"
+    ]
+  },
+  {
+    "developerId": "mobile_025",
+    "label": "Mobile",
+    "githubUsername": "JakeLin",
+    "repositories": [
+      "https://github.com/JakeLin/SwiftLanguageWeather",
+      "https://github.com/JakeLin/ChineseZodiac"
+    ]
+  },
+  {
+    "developerId": "mobile_026",
+    "label": "Mobile",
+    "githubUsername": "praeclarum",
+    "repositories": [
+      "https://github.com/praeclarum/sqlite-net",
+      "https://github.com/praeclarum/CrossGraphics",
+      "https://github.com/praeclarum/Praeclarum"
+    ]
+  },
+  {
+    "developerId": "mobile_027",
+    "label": "Mobile",
+    "githubUsername": "letsar",
+    "repositories": [
+      "https://github.com/letsar/flutter_slidable",
+      "https://github.com/letsar/flutter_sticky_header",
+      "https://github.com/letsar/overflow_view"
+    ]
+  },
+  {
+    "developerId": "mobile_028",
+    "label": "Mobile",
+    "githubUsername": "wasabeef",
+    "repositories": [
+      "https://github.com/wasabeef/flutter_ua_client_hints",
+      "https://github.com/wasabeef/compose-gap",
+      "https://github.com/wasabeef/recyclerview-animators"
+    ]
+  },
+  {
+    "developerId": "mobile_029",
+    "label": "Mobile",
+    "githubUsername": "kean",
+    "repositories": [
+      "https://github.com/kean/Pulse",
+      "https://github.com/kean/Nuke",
+      "https://github.com/kean/Align"
+    ]
+  },
+  {
+    "developerId": "mobile_030",
+    "label": "Mobile",
+    "githubUsername": "juliansteenbakker",
+    "repositories": [
+      "https://github.com/juliansteenbakker/mobile_scanner",
+      "https://github.com/juliansteenbakker/flutter_secure_storage",
+      "https://github.com/juliansteenbakker/flutter_ble_peripheral"
+    ]
+  },
+
   {
     "developerId": "devops_001",
     "label": "DevOps",
@@ -544,8 +968,7 @@
     "githubUsername": "lukehoban",
     "repositories": [
       "https://github.com/pulumi/pulumi",
-      "https://github.com/pulumi/examples",
-      "https://github.com/pulumi/actions"
+      "https://github.com/pulumi/examples"
     ]
   },
   {
@@ -620,19 +1043,166 @@
   {
     "developerId": "devops_015",
     "label": "DevOps",
-    "githubUsername": "thomasgraf",
+    "githubUsername": "ahmetb",
     "repositories": [
-      "https://github.com/cilium/cilium",
-      "https://github.com/cilium/hubble",
-      "https://github.com/cilium/cilium-cli"
+      "https://github.com/ahmetb/kubectx",
+      "https://github.com/ahmetb/kubectl-aliases"
     ]
   },
-   {
+{
+    "developerId": "devops_016",
+    "label": "DevOps",
+    "githubUsername": "jpetazzo",
+    "repositories": [
+      "https://github.com/jpetazzo/dind",
+      "https://github.com/jpetazzo/container.training",
+      "https://github.com/jpetazzo/pipework",
+      "https://github.com/jpetazzo/orchestration-workshop"
+    ]
+  },
+  {
+    "developerId": "devops_017",
+    "label": "DevOps",
+    "githubUsername": "wagoodman",
+    "repositories": [
+      "https://github.com/wagoodman/dive",
+      "https://github.com/wagoodman/syft",
+      "https://github.com/wagoodman/grype"
+    ]
+  },
+  {
+    "developerId": "devops_018",
+    "label": "DevOps",
+    "githubUsername": "BretFisher",
+    "repositories": [
+      "https://github.com/BretFisher/gasa",
+      "https://github.com/BretFisher/jekyll-serve",
+      "https://github.com/BretFisher/silent-rebuilds"
+    ]
+  },
+  {
+    "developerId": "devops_019",
+    "label": "DevOps",
+    "githubUsername": "antonbabenko",
+    "repositories": [
+      "https://github.com/antonbabenko/terraform-best-practices",
+      "https://github.com/antonbabenko/pre-commit-terraform",
+      "https://github.com/terraform-aws-modules/terraform-aws-vpc"
+    ]
+  },
+  {
+    "developerId": "devops_020",
+    "label": "DevOps",
+    "githubUsername": "sivel",
+    "repositories": [
+      "https://github.com/sivel/speedtest-cli",
+      "https://github.com/ansible/ansible"
+    ]
+  },
+  {
+  "developerId": "devops_021",
+  "label": "DevOps",
+  "githubUsername": "sachaos",
+  "repositories": [
+      "https://github.com/sachaos/viddy",
+      "https://github.com/sachaos/todoist"
+  ]
+},
+{
+  "developerId": "devops_022",
+  "label": "DevOps",
+  "githubUsername": "derailed",
+  "repositories": [
+      "https://github.com/derailed/k9s",
+      "https://github.com/derailed/popeye"
+  ]
+},
+{
+  "developerId": "devops_023",
+  "label": "DevOps",
+  "githubUsername": "jesseduffield",
+  "repositories": [
+    "https://github.com/jesseduffield/lazydocker",
+    "https://github.com/jesseduffield/lazygit",
+    "https://github.com/jesseduffield/generics"
+  ]
+},
+{
+  "developerId": "devops_024",
+  "label": "DevOps",
+  "githubUsername": "hairyhenderson",
+  "repositories": [
+      "https://github.com/hairyhenderson/gomplate"
+  ]
+},
+{
+  "developerId": "devops_025",
+  "label": "DevOps",
+  "githubUsername": "stacksimplify",
+  "repositories": [
+    "https://github.com/stacksimplify/aws-eks-kubernetes-masterclass",
+    "https://github.com/stacksimplify/devops-real-world-project-implementation-on-aws",
+    "https://github.com/stacksimplify/terraform-on-azure-cloud"
+  ]
+},
+{
+  "developerId": "devops_026",
+  "label": "DevOps",
+  "githubUsername": "brikis98",
+  "repositories": [
+    "https://github.com/brikis98/devops-book",
+    "https://github.com/brikis98/terraform-book-devops",
+    "https://github.com/brikis98/terraform-up-and-running-code"
+  ]
+},
+{
+  "developerId": "devops_027",
+  "label": "DevOps",
+  "githubUsername": "marcel-dempers",
+  "repositories": [
+    "https://github.com/marcel-dempers/docker-development-youtube-series",
+    "https://github.com/marcel-dempers/kube-tools",
+    "https://github.com/marcel-dempers/my-website"
+  ]
+},
+{
+  "developerId": "devops_028",
+  "label": "DevOps",
+  "githubUsername": "HariSekhon",
+  "repositories": [
+    "https://github.com/HariSekhon/DevOps-Bash-tools",
+    "https://github.com/HariSekhon/CI-CD",
+    "https://github.com/HariSekhon/Dockerfiles"
+  ]
+},
+{
+  "developerId": "devops_029",
+  "label": "DevOps",
+  "githubUsername": "MichaelCade",
+  "repositories": [
+    "https://github.com/MichaelCade/90DaysOfDevOps",
+    "https://github.com/MichaelCade/90DaysOfDataOps"
+  ]
+},
+{
+  "developerId": "devops_030",
+  "label": "DevOps",
+  "githubUsername": "omenking",
+  "repositories": [
+    "https://github.com/omenking/DockerSwarm-Examples",
+    "https://github.com/omenking/cloud-resume-challenge",
+    "https://github.com/omenking/terraform-beginner-bootcamp-2023"
+  ]
+},
+
+  {
     "developerId": "data_scientist_001",
     "label": "Data Scientist",
     "githubUsername": "wesm",
     "repositories": [
-      "https://github.com/pandas-dev/pandas"
+      "https://github.com/wesm/pydata-book",
+      "https://github.com/wesm/feather",
+      "https://github.com/wesm/arrow"
     ]
   },
   {
@@ -641,7 +1211,8 @@
     "githubUsername": "amueller",
     "repositories": [
       "https://github.com/amueller/introduction_to_ml_with_python",
-      "https://github.com/scikit-learn/scikit-learn"
+      "https://github.com/scikit-learn/scikit-learn",
+      "https://github.com/amueller/word_cloud"
     ]
   },
   {
@@ -649,7 +1220,6 @@
     "label": "Data Scientist",
     "githubUsername": "GaelVaroquaux",
     "repositories": [
-      "https://github.com/scikit-learn/scikit-learn",
       "https://github.com/nilearn/nilearn"
     ]
   },
@@ -664,34 +1234,37 @@
   {
     "developerId": "data_scientist_005",
     "label": "Data Scientist",
-    "githubUsername": "soumith",
+    "githubUsername": "AllenDowney",
     "repositories": [
-      "https://github.com/pytorch/pytorch"
+      "https://github.com/AllenDowney/ProbablyOverthinkingIt",
+      "https://github.com/AllenDowney/empiricaldist",
+      "https://github.com/AllenDowney/LifeExpectancy"
     ]
   },
   {
     "developerId": "data_scientist_006",
     "label": "Data Scientist",
-    "githubUsername": "thomwolf",
+    "githubUsername": "geohot",
     "repositories": [
-      "https://github.com/huggingface/transformers"
+      "https://github.com/geohot/tinygrad"
     ]
   },
   {
     "developerId": "data_scientist_007",
     "label": "Data Scientist",
-    "githubUsername": "lhoestq",
+    "githubUsername": "mli",
     "repositories": [
-      "https://github.com/huggingface/datasets"
+      "https://github.com/mli/autocut"
     ]
   },
   {
     "developerId": "data_scientist_008",
     "label": "Data Scientist",
-    "githubUsername": "jeremyhoward",
+    "githubUsername": "krishnaik06",
     "repositories": [
-      "https://github.com/fastai/fastai",
-      "https://github.com/fastai/fastbook"
+      "https://github.com/krishnaik06/Deep-agents-With-Langchain",
+      "https://github.com/krishnaik06/Langchain-V1-Crash-Course",
+      "https://github.com/krishnaik06/RAG-Tutorials"
     ]
   },
   {
@@ -700,7 +1273,9 @@
     "githubUsername": "rasbt",
     "repositories": [
       "https://github.com/rasbt/mlxtend",
-      "https://github.com/rasbt/machine-learning-book"
+      "https://github.com/rasbt/machine-learning-book",
+      "https://github.com/rasbt/python-machine-learning-book-3rd-edition",
+      "https://github.com/rasbt/deep-learning-book"
     ]
   },
   {
@@ -708,7 +1283,9 @@
     "label": "Data Scientist",
     "githubUsername": "ageron",
     "repositories": [
-      "https://github.com/ageron/handson-ml3"
+      "https://github.com/ageron/handson-ml3",
+      "https://github.com/ageron/handson-ml2",
+      "https://github.com/ageron/handson-ml"
     ]
   },
   {
@@ -749,6 +1326,156 @@
     "githubUsername": "ines",
     "repositories": [
       "https://github.com/explosion/spaCy"
+    ]
+  },
+  {
+    "developerId": "data_scientist_016",
+    "label": "Data Scientist",
+    "githubUsername": "karpathy",
+    "repositories": [
+      "https://github.com/karpathy/micrograd",
+      "https://github.com/karpathy/minGPT",
+      "https://github.com/karpathy/nanoGPT",
+      "https://github.com/karpathy/neuraltalk2"
+    ]
+  },
+  {
+    "developerId": "data_scientist_017",
+    "label": "Data Scientist",
+    "githubUsername": "minimaxir",
+    "repositories": [
+      "https://github.com/minimaxir/nndex",
+      "https://github.com/minimaxir/icon-to-image",
+      "https://github.com/minimaxir/youtube_scraper_opus"
+    ]
+  },
+  {
+    "developerId": "data_scientist_018",
+    "label": "Data Scientist",
+    "githubUsername": "susanli2016",
+    "repositories": [
+      "https://github.com/susanli2016/Machine-Learning-with-Python",
+      "https://github.com/susanli2016/NLP-with-Python",
+      "https://github.com/susanli2016/SMS-Message-Spam-Detector"
+    ]
+  },
+  {
+    "developerId": "data_scientist_019",
+    "label": "Data Scientist",
+    "githubUsername": "SudalaiRajkumar",
+    "repositories": [
+      "https://github.com/SudalaiRajkumar/Talks_Webinars",
+      "https://github.com/SudalaiRajkumar/Web3ML",
+      "https://github.com/SudalaiRajkumar/IndicNLP"
+    ]
+  },
+  {
+    "developerId": "data_scientist_020",
+    "label": "Data Scientist",
+    "githubUsername": "khanhnamle1994",
+    "repositories": [
+      "https://github.com/khanhnamle1994/cracking-the-data-science-interview",
+      "https://github.com/khanhnamle1994/MetaRec",
+      "https://github.com/khanhnamle1994/fashion-mnist"
+    ]
+  },
+  {
+    "developerId": "data_scientist_021",
+    "label": "Data Scientist",
+    "githubUsername": "jakevdp",
+    "repositories": [
+      "https://github.com/jakevdp/PythonDataScienceHandbook",
+      "https://github.com/jakevdp/WhirlwindTourOfPython",
+      "https://github.com/numpy/numpy"
+    ]
+  },
+  {
+    "developerId": "data_scientist_022",
+    "label": "Data Scientist",
+    "githubUsername": "joelgrus",
+    "repositories": [
+      "https://github.com/joelgrus/data-science-from-scratch",
+      "https://github.com/joelgrus/joelnet"
+    ]
+  },
+  {
+    "developerId": "data_scientist_023",
+    "label": "Data Scientist",
+    "githubUsername": "rougier",
+    "repositories": [
+      "https://github.com/rougier/numpy-100",
+      "https://github.com/rougier/evoprospect-v2",
+      "https://github.com/rougier/scientific-visualization-book"
+    ]
+  },
+  {
+    "developerId": "data_scientist_024",
+    "label": "Data Scientist",
+    "githubUsername": "fchollet",
+    "repositories": [
+      "https://github.com/fchollet/deep-learning-with-python-notebooks",
+      "https://github.com/fchollet/ARC-AGI",
+      "https://github.com/fchollet/keras-resources"
+    ]
+  },
+  {
+    "developerId": "data_scientist_025",
+    "label": "Data Scientist",
+    "githubUsername": "chiphuyen",
+    "repositories": [
+      "https://github.com/chiphuyen/aie-book",
+      "https://github.com/chiphuyen/dmls-book",
+      "https://github.com/chiphuyen/ml-interviews-book"
+    ]
+  },
+  {
+    "developerId": "data_scientist_026",
+    "label": "Data Scientist",
+    "githubUsername": "junyanz",
+    "repositories": [
+      "https://github.com/junyanz/CatPapers",
+      "https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix",
+      "https://github.com/junyanz/CycleGAN"
+    ]
+  },
+  {
+    "developerId": "data_scientist_027",
+    "label": "Data Scientist",
+    "githubUsername": "eriklindernoren",
+    "repositories": [
+      "https://github.com/eriklindernoren/PyTorch-YOLOv3",
+      "https://github.com/eriklindernoren/PyTorch-GAN",
+      "https://github.com/eriklindernoren/ML-From-Scratch"
+    ]
+  },
+  {
+    "developerId": "data_scientist_028",
+    "label": "Data Scientist",
+    "githubUsername": "mrdbourke",
+    "repositories": [
+      "https://github.com/mrdbourke/learn-huggingface",
+      "https://github.com/mrdbourke/pytorch-deep-learning",
+      "https://github.com/mrdbourke/gpu-benchmarking"
+    ]
+  },
+  {
+    "developerId": "data_scientist_029",
+    "label": "Data Scientist",
+    "githubUsername": "hardmaru",
+    "repositories": [
+      "https://github.com/hardmaru/slimevolleygym",
+      "https://github.com/hardmaru/estool",
+      "https://github.com/hardmaru/WorldModelsExperiments"
+    ]
+  },
+  {
+    "developerId": "data_scientist_030",
+    "label": "Data Scientist",
+    "githubUsername": "ethen8181",
+    "repositories": [
+      "https://github.com/ethen8181/machine-learning",
+      "https://github.com/ethen8181/Business-Analytics",
+      "https://github.com/ethen8181/Ecommerce"
     ]
   }
 ]

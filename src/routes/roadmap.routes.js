@@ -3,6 +3,7 @@ const express = require('express');
 const roadmapController = require('../controllers/roadmap.controller');
 const roadmapLearningController = require('../controllers/roadmapLearning.controller');
 const roadmapProgressController = require('../controllers/roadmapProgress.controller');
+const courseraRoadmapRecommendationController = require('../controllers/courseraRoadmapRecommendation.controller');
 const authMiddleware = require('../middlewares/auth.middleware');
 const validate = require('../middlewares/validate.middleware');
 const { validateGenerateRoadmapBody } = require('../validators/roadmap.validator');
@@ -467,6 +468,26 @@ router.post(
  *         description: Unauthorized
  */
 router.get('/me', authMiddleware, roadmapController.getMyRoadmaps);
+
+/**
+ * @swagger
+ * /api/roadmaps/{roadmapId}/course-recommendations:
+ *   get:
+ *     tags: [Roadmaps]
+ *     summary: Get offline Coursera recommendations for the whole roadmap
+ *     description: Reads the imported local catalog only. Courses are not grouped by roadmap item and this endpoint performs no provider or AI calls.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: roadmapId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Roadmap-level course recommendations }
+ *       404: { description: Roadmap not found or not owned by the user }
+ */
+router.get('/:roadmapId/course-recommendations', authMiddleware, courseraRoadmapRecommendationController.getRecommendations);
 
 /**
  * @swagger

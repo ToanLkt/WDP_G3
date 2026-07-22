@@ -12,6 +12,10 @@ const commits = Array.from({ length: 12 }, (_, index) => ({
   files: Array.from({ length: 12 }, (__, fileIndex) => ({
     filename: `src/modules/api/file-${index}-${fileIndex}.js`,
   })),
+  normalizedFiles: index === 0 ? [{
+    filename: 'package.json',
+    evidenceContent: JSON.stringify({ dependencies: { Express: '^4', Mongoose: '^8', JSONWebToken: '^9' } }),
+  }] : [],
 }));
 
 const issues = Array.from({ length: 12 }, (_, index) => ({
@@ -19,7 +23,8 @@ const issues = Array.from({ length: 12 }, (_, index) => ({
   title: index === 0 ? 'Authentication endpoint returns 401' : `Issue ${index}`,
   body: 'The API login flow fails for valid credentials.',
   labels: [{ name: 'bug' }, { name: 'backend' }],
-  comments: [{ body: 'Please check token validation middleware.' }],
+  relations: ['authored'],
+  userComments: [{ body: 'Please check token validation middleware.' }],
   state: 'open',
   htmlUrl: `https://github.com/example/project/issues/${index + 1}`,
 }));
@@ -53,6 +58,7 @@ const input = buildDev2VecInputFromRepositoryAnalysis({
   }],
   commits,
   issues,
+  contributionSummary: { accepted: true, selectedCommitShas: commits.map((commit) => commit.sha), selectedPullRequests: [] },
   analysisSource: {
     summary: {
       careerDirection: 'Backend Developer',
@@ -63,7 +69,7 @@ const input = buildDev2VecInputFromRepositoryAnalysis({
 });
 
 assert.strictEqual(input.requestId, 'builder-smoke');
-assert.strictEqual(input.topN, 5);
+assert.strictEqual(input.topN, 3);
 assert(input.repoDocument.includes('career-api'));
 assert(input.repoDocument.includes('feat: add rest api controller'));
 assert(input.repoDocument.includes('src/modules/api/file-0-0.js'));
@@ -92,8 +98,7 @@ const analysisSourceInput = buildDev2VecInputFromAnalysisSource({
 });
 
 assert.strictEqual(analysisSourceInput.requestId, 'analysis-source-smoke');
-assert(analysisSourceInput.repoDocument.includes('source-repo'));
-assert(analysisSourceInput.apiTokens.includes('react'));
-assert(analysisSourceInput.apiTokens.includes('vite'));
+assert.strictEqual(analysisSourceInput.repoDocument, '');
+assert.deepStrictEqual(analysisSourceInput.apiTokens, []);
 
 console.log('PASS: Dev2Vec input builder smoke test');

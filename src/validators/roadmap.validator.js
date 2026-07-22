@@ -10,14 +10,11 @@ const validateGenerateRoadmapBody = (req) => {
   const errors = [];
   const targetRole = req.body && req.body.targetRole;
   const forceRegenerate = req.body && req.body.forceRegenerate;
-  const { repoId, repoIds, sourceMode, roleId, level, durationWeeks, language, useRoleMatching } = req.body || {};
+  const { repoId, repoIds, sourceMode, roleId, selectedRoleId, sourceRepositoryId, sourceAnalysisId, sourceSnapshotId, currentRepositoryId, level, durationWeeks, language, useRoleMatching } = req.body || {};
 
-  if (!targetRole || typeof targetRole !== 'string' || !targetRole.trim()) {
-    errors.push('targetRole is required');
-    return buildValidationResult(errors, 'Invalid target role');
-  }
-
-  if (!TARGET_ROLES.includes(targetRole.trim())) {
+  if (targetRole !== undefined && (typeof targetRole !== 'string' || !targetRole.trim())) {
+    errors.push('targetRole must be a non-empty string');
+  } else if (targetRole && !TARGET_ROLES.includes(targetRole.trim())) {
     errors.push(`targetRole must be one of: ${TARGET_ROLES.join(', ')}`);
     return buildValidationResult(errors, 'Invalid target role');
   }
@@ -39,13 +36,17 @@ const validateGenerateRoadmapBody = (req) => {
     errors.push('repoIds must contain non-empty strings');
   }
   const effectiveSourceMode = sourceMode || (repoId ? 'single_repo' : 'all_analyzed_repos');
-  if (effectiveSourceMode === 'single_repo' && (!repoId || typeof repoId !== 'string' || !repoId.trim())) {
-    errors.push('repoId is required when sourceMode is single_repo');
+  if (effectiveSourceMode === 'single_repo' && !repoId && !sourceRepositoryId && !sourceAnalysisId && !sourceSnapshotId) {
+    errors.push('repoId or selected role provenance is required when sourceMode is single_repo');
   }
   if (effectiveSourceMode === 'selected_repos' && (!Array.isArray(repoIds) || repoIds.length < 1)) {
     errors.push('repoIds is required when sourceMode is selected_repos');
   }
   if (roleId !== undefined && typeof roleId !== 'string') errors.push('roleId must be a string');
+  if (selectedRoleId !== undefined && typeof selectedRoleId !== 'string') errors.push('selectedRoleId must be a string');
+  for (const [field, value] of Object.entries({ sourceRepositoryId, sourceAnalysisId, sourceSnapshotId, currentRepositoryId })) {
+    if (value !== undefined && (typeof value !== 'string' || !value.trim())) errors.push(`${field} must be a non-empty string`);
+  }
   if (level !== undefined && typeof level !== 'string') errors.push('level must be a string');
   if (language !== undefined && typeof language !== 'string') errors.push('language must be a string');
   if (

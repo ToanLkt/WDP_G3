@@ -1,0 +1,29 @@
+{
+  "fixtureVersion": "dev2vec-golden-v1",
+  "artifactVersion": "dev2vec-demo-v4",
+  "pythonVersion": "3.12-compatible",
+  "builderVersion": "pipeline-v10",
+  "probabilityTolerance": 0.002,
+  "cases": {
+    "all-channels": {
+      "vectorSources": { "repos": true, "issues": true, "apis": true },
+      "roleIds": ["backend", "devops", "frontend"], "probabilities": [0.325611, 0.209352, 0.175333],
+      "topSkillGap": { "matchedSkillNames": ["REST API", "Database", "Authentication", "Docker Basics"], "weakSkillNames": ["API Testing"], "missingSkillNames": [], "recommendedNextSkills": ["API Testing"] }
+    },
+    "repo-only": {
+      "vectorSources": { "repos": true, "issues": false, "apis": false },
+      "roleIds": ["mobile", "backend", "frontend"], "probabilities": [0.275681, 0.220636, 0.220005],
+      "topSkillGap": { "matchedSkillNames": ["Mobile UI"], "weakSkillNames": ["Navigation", "Local Storage", "App State Management"], "missingSkillNames": ["API Integration"], "recommendedNextSkills": ["API Integration", "Navigation", "Local Storage", "App State Management"] }
+    },
+    "issue-only": {
+      "vectorSources": { "repos": false, "issues": true, "apis": false },
+      "roleIds": ["frontend", "data_scientist", "mobile"], "probabilities": [0.212046, 0.200344, 0.197590],
+      "topSkillGap": { "matchedSkillNames": ["Responsive Design"], "weakSkillNames": ["React UI", "Component Design", "Frontend Testing"], "missingSkillNames": ["State Management"], "recommendedNextSkills": ["State Management", "React UI", "Component Design", "Frontend Testing"] }
+    },
+    "no-channels": {
+      "vectorSources": { "repos": false, "issues": false, "apis": false },
+      "roleIds": ["frontend", "data_scientist", "devops"], "probabilities": [0.210451, 0.209870, 0.200263],
+      "topSkillGap": { "matchedSkillNames": [], "weakSkillNames": [], "missingSkillNames": ["React UI", "Component Design", "State Management", "Frontend Testing", "Responsive Design"], "recommendedNextSkills": ["React UI", "Component Design", "State Management", "Frontend Testing", "Responsive Design"] }
+    }
+  }
+}

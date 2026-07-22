@@ -2,11 +2,12 @@ const assert = require('assert');
 
 const AnalysisResult = require('../src/models/AnalysisResult');
 const RepoAnalysisSnapshot = require('../src/models/RepoAnalysisSnapshot');
-const LegacyAnalysisSnapshot = require('../src/models/AnalysisSnapshot');
 const Repository = require('../src/models/Repository');
 const Roadmap = require('../src/models/Roadmap');
 const RoadmapProgress = require('../src/models/RoadmapProgress');
 const { resolveCurrentContext } = require('../src/services/currentContext.service');
+const { getCurrentDev2VecPipelineMetadata } = require('../src/services/dev2vec/dev2vecPipelineMetadata.service');
+const metadata = getCurrentDev2VecPipelineMetadata();
 
 const ids = {
   user: '665f1f000000000000000001', other: '665f1f000000000000000002',
@@ -21,12 +22,13 @@ const makeAnalysis = (id, date, skill) => ({
   analyzedAt: new Date(date), projectType: 'Backend API', careerDirection: 'Backend Developer',
   summary: { userLevel: 'intermediate' },
   skillVector: [{ canonicalSkillName: skill, score: 80, level: 'strong' }],
-  missingSkills: ['API Testing'], dev2vec: { rolePredictions: [{ roleId: 'backend', rank: 1 }], skillGaps: { backend: {} } },
+  missingSkills: ['API Testing'], analysisScope: { type: 'user_contribution' },
+  dev2vec: { modelVersion: metadata.modelVersion, cacheMetadata: metadata, rolePredictions: [{ roleId: 'backend', rank: 1 }], skillGaps: { backend: {} } },
 });
 const analysisA = makeAnalysis(ids.analysisA, '2026-07-01', 'Authentication');
 const analysisB = makeAnalysis(ids.analysisB, '2026-07-14', 'REST API');
-const snapshotA = { _id: ids.snapshotA, userId: ids.user, repositoryId: ids.repo, analysisResultId: ids.analysisA };
-const snapshotB = { _id: ids.snapshotB, userId: ids.user, repositoryId: ids.repo, analysisResultId: ids.analysisB };
+const snapshotA = { _id: ids.snapshotA, userId: ids.user, repositoryId: ids.repo, analysisResultId: ids.analysisA, analysisScope: { type: 'user_contribution' }, dev2vec: { modelVersion: metadata.modelVersion, cacheMetadata: metadata } };
+const snapshotB = { _id: ids.snapshotB, userId: ids.user, repositoryId: ids.repo, analysisResultId: ids.analysisB, analysisScope: { type: 'user_contribution' }, dev2vec: { modelVersion: metadata.modelVersion, cacheMetadata: metadata } };
 const roadmap = {
   _id: ids.roadmap, userId: ids.user, repositoryId: ids.repo, targetRole: 'Backend Developer', effectiveLevel: 'intermediate', language: 'vi',
   roadmapSource: { type: 'user_contribution_analysis', analysisId: ids.analysisA, snapshotId: ids.snapshotA },
@@ -64,7 +66,6 @@ stub(RepoAnalysisSnapshot, 'findOne', (criteria) => {
   if (criteria._id) return query(String(criteria._id) === ids.snapshotA ? snapshotA : String(criteria._id) === ids.snapshotB ? snapshotB : null);
   return query(String(criteria.analysisResultId) === ids.analysisA ? snapshotA : snapshotB);
 });
-stub(LegacyAnalysisSnapshot, 'findOne', () => query(null));
 
 (async () => {
   try {

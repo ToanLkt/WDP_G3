@@ -6,11 +6,14 @@ const GithubAccount = require('../../models/GithubAccount');
 const RepositoryIssue = require('../../models/RepositoryIssue');
 const { findRepositoryForUser } = require('./github.repository.service');
 const { getGithubHeaders } = require('./github.api.service');
+const { ISSUE_EVIDENCE_VERSION } = require('../dev2vec/dev2vecPipelineMetadata.service');
 
 const DEFAULTS = {
   maxPages: 2,
   perPage: 50,
-  maxItems: 40,
+  maxItems: 20,
+  maxInspected: 30,
+  maxUserComments: 3,
   bodyMaxChars: 1200,
   documentMaxChars: 12000,
   timeoutMs: 8000,
@@ -27,6 +30,8 @@ const getIssueConfig = (overrides = {}) => ({
   maxPages: parsePositiveInteger(overrides.maxPages || process.env.GITHUB_ISSUE_MAX_PAGES, DEFAULTS.maxPages),
   perPage: Math.min(100, parsePositiveInteger(overrides.perPage || process.env.GITHUB_ISSUE_PER_PAGE, DEFAULTS.perPage)),
   maxItems: parsePositiveInteger(overrides.maxItems || process.env.GITHUB_ISSUE_MAX_ITEMS, DEFAULTS.maxItems),
+  maxInspected: Math.min(30, parsePositiveInteger(overrides.maxInspected, DEFAULTS.maxInspected)),
+  maxUserComments: Math.min(3, parsePositiveInteger(overrides.maxUserComments, DEFAULTS.maxUserComments)),
   bodyMaxChars: parsePositiveInteger(overrides.bodyMaxChars || process.env.GITHUB_ISSUE_BODY_MAX_CHARS, DEFAULTS.bodyMaxChars),
   documentMaxChars: parsePositiveInteger(
     overrides.documentMaxChars || process.env.GITHUB_ISSUE_DOCUMENT_MAX_CHARS,
@@ -70,12 +75,14 @@ const normalizeAssignees = (issue = {}) => {
   return [...new Set([...fromList, ...single].map(compactString).filter(Boolean))].slice(0, 10);
 };
 
-const getRelevanceType = (issue, username) => {
+const getRelations = (issue, username, userComments = []) => {
   const normalizedUser = String(username || '').trim().toLowerCase();
-  if (!normalizedUser) return 'repository_fallback';
-  if (String(issue.user?.login || '').trim().toLowerCase() === normalizedUser) return 'authored';
-  if (normalizeAssignees(issue).some((login) => login.toLowerCase() === normalizedUser)) return 'assigned';
-  return 'repository_fallback';
+  if (!normalizedUser) return [];
+  const relations = [];
+  if (String(issue.user?.login || '').trim().toLowerCase() === normalizedUser) relations.push('authored');
+  if (normalizeAssignees(issue).some((login) => login.toLowerCase() === normalizedUser)) relations.push('assigned');
+  if (userComments.length) relations.push('commented');
+  return relations;
 };
 
 const normalizeGithubIssue = (issue = {}, context = {}, config = getIssueConfig()) => {
@@ -87,6 +94,15 @@ const normalizeGithubIssue = (issue = {}, context = {}, config = getIssueConfig(
   const body = stripMarkdownNoise(issue.body, config.bodyMaxChars);
   if (!title && !labels.length && !body) return null;
 
+  const userComments = (Array.isArray(context.userComments) ? context.userComments : [])
+    .slice(0, config.maxUserComments || DEFAULTS.maxUserComments)
+    .map((comment) => ({
+      body: stripMarkdownNoise(comment?.body || comment, 300),
+      createdAt: comment?.created_at || comment?.createdAt || null,
+      updatedAt: comment?.updated_at || comment?.updatedAt || null,
+    }))
+    .filter((comment) => comment.body);
+  const relations = getRelations(issue, context.githubUsername, userComments);
   return {
     number: issue.number || null,
     title,
@@ -100,7 +116,10 @@ const normalizeGithubIssue = (issue = {}, context = {}, config = getIssueConfig(
     updatedAt: issue.updated_at || issue.updatedAt || null,
     closedAt: issue.closed_at || issue.closedAt || null,
     sourceType: 'issue',
-    relevanceType: getRelevanceType(issue, context.githubUsername),
+    relations,
+    relevanceType: relations[0] || '',
+    userComments,
+    comments: userComments,
     repositoryFullName: context.fullName || '',
     htmlUrl: issue.html_url || '',
   };
@@ -123,25 +142,26 @@ const dedupeIssues = (issues = [], limit = DEFAULTS.maxItems) => {
 
 const rankIssues = (issues = []) => (
   [...issues].sort((left, right) => {
-    const leftRelevant = left.relevanceType === 'repository_fallback' ? 0 : 1;
-    const rightRelevant = right.relevanceType === 'repository_fallback' ? 0 : 1;
+    const leftRelevant = left.relations?.length ? 1 : 0;
+    const rightRelevant = right.relations?.length ? 1 : 0;
     if (leftRelevant !== rightRelevant) return rightRelevant - leftRelevant;
     return new Date(right.updatedAt || right.createdAt || 0) - new Date(left.updatedAt || left.createdAt || 0);
   })
 );
 
 const selectRelevantIssues = (issues = [], config = getIssueConfig()) => {
-  const direct = issues.filter((issue) => issue.relevanceType !== 'repository_fallback');
-  const selected = direct.length ? direct : issues.map((issue) => ({ ...issue, relevanceType: 'repository_fallback' }));
-  return dedupeIssues(rankIssues(selected), config.maxItems);
+  const relevant = issues.filter((issue) => Array.isArray(issue.relations) && issue.relations.length > 0);
+  return dedupeIssues(rankIssues(relevant), Math.min(20, config.maxItems));
 };
 
 const isCacheFresh = (record, config) => {
   if (!record?.lastFetchedAt) return false;
+  if (record?.metadata?.evidenceVersion !== ISSUE_EVIDENCE_VERSION) return false;
   return Date.now() - new Date(record.lastFetchedAt).getTime() < config.cacheTtlMs;
 };
 
 const buildIssueFetchMetadata = (overrides = {}) => ({
+  evidenceVersion: ISSUE_EVIDENCE_VERSION,
   attempted: Boolean(overrides.attempted),
   succeeded: Boolean(overrides.succeeded),
   unavailable: Boolean(overrides.unavailable),
@@ -192,7 +212,7 @@ const fetchGithubIssuesWithRetry = async ({ owner, repo, accessToken, config }) 
   const items = [];
   let lastHeaders = {};
 
-  for (let page = 1; page <= config.maxPages && items.length < config.maxItems; page += 1) {
+  for (let page = 1; page <= config.maxPages && items.length < config.maxInspected; page += 1) {
     let attempt = 0;
     while (attempt <= config.retries) {
       try {
@@ -211,9 +231,20 @@ const fetchGithubIssuesWithRetry = async ({ owner, repo, accessToken, config }) 
   }
 
   return {
-    issues: items.slice(0, config.maxItems),
+    issues: items.slice(0, config.maxInspected),
     headers: lastHeaders,
   };
+};
+
+const fetchUserComments = async ({ owner, repo, issue, accessToken, config, username }) => {
+  if (!issue?.number || !issue?.comments || !username) return [];
+  const response = await axios.get(`https://api.github.com/repos/${owner}/${repo}/issues/${issue.number}/comments`, {
+    params: { per_page: 100 }, headers: getGithubHeaders(accessToken), timeout: config.timeoutMs,
+  });
+  return (Array.isArray(response.data) ? response.data : [])
+    .filter((comment) => String(comment?.user?.login || '').trim().toLowerCase() === String(username).trim().toLowerCase())
+    .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
+    .slice(0, config.maxUserComments);
 };
 
 const persistIssueCache = async ({ userId, repository, issues, metadata }) => {
@@ -271,25 +302,38 @@ const getRepositoryIssueEvidence = async ({ user, repository, repoId, forceRefre
       accessToken: githubAccount.accessToken,
       config,
     });
-    const normalized = result.issues
-      .map((issue) => normalizeGithubIssue(issue, {
-        githubUsername: githubAccount.username,
-        fullName: targetRepository.fullName,
-      }, config))
-      .filter(Boolean);
+    const normalized = [];
+    let commentFetchFailedCount = 0;
+    for (const issue of result.issues.slice(0, config.maxInspected)) {
+      if (issue?.pull_request) continue;
+      let userComments = [];
+      try {
+        userComments = await fetchUserComments({ owner, repo, issue, accessToken: githubAccount.accessToken, config, username: githubAccount.username });
+      } catch (error) {
+        // A comment endpoint failure must not turn unrelated issue text into personal evidence.
+        commentFetchFailedCount += 1;
+      }
+      const item = normalizeGithubIssue(issue, {
+        githubUsername: githubAccount.username, fullName: targetRepository.fullName, userComments,
+      }, config);
+      if (item) normalized.push(item);
+    }
     const selected = selectRelevantIssues(normalized, config);
     const metadata = buildIssueFetchMetadata({
       attempted: true,
-      succeeded: true,
+      succeeded: selected.length > 0 || commentFetchFailedCount === 0,
+      unavailable: selected.length === 0 && commentFetchFailedCount > 0,
       empty: selected.length === 0,
       fetchedCount: result.issues.length,
       normalizedCount: normalized.length,
       selectedCount: selected.length,
-      relevantCount: selected.filter((issue) => issue.relevanceType !== 'repository_fallback').length,
-      fallbackCount: selected.filter((issue) => issue.relevanceType === 'repository_fallback').length,
+      relevantCount: selected.length,
+      fallbackCount: 0,
+      errorCode: selected.length === 0 && commentFetchFailedCount > 0 ? 'GITHUB_ISSUE_COMMENT_FETCH_FAILED' : '',
       rateLimitRemaining: result.headers['x-ratelimit-remaining'] || null,
       rateLimitReset: result.headers['x-ratelimit-reset'] || null,
     });
+    metadata.commentFetchFailedCount = commentFetchFailedCount;
 
     await persistIssueCache({ userId: user.userId, repository: targetRepository, issues: selected, metadata });
     return { issues: selected, metadata };
@@ -317,4 +361,7 @@ module.exports = {
   selectRelevantIssues,
   getRepositoryIssueEvidence,
   stripMarkdownNoise,
+  fetchUserComments,
+  getRelations,
+  isCacheFresh,
 };

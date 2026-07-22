@@ -15,7 +15,7 @@ import numpy as np
 from gensim.models.doc2vec import Doc2Vec
 from gensim.utils import simple_preprocess
 
-MODEL_VERSION = "dev2vec-demo-v1"
+MODEL_VERSION = "dev2vec-demo-v4"
 VECTOR_DIMS = {"repo": 230, "issue": 150, "api": 200, "combined": 580}
 ROLE_MAPPING = {
     "Backend": {"roleId": "backend", "roleName": "Backend Developer"},
@@ -32,6 +32,11 @@ DEFAULT_ROLE_SCORING = {
     "beta": 0.0,
     "calibrationMethod": "none",
     "scoringVersion": "classifier-only-v1",
+}
+DEFAULT_SKILL_GAP_THRESHOLDS = {"weak": 0.35, "matched": 0.55}
+DEFAULT_SKILL_GAP_SCORING = {
+    "strategy": "channel_weighted_v1",
+    "weights": {"repo": 0.35, "issue": 0.15, "api": 0.5},
 }
 
 
@@ -251,20 +256,154 @@ def rank_roles(probabilities, label_encoder, classifier, combined_vector, skill_
     return rows
 
 
-def build_skill_gap(role_id, combined_vector, skill_vectors):
+def resolve_skill_gap_thresholds(metadata):
+    configured = metadata.get("skillGapThresholds") or DEFAULT_SKILL_GAP_THRESHOLDS
+    try:
+        weak = float(configured.get("weak", DEFAULT_SKILL_GAP_THRESHOLDS["weak"]))
+        matched = float(
+            configured.get("matched", DEFAULT_SKILL_GAP_THRESHOLDS["matched"])
+        )
+    except (TypeError, ValueError, AttributeError):
+        return DEFAULT_SKILL_GAP_THRESHOLDS
+    if not np.isfinite(weak) or not np.isfinite(matched) or not -1.0 <= weak < matched <= 1.0:
+        return DEFAULT_SKILL_GAP_THRESHOLDS
+    return {"weak": weak, "matched": matched}
+
+
+def resolve_skill_gap_scoring(metadata):
+    configured = metadata.get("skillGapScoring") or DEFAULT_SKILL_GAP_SCORING
+    weights = configured.get("weights", {}) if isinstance(configured, dict) else {}
+    try:
+        resolved = {
+            "repo": float(weights.get("repo", 0.35)),
+            "issue": float(weights.get("issue", 0.15)),
+            "api": float(weights.get("api", 0.5)),
+        }
+    except (TypeError, ValueError, AttributeError):
+        return DEFAULT_SKILL_GAP_SCORING
+    if any(not np.isfinite(value) or value < 0.0 for value in resolved.values()):
+        return DEFAULT_SKILL_GAP_SCORING
+    if sum(resolved.values()) <= 0.0:
+        return DEFAULT_SKILL_GAP_SCORING
+    return {"strategy": "channel_weighted_v1", "weights": resolved}
+
+
+def _skill_vector(skill, channel):
+    key = "%sVector" % channel
+    expected = VECTOR_DIMS[channel]
+    values = skill.get(key)
+    if values is None:
+        combined = skill.get("combinedVector", [])
+        if channel == "repo":
+            values = combined[: VECTOR_DIMS["repo"]]
+        elif channel == "issue":
+            start = VECTOR_DIMS["repo"]
+            values = combined[start : start + VECTOR_DIMS["issue"]]
+        else:
+            values = combined[-VECTOR_DIMS["api"] :]
+    vector = np.asarray(values, dtype=np.float32)
+    if vector.shape[0] != expected or not np.all(np.isfinite(vector)):
+        raise ValueError("Skill %s vector has invalid length" % channel)
+    return vector
+
+
+def _normalized_token(value):
+    return str(value).strip().lower().replace("_", "-")
+
+
+def api_token_overlap(api_tokens, skill_tokens):
+    user_tokens = {_normalized_token(value) for value in api_tokens if str(value).strip()}
+    expected_tokens = {
+        _normalized_token(value) for value in skill_tokens if str(value).strip()
+    }
+    matches = set()
+    for expected in expected_tokens:
+        for actual in user_tokens:
+            if expected == actual:
+                matches.add(expected)
+                break
+            if len(expected) >= 5 and (
+                actual.endswith("/" + expected)
+                or actual.startswith(expected + "/")
+                or expected in actual
+            ):
+                matches.add(expected)
+                break
+    return min(1.0, len(matches) / 2.0), sorted(matches)
+
+
+def score_skill_channels(
+    repo_vector,
+    issue_vector,
+    api_vector,
+    api_tokens,
+    skill,
+    scoring_config,
+):
+    weights = scoring_config["weights"]
+    repo_available = float(np.linalg.norm(repo_vector)) > 0.0
+    issue_available = float(np.linalg.norm(issue_vector)) > 0.0
+    api_available = bool(api_tokens) and float(np.linalg.norm(api_vector)) > 0.0
+    repo_score = max(0.0, cosine_similarity(repo_vector, _skill_vector(skill, "repo"))) if repo_available else 0.0
+    issue_score = max(0.0, cosine_similarity(issue_vector, _skill_vector(skill, "issue"))) if issue_available else 0.0
+    api_score, api_matches = api_token_overlap(
+        api_tokens, skill.get("apiSkillTokens", [])
+    ) if api_available else (0.0, [])
+    available = {
+        "repo": repo_available,
+        "issue": issue_available,
+        "api": api_available,
+    }
+    channel_scores = {"repo": repo_score, "issue": issue_score, "api": api_score}
+    denominator = sum(weights[name] for name, present in available.items() if present)
+    final_score = (
+        sum(
+            weights[name] * channel_scores[name]
+            for name, present in available.items()
+            if present
+        )
+        / denominator
+        if denominator > 0.0
+        else 0.0
+    )
+    return {
+        "score": max(0.0, min(1.0, float(final_score))),
+        "channelScores": channel_scores,
+        "availableChannels": available,
+        "matchedApiTokens": api_matches,
+    }
+
+
+def build_skill_gap(
+    role_id,
+    repo_vector,
+    issue_vector,
+    api_vector,
+    api_tokens,
+    skill_vectors,
+    thresholds=None,
+    scoring_config=None,
+):
+    thresholds = thresholds or DEFAULT_SKILL_GAP_THRESHOLDS
+    scoring_config = scoring_config or DEFAULT_SKILL_GAP_SCORING
     matched = []
     weak = []
     missing = []
     details = []
     for skill in skill_vectors.get(role_id, []):
-        prototype = np.asarray(skill["combinedVector"], dtype=np.float32)
-        if prototype.shape[0] != VECTOR_DIMS["combined"]:
-            raise ValueError("Skill vector has invalid length")
-        similarity = cosine_similarity(combined_vector, prototype)
-        if similarity >= 0.55:
+        score = score_skill_channels(
+            repo_vector,
+            issue_vector,
+            api_vector,
+            api_tokens,
+            skill,
+            scoring_config,
+        )
+        similarity = score["score"]
+        if similarity >= thresholds["matched"]:
             status = "matched"
             matched.append(skill["skillName"])
-        elif similarity >= 0.35:
+        elif similarity >= thresholds["weak"]:
             status = "weak"
             weak.append(skill["skillName"])
         else:
@@ -302,6 +441,8 @@ def run_inference(payload, artifacts):
     timings["modelLoadMs"] = now_ms() - load_started
     validate_started = now_ms()
     scoring_config = validate_role_scoring_config(metadata)
+    skill_gap_thresholds = resolve_skill_gap_thresholds(metadata)
+    skill_gap_scoring = resolve_skill_gap_scoring(metadata)
     channel_info = resolve_channel_availability(
         repo_document, issue_document, api_tokens, evidence_channels
     )
@@ -342,7 +483,14 @@ def run_inference(payload, artifacts):
             "rank": rank,
         })
         skill_gaps[mapping["roleId"]] = build_skill_gap(
-            mapping["roleId"], combined_vector, skill_vectors
+            mapping["roleId"],
+            repo_vector,
+            issue_vector,
+            api_vector,
+            api_tokens,
+            skill_vectors,
+            skill_gap_thresholds,
+            skill_gap_scoring,
         )
     timings["classifierPredictMs"] = now_ms() - classifier_started
     timings["totalPythonMs"] = now_ms() - started

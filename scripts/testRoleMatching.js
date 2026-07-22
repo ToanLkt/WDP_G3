@@ -51,17 +51,17 @@ try {
     fail('Backend Developer should score higher than Frontend Developer');
   }
   const backendMatched = new Set(backend.matchedSkills.map((item) => item.canonicalSkillName));
-  for (const name of ['Express.js', 'REST API', 'MongoDB', 'Mongoose', 'JWT Authentication']) {
+  for (const name of ['REST API', 'Database', 'Authentication']) {
     if (!backendMatched.has(name)) fail(`Backend matched skills missing ${name}`);
   }
   const backendGaps = new Set([
     ...backend.weakSkills,
     ...backend.missingRequiredSkills,
   ].map((item) => item.canonicalSkillName));
-  for (const name of ['Testing', 'Clean Code', 'API Testing']) {
+  for (const name of ['API Testing', 'Clean Code']) {
     if (!backendGaps.has(name)) fail(`Backend gaps missing ${name}`);
   }
-  if (!backend.recommendedNextSkills.includes('Testing') || !backend.recommendedNextSkills.includes('Clean Code')) {
+  if (!backend.recommendedNextSkills.includes('API Testing') || !backend.recommendedNextSkills.includes('Clean Code')) {
     fail('Backend recommendations lack priority skills');
   }
   if (!devops || !devops.matchedSkills.some((item) => item.canonicalSkillName === 'Docker')) {
@@ -70,7 +70,7 @@ try {
   if (!devops.missingRequiredSkills.some((item) => item.canonicalSkillName === 'CI/CD')) {
     fail('DevOps gaps should include CI/CD');
   }
-  pass('WDP_G3-like vector produces expected role matches');
+  pass('WDP_G3-like vector produces expected canonical role matches');
 
   const compact = matchSkillVectorToRoles(skillVector, { limit: 1 })[0];
   if ('matchedSkills' in compact || !compact.topMatchedSkills || !compact.recommendedNextSkills) {

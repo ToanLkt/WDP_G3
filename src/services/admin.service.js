@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const AiFeedback = require('../models/AiFeedback');
 const AnalysisSnapshot = require('../models/AnalysisSnapshot');
+const AnalysisResult = require('../models/AnalysisResult');
 const Repository = require('../models/Repository');
 const RepoAnalysisSnapshot = require('../models/RepoAnalysisSnapshot');
 const Report = require('../models/Report');
@@ -13,6 +14,12 @@ const { roles } = require('../utils/constants');
 const { formatGeneratedRoadmapResponse } = require('./roadmap.service');
 const analysisSourceService = require('./analysisSource.service');
 const { createAutomaticNotification } = require('./notification.service');
+const { buildFeedbackResponse, evaluateFeedbackCompatibility } = require('./aiFeedback.service');
+const {
+  buildCompatibleAnalysisQuery,
+  buildCompatibleSnapshotQuery,
+  buildCompatibilityMetadata,
+} = require('./dev2vec/dev2vecCompatibility.service');
 
 const REPORT_STATUSES = ['PENDING', 'IN_REVIEW', 'RESOLVED', 'REJECTED'];
 const REPORT_TYPES = ['user', 'repository', 'analysis', 'ai_feedback', 'roadmap', 'other'];
@@ -138,6 +145,35 @@ const formatAdminRepository = (repository, fallbackId = null) => {
     fullName: repository.fullName || '',
     htmlUrl: repository.htmlUrl || repository.url || '',
     language: repository.language || '',
+  };
+};
+
+const sanitizeAdminAnalysis = (analysis = {}) => {
+  const compatibility = buildCompatibilityMetadata(analysis);
+  const dev2vec = analysis.dev2vec || {};
+  const cacheMetadata = dev2vec.cacheMetadata || {};
+  return {
+    ...analysis,
+    rawAnalysis: undefined,
+    skillEvidence: undefined,
+    dev2vec: {
+      modelVersion: dev2vec.modelVersion || null,
+      scoringMethod: dev2vec.scoringMethod || '',
+      rolePredictions: dev2vec.rolePredictions || [],
+      skillGaps: dev2vec.skillGaps || {},
+      vectorSources: dev2vec.vectorSources || {},
+      sourceStats: dev2vec.sourceStats || {},
+      cacheMetadata: {
+        analysisPipelineVersion: cacheMetadata.analysisPipelineVersion || null,
+        repoDocumentVersion: cacheMetadata.repoDocumentVersion || null,
+        issueDocumentVersion: cacheMetadata.issueDocumentVersion || null,
+        apiEvidenceVersion: cacheMetadata.apiEvidenceVersion || null,
+        evidenceFingerprintPreview: cacheMetadata.evidenceFingerprint ? String(cacheMetadata.evidenceFingerprint).slice(0, 12) : null,
+      },
+    },
+    modelVersion: compatibility.modelVersion,
+    pipelineVersion: compatibility.pipelineVersion,
+    isCompatible: compatibility.isCompatible,
   };
 };
 
@@ -469,7 +505,7 @@ const getDashboard = async () => {
     User.countDocuments({ status: 'active' }),
     User.countDocuments({ status: 'banned' }),
     Repository.countDocuments(),
-    AnalysisSnapshot.countDocuments(),
+    AnalysisResult.countDocuments(buildCompatibleAnalysisQuery()),
     AiFeedback.countDocuments(),
     Roadmap.countDocuments({ status: 'active', isDeleted: { $ne: true } }),
     Report.countDocuments({ status: { $in: ['PENDING', 'pending'] } }),
@@ -488,6 +524,10 @@ const getDashboard = async () => {
       },
       analysis: {
         total: totalAnalysis,
+        currentCompatible: totalAnalysis,
+        legacyOrIncompatible: await AnalysisResult.countDocuments({ $nor: [buildCompatibleAnalysisQuery()] }) + await AnalysisSnapshot.countDocuments(),
+        currentSnapshots: await RepoAnalysisSnapshot.countDocuments(buildCompatibleSnapshotQuery()),
+        legacySnapshots: await RepoAnalysisSnapshot.countDocuments({ $nor: [buildCompatibleSnapshotQuery()] }),
       },
       aiFeedback: {
         total: totalAiFeedback,
@@ -651,7 +691,7 @@ const getAnalysis = async (filters) => {
   }
 
   const data = await buildListResult({
-    model: AnalysisSnapshot,
+    model: AnalysisResult,
     query,
     pagination: getPagination(filters),
     sort: { analyzedAt: -1, createdAt: -1 },
@@ -660,6 +700,7 @@ const getAnalysis = async (filters) => {
       { path: 'repositoryId', select: 'name fullName htmlUrl language' },
     ],
   });
+  data.items = data.items.map(sanitizeAdminAnalysis);
 
   return {
     message: 'Analysis fetched successfully',
@@ -671,7 +712,7 @@ const getAnalysis = async (filters) => {
 const getAnalysisById = async (analysisId) => {
   ensureObjectId(analysisId, 'Analysis');
 
-  const analysis = await AnalysisSnapshot.findById(analysisId)
+  const analysis = await AnalysisResult.findById(analysisId)
     .populate('userId', 'fullName name email role status')
     .populate('repositoryId', 'name fullName htmlUrl language')
     .lean();
@@ -682,7 +723,7 @@ const getAnalysisById = async (analysisId) => {
 
   return {
     message: 'Analysis fetched successfully',
-    data: { analysis },
+    data: { analysis: sanitizeAdminAnalysis(analysis) },
     statusCode: 200,
   };
 };
@@ -711,6 +752,13 @@ const getAiFeedback = async (filters) => {
       { path: 'analysisSnapshotId', select: 'repoName projectType careerDirection analyzedAt' },
     ],
   });
+  data.items = await Promise.all(data.items.map(async (feedback) => ({
+    ...feedback,
+    ...buildFeedbackResponse({
+      ...feedback,
+      ...(await evaluateFeedbackCompatibility(stringId(feedback.userId), feedback)),
+    }),
+  })));
 
   return {
     message: 'AI feedback fetched successfully',
@@ -732,9 +780,11 @@ const getAiFeedbackById = async (feedbackId) => {
     throw createStatusError('AI feedback not found', 404);
   }
 
+  const compatibility = await evaluateFeedbackCompatibility(stringId(feedback.userId), feedback);
+
   return {
     message: 'AI feedback fetched successfully',
-    data: { feedback },
+    data: { feedback: { ...feedback, ...buildFeedbackResponse({ ...feedback, ...compatibility }) } },
     statusCode: 200,
   };
 };

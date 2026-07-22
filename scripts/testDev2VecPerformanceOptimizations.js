@@ -94,11 +94,12 @@ const compatiblePackageRecord = {
     packages: [compatiblePackageRecord],
     commits: [],
     issues: [],
-    channelStatus: { issue: 'no_issues' },
+    channelStatus: { issue: 'empty' },
     requestId: 'source-usage-cache',
   });
   assert.strictEqual(input.sourceStats.sourceUsageFromCache, true);
-  assert(input.apiTokens.includes('client_http:axios.get'));
+  assert.deepStrictEqual(input.apiTokens, []);
+  assert.strictEqual(input.evidenceChannels.channelStatus.api, 'contribution_unverified');
 
   console.log('PASS: Dev2Vec performance optimization fixtures');
 })();
