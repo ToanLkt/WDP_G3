@@ -1,0 +1,2 @@
+# Dev2Vec manifests hash exact file bytes; keep JSON artifacts identical on all OSes.
+ml_service/artifacts/*.json text eol=lf

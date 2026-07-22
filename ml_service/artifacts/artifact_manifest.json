@@ -7,8 +7,8 @@
     "doc2vec_api.model": { "sizeBytes": 5412579, "sha256": "e529b08a8043531a4111fbf439c93ce1a5538faec259f4d8081c968867fb9241" },
     "role_classifier.joblib": { "sizeBytes": 24127, "sha256": "1b8fe254fe81591a6d5d8e4453102d8f34bae316b9c3458ce644bec090eff9da" },
     "label_encoder.joblib": { "sizeBytes": 607, "sha256": "1a723818f059ef924ba4ae76cc7c02d3dc0afbd7716024b700f5d8ef84d72e8c" },
-    "skill_prototypes.json": { "sizeBytes": 11119, "sha256": "07ca2a6bb97933eaa641fa399049101c3a0f99aa95e139b027479b04a9a569f0" },
-    "skill_vectors.json": { "sizeBytes": 896371, "sha256": "810180f24cde09c875b623276ee2bfd33150d1c5a9eb47010a520f1c09da2ad6" },
-    "model_metadata.json": { "sizeBytes": 65207, "sha256": "5ed191c61b5da2a77845f4b645f1260a8ece7bbf5e1e3420a5f9c222c494a2ec" }
+    "skill_prototypes.json": { "sizeBytes": 10703, "sha256": "e69752202b721c451198b490608f0e8a658d6e02a4c28bfe1f26786ff567fbf4" },
+    "skill_vectors.json": { "sizeBytes": 866845, "sha256": "597ba758fb5d09d5480d8fc7064f1c05f574f1a6dda762b5bebdf02ba1f1c07d" },
+    "model_metadata.json": { "sizeBytes": 62435, "sha256": "2ce62c58d332a8535f4c8c5d1f15b1a556f352b314822383c079888fb734af63" }
   }
 }
