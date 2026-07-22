@@ -18,6 +18,10 @@ Important rules:
 - The student selected this target role: ${targetRole}.
 - The student selected this duration: ${durationWeeks} weeks.
 - The roadmap must prioritize the selected target role.
+- AUTHORITATIVE_ROLE_AND_SKILL_GAP is the only section allowed to determine target role and roadmap skills.
+- GENERAL_PROJECT_CONTEXT and package inventory may suggest examples only; packages do not prove personal skill.
+- PRIOR_FEEDBACK_CONTEXT must not override the current role, classifier order, or Python skill status.
+- Never add a main-path skill outside the authoritative gap.
 - This roadmap is based on the current user's own GitHub commits/contribution, not the whole repository.
 - Use effectiveLevel from Roadmap Skill Gap Context as the student's actual level band. request level is only a fallback.
 - Do not force the student to learn every missing skill.
@@ -133,11 +137,17 @@ Constraints:
 - advanced: focus on architecture, security, performance, production, and monitoring.
 - Use clear Vietnamese.
 
-Student GitHub Context:
-${safeJson(githubContext)}
-
-Roadmap Skill Gap Context:
+AUTHORITATIVE_ROLE_AND_SKILL_GAP:
 ${safeJson(roadmapGapContext)}
+
+USER_CONTRIBUTION_SUMMARY:
+${safeJson({ analyses: githubContext?.latestAnalysisSnapshots || [], skillSignals: githubContext?.skillSignals || [] })}
+
+GENERAL_PROJECT_CONTEXT:
+${safeJson({ repositories: (githubContext?.repositories || []).slice(0, 3).map((repo) => ({ name: repo.name, fullName: repo.fullName, description: repo.description, language: repo.language, topics: repo.topics, packages: (repo.packages || []).slice(0, 12) })) })}
+
+PRIOR_FEEDBACK_CONTEXT:
+${safeJson(githubContext?.aiFeedbackSummary || null)}
 `;
 }
 

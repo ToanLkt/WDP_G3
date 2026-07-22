@@ -20,6 +20,7 @@ const {
 } = require('./chatSkillContext.service');
 const { createStatusError } = require('./github/github.utils');
 const { resolveCurrentContext } = require('./currentContext.service');
+const { buildCompatibleAnalysisQuery } = require('./dev2vec/dev2vecCompatibility.service');
 const chatRealtime = require('./chatRealtime.service');
 
 let LearningRecommendation = null;
@@ -415,24 +416,27 @@ const buildCvInterviewContext = ({ selectedAnalysisContext, comparisonContext })
   }));
 };
 
-const buildUserGithubContext = async (userId) => {
+const buildUserGithubContext = async (userId, { selectedRepositoryId = null, includeTechnicalContext = false } = {}) => {
+  const repositoryFilter = { userId, ...(selectedRepositoryId ? { _id: selectedRepositoryId } : {}) };
+  const analysisFilter = buildCompatibleAnalysisQuery({ userId, ...(selectedRepositoryId ? { repositoryId: selectedRepositoryId } : {}) });
+  const skillSignalFilter = { userId, ...(selectedRepositoryId ? { repositoryId: selectedRepositoryId } : {}) };
   const [studentProfile, repositories, analysisSnapshots, skillSignals] = await Promise.all([
     StudentProfile.findOne({ userId })
       .select('university major year targetCareer currentSkills githubUsername githubConnected')
       .lean(),
-    Repository.find({ userId })
+    Repository.find(repositoryFilter)
       .sort({ updatedAtGithub: -1, pushedAt: -1, createdAt: -1 })
       .limit(MAX_CONTEXT_REPOSITORIES)
       .select('name fullName description language topics pushedAt updatedAtGithub')
       .lean(),
-    AnalysisResult.find({ userId })
+    AnalysisResult.find(analysisFilter)
       .sort({ analyzedAt: -1, createdAt: -1 })
       .limit(MAX_CONTEXT_SNAPSHOTS)
       .select(
-        'repositoryId repoName projectType languages frameworks packages skillSignals careerDirection strengths weaknesses missingSkills recommendations scores commitSummary checklist analyzedAt createdAt'
+        'repositoryId repoName projectType summary analysisScope commitSummary analyzedAt createdAt dev2vec'
       )
       .lean(),
-    SkillSignal.find({ userId })
+    SkillSignal.find(skillSignalFilter)
       .sort({ score: -1, createdAt: -1 })
       .limit(MAX_CONTEXT_SKILL_SIGNALS)
       .select('repositoryId skillName score evidence')
@@ -441,7 +445,7 @@ const buildUserGithubContext = async (userId) => {
 
   const repositoryIds = repositories.map((repository) => repository._id);
   const [packageRecords, learningRecommendations] = await Promise.all([
-    repositoryIds.length > 0
+    includeTechnicalContext && repositoryIds.length > 0
       ? RepositoryPackage.find({ userId, repositoryId: { $in: repositoryIds } })
           .select('repositoryId packages frameworks languages configs')
           .lean()
@@ -682,7 +686,10 @@ const sendMessage = async ({ user, params, body }) => {
   const selectedIsExplicit = /^(body|session)_/.test(selectedContext?.contextSelectionReason || '');
   const needsComparisonContext = hasIntent(intents, CHAT_INTENTS.REPO_COMPARE);
   const [githubContext, recentMessages, skillScoreContext, comparisonContext] = await Promise.all([
-    buildUserGithubContext(userId),
+    buildUserGithubContext(userId, {
+      selectedRepositoryId: selectedContext?.provenance?.repositoryId || null,
+      includeTechnicalContext: Boolean(selectedContext?.provenance?.repositoryId) && hasIntent(intents, CHAT_INTENTS.REPO_REVIEW),
+    }),
     ChatMessage.find({
       sessionId: session._id,
       _id: { $ne: userMessage._id },
@@ -697,7 +704,7 @@ const sendMessage = async ({ user, params, body }) => {
       analysis: selectedContext.analysis,
     }),
     needsComparisonContext || hasIntent(intents, CHAT_INTENTS.CV_ADVICE) || hasIntent(intents, CHAT_INTENTS.INTERVIEW_PREP)
-      ? buildRepoComparisonContext(userId, content)
+      ? buildRepoComparisonContext(userId, body?.repositoryIds || [])
       : Promise.resolve([]),
   ]);
   const selectedAnalysisContext = buildSelectedAnalysisContext(selectedContext, skillScoreContext);
@@ -752,7 +759,13 @@ const sendMessage = async ({ user, params, body }) => {
       usedFallback: assistantResult.usedFallback,
       intent,
       intents,
-      contextSource: 'dev2vec',
+      contextSource: 'authoritative_dev2vec',
+      contextSources: [
+        'authoritative_dev2vec',
+        'user_contribution',
+        ...(githubContext.repositories?.some((repo) => (repo.packages || []).length) ? ['technical_repository_context'] : []),
+      ],
+      dev2vecAuthoritative: true,
       context: selectedContext.provenance,
       hasRoadmapContext: Boolean(roadmapProgressContext),
       hasComparisonContext: comparisonContext.length > 0,
@@ -788,11 +801,15 @@ const sendMessage = async ({ user, params, body }) => {
       hasComparisonContext: comparisonContext.length > 0,
       comparedRepoCount: comparisonContext.length,
     }),
+    contextSources: assistantMessage.metadata.contextSources,
+    dev2vecAuthoritative: true,
   };
 
   if (shouldIncludeChatDebug()) {
     data.intent = intent;
-    data.contextSource = 'dev2vec';
+    data.contextSource = 'authoritative_dev2vec';
+    data.contextSources = assistantMessage.metadata.contextSources;
+    data.dev2vecAuthoritative = true;
     data.skillScoreSummary = skillScoreContext.summary;
   }
 

@@ -204,7 +204,8 @@ const scoredSkills = buildAnalysisSkillsFromDev2Vec({
 }, { roleId: 'frontend' });
 assert.strictEqual(scoredSkills.topSkills[0].score, 87.65);
 assert.strictEqual(scoredSkills.topSkills[0].similarity, 0.8765);
-assert.strictEqual(scoredSkills.missingSkills[0].score, 0);
+assert.strictEqual(scoredSkills.missingSkills[0].score, 12.34);
+assert.strictEqual(scoredSkills.missingSkills[0].dev2vecStatus, 'missing');
 
 const noFrontendPrediction = {
   rolePredictions: [{ roleId: 'backend', roleName: 'Backend Developer', rank: 1, probability: 0.4 }],
@@ -278,16 +279,11 @@ const payload = buildDev2VecAnalysisPayload({
 });
 const response = sanitizeAnalysisSnapshot({ _id: 'analysis', ...payload }, { view: 'summary' });
 assert.strictEqual(response.summary.projectType, 'Frontend');
-assert.strictEqual(response.summary.careerDirection, 'Frontend Developer');
-assert(response.topSkills.length > 0);
-assert(response.topSkills.some((skill) => skill.skill === 'React UI'));
-assert(response.topSkills.some((skill) => skill.skill === 'Component Design'));
-assert(response.topSkills.some((skill) => skill.skill === 'State Management'));
-assert(response.topSkills.some((skill) => skill.skill === 'Responsive Design'));
-assert(response.missingSkills.every((skill) => skill.category === 'frontend'));
-assert(!response.missingSkills.some((skill) => ['React UI', 'Component Design', 'State Management', 'Responsive Design'].includes(skill.skill)));
-assert(response.missingSkills.some((skill) => skill.skill === 'Frontend Testing'));
-assert(!response.missingSkills.some((skill) => ['REST API', 'Database', 'Authentication'].includes(skill.skill)));
+assert.strictEqual(response.summary.careerDirection, 'Backend Developer');
+assert.strictEqual(payload.rawAnalysis.explanatoryRoleContext.roleId, 'frontend');
+assert.strictEqual(payload.dev2vec.rolePredictions[0].roleId, 'backend');
+assert(response.missingSkills.every((skill) => skill.category === 'backend'));
+assert(response.missingSkills.some((skill) => ['REST API', 'Database', 'Authentication'].includes(skill.skill)));
 assert(!response.topSkills.some((topSkill) => response.missingSkills.some((missingSkill) => missingSkill.skill === topSkill.skill)));
 assert.strictEqual(Object.prototype.hasOwnProperty.call(response, 'normalizedFiles'), false);
 assert.throws(
@@ -296,7 +292,7 @@ assert.throws(
 );
 assert.throws(
   () => validateDev2VecOutput({ success: true, rolePredictions: [], vectorDims: {} }),
-  (error) => error.message === 'Dev2Vec output is missing required fields' && error.errorCode === 'DEV2VEC_INVALID_OUTPUT'
+  (error) => error.errorCode === 'DEV2VEC_OUTPUT_CONTRACT_INVALID'
 );
 
 const originalAxiosGet = axios.get;

@@ -1,0 +1,14 @@
+{
+  "modelVersion": "dev2vec-demo-v4",
+  "createdAt": "2026-07-22T00:00:00.000Z",
+  "files": {
+    "doc2vec_repo.model": { "sizeBytes": 48772552, "sha256": "6923e38892cb0cbeb541351838c0e1752c56661f32534e9df5feb42123dd4c97" },
+    "doc2vec_issue.model": { "sizeBytes": 13219866, "sha256": "0a82fb23fe746bbe46c1b31cb812160e5ff137fc0f867eb972ae99602a1a0661" },
+    "doc2vec_api.model": { "sizeBytes": 5412579, "sha256": "e529b08a8043531a4111fbf439c93ce1a5538faec259f4d8081c968867fb9241" },
+    "role_classifier.joblib": { "sizeBytes": 24127, "sha256": "1b8fe254fe81591a6d5d8e4453102d8f34bae316b9c3458ce644bec090eff9da" },
+    "label_encoder.joblib": { "sizeBytes": 607, "sha256": "1a723818f059ef924ba4ae76cc7c02d3dc0afbd7716024b700f5d8ef84d72e8c" },
+    "skill_prototypes.json": { "sizeBytes": 11119, "sha256": "07ca2a6bb97933eaa641fa399049101c3a0f99aa95e139b027479b04a9a569f0" },
+    "skill_vectors.json": { "sizeBytes": 896371, "sha256": "810180f24cde09c875b623276ee2bfd33150d1c5a9eb47010a520f1c09da2ad6" },
+    "model_metadata.json": { "sizeBytes": 65207, "sha256": "5ed191c61b5da2a77845f4b645f1260a8ece7bbf5e1e3420a5f9c222c494a2ec" }
+  }
+}

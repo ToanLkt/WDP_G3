@@ -1,0 +1,14 @@
+{
+  "watch": [
+    "server.js",
+    "src"
+  ],
+  "ext": "js,json",
+  "ignore": [
+    "tmp/**",
+    "data/**",
+    "ml_service/artifacts/**",
+    "test/**",
+    "scripts/**"
+  ]
+}

@@ -38,7 +38,8 @@ const checks = [
       'session_repository',
       'session_analysis',
       'latest_user_analysis',
-      'legacy_snapshot',
+      'no_compatible_dev2vec_analysis',
+      'compatible_snapshot_missing',
       'contextSelectionReason',
       'repoName',
     ],
@@ -84,6 +85,10 @@ for (const check of checks) {
       failures.push(`${check.file} missing ${pattern}`);
     }
   }
+}
+
+if (read('src/services/currentContext.service.js').includes("models/AnalysisSnapshot")) {
+  failures.push('src/services/currentContext.service.js must not silently fall back to legacy AnalysisSnapshot');
 }
 
 if (failures.length) {

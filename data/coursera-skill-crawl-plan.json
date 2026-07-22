@@ -1,0 +1,1861 @@
+{
+  "version": "coursera-skill-crawl-plan-v1",
+  "generatedAt": "2026-07-23T00:00:00+07:00",
+  "sourceVersions": {
+    "modelVersion": "dev2vec-demo-v4",
+    "pipelineVersion": "dev2vec-analysis-pipeline-v12",
+    "skillPrototypeCount": 25
+  },
+  "policy": {
+    "authoritativeSource": "ml_service/artifacts/skill_prototypes.json mirrored by src/constants/dev2vecCatalog.js",
+    "scope": "Current Python skill-gap skills that can be enforced into main-path roadmap tasks and consumed by learning APIs.",
+    "excludesRepositoryPackages": true,
+    "excludesTestOnlySkills": true,
+    "allowsNetwork": false
+  },
+  "skills": [
+    {
+      "skillId": "api-integration",
+      "canonicalName": "API Integration",
+      "aliases": [
+        "API Client",
+        "Axios",
+        "Fetch API",
+        "Mobile API Integration",
+        "Network Request"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "mobile"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P1",
+      "status": "CRAWL_REQUIRED",
+      "queries": {
+        "primary": "mobile application API integration",
+        "alternatives": [
+          "REST API client development",
+          "HTTP API integration for apps"
+        ],
+        "negativeKeywords": [
+          "systems integration overview only"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner",
+          "intermediate"
+        ]
+      },
+      "limits": {
+        "maxCourses": 5,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "api-testing",
+      "canonicalName": "API Testing",
+      "aliases": [
+        "Endpoint Testing",
+        "Integration Testing",
+        "Jest",
+        "REST API Testing",
+        "Supertest",
+        "Testing",
+        "Unit Testing"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "backend"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P0",
+      "status": "CRAWL_REQUIRED",
+      "queries": {
+        "primary": "REST API testing",
+        "alternatives": [
+          "automated API testing",
+          "integration testing web APIs"
+        ],
+        "negativeKeywords": [
+          "manual testing only"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner",
+          "intermediate"
+        ]
+      },
+      "limits": {
+        "maxCourses": 8,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "app-state-management",
+      "canonicalName": "App State Management",
+      "aliases": [
+        "App State",
+        "Lifecycle State",
+        "Mobile State Management",
+        "Reactive State"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "mobile"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P2",
+      "status": "CRAWL_OPTIONAL",
+      "queries": {
+        "primary": "mobile app state management",
+        "alternatives": [
+          "React Native state management",
+          "Flutter application state management"
+        ],
+        "negativeKeywords": [
+          "government state management"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner"
+        ]
+      },
+      "limits": {
+        "maxCourses": 3,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "authentication",
+      "canonicalName": "Authentication",
+      "aliases": [
+        "Auth",
+        "Authorization",
+        "JWT",
+        "JWT Authentication",
+        "Login",
+        "Permission",
+        "RBAC",
+        "Refresh Token"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "backend"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P0",
+      "status": "CRAWL_REQUIRED",
+      "queries": {
+        "primary": "web authentication and authorization",
+        "alternatives": [
+          "JWT OAuth authentication",
+          "application identity and access control"
+        ],
+        "negativeKeywords": [
+          "biometric hardware"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner",
+          "intermediate"
+        ]
+      },
+      "limits": {
+        "maxCourses": 8,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "ci-cd",
+      "canonicalName": "CI/CD",
+      "aliases": [
+        ".github/workflows",
+        "CI CD",
+        "CICD",
+        "Continuous Deployment",
+        "Continuous Integration",
+        "GitHub Actions",
+        "GitHub Workflow"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "devops"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P0",
+      "status": "CRAWL_REQUIRED",
+      "queries": {
+        "primary": "continuous integration and continuous delivery",
+        "alternatives": [
+          "CI/CD pipelines",
+          "DevOps build test deploy automation"
+        ],
+        "negativeKeywords": [
+          "marketing pipeline"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner",
+          "intermediate"
+        ]
+      },
+      "limits": {
+        "maxCourses": 8,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "component-design",
+      "canonicalName": "Component Design",
+      "aliases": [
+        "Component Architecture",
+        "Components",
+        "React Components",
+        "UI Component"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "frontend"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P1",
+      "status": "CRAWL_REQUIRED",
+      "queries": {
+        "primary": "frontend UI component design",
+        "alternatives": [
+          "reusable React components",
+          "web design systems components"
+        ],
+        "negativeKeywords": [
+          "electronic components"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner",
+          "intermediate"
+        ]
+      },
+      "limits": {
+        "maxCourses": 5,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "data-analysis",
+      "canonicalName": "Data Analysis",
+      "aliases": [
+        "Data Cleaning",
+        "EDA",
+        "Exploratory Data Analysis",
+        "NumPy",
+        "Pandas"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "data_scientist"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P0",
+      "status": "CRAWL_REQUIRED",
+      "queries": {
+        "primary": "data analysis with Python",
+        "alternatives": [
+          "exploratory data analysis",
+          "data analysis with Pandas"
+        ],
+        "negativeKeywords": [
+          "business overview only"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner",
+          "intermediate"
+        ]
+      },
+      "limits": {
+        "maxCourses": 8,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "data-visualization",
+      "canonicalName": "Data Visualization",
+      "aliases": [
+        "Charts",
+        "Dashboard",
+        "Matplotlib",
+        "Seaborn",
+        "Visualization"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "data_scientist"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P1",
+      "status": "CRAWL_REQUIRED",
+      "queries": {
+        "primary": "data visualization with Python",
+        "alternatives": [
+          "Matplotlib and Seaborn data visualization",
+          "visual analytics"
+        ],
+        "negativeKeywords": [
+          "architectural visualization"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner",
+          "intermediate"
+        ]
+      },
+      "limits": {
+        "maxCourses": 5,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "database",
+      "canonicalName": "Database",
+      "aliases": [
+        "Data Modeling",
+        "Database Design",
+        "Index",
+        "MongoDB",
+        "Mongoose",
+        "MySQL",
+        "PostgreSQL",
+        "Query",
+        "Schema Design",
+        "SQL"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "backend"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P0",
+      "status": "CRAWL_REQUIRED",
+      "queries": {
+        "primary": "database fundamentals SQL and NoSQL",
+        "alternatives": [
+          "database design and management",
+          "relational and NoSQL databases"
+        ],
+        "negativeKeywords": [
+          "biological database"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner",
+          "intermediate"
+        ]
+      },
+      "limits": {
+        "maxCourses": 8,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "docker",
+      "canonicalName": "Docker",
+      "aliases": [
+        "Containerization",
+        "Docker Container",
+        "Docker Image"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "devops"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P0",
+      "status": "CRAWL_REQUIRED",
+      "queries": {
+        "primary": "Docker containerization",
+        "alternatives": [
+          "Docker containers",
+          "Docker development workflows"
+        ],
+        "negativeKeywords": [
+          "Kubernetes only",
+          "certification exam only"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner",
+          "intermediate"
+        ]
+      },
+      "limits": {
+        "maxCourses": 8,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "docker-basics",
+      "canonicalName": "Docker Basics",
+      "aliases": [
+        "Container",
+        "Containerization",
+        "Docker Basics",
+        "Docker Compose",
+        "Dockerfile"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "backend"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P0",
+      "status": "CRAWL_REQUIRED",
+      "queries": {
+        "primary": "Docker containers for beginners",
+        "alternatives": [
+          "Docker fundamentals",
+          "containerization with Docker"
+        ],
+        "negativeKeywords": [
+          "Kubernetes only"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner",
+          "intermediate"
+        ]
+      },
+      "limits": {
+        "maxCourses": 8,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "frontend-testing",
+      "canonicalName": "Frontend Testing",
+      "aliases": [
+        "Component Testing",
+        "Frontend Unit Testing",
+        "React Testing",
+        "UI Testing"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "frontend"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P1",
+      "status": "CRAWL_REQUIRED",
+      "queries": {
+        "primary": "frontend web application testing",
+        "alternatives": [
+          "React component testing",
+          "JavaScript UI testing"
+        ],
+        "negativeKeywords": [
+          "backend testing only"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner",
+          "intermediate"
+        ]
+      },
+      "limits": {
+        "maxCourses": 5,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "infrastructure-as-code",
+      "canonicalName": "Infrastructure as Code",
+      "aliases": [
+        "Ansible",
+        "IaC",
+        "Infrastructure Code",
+        "Terraform"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "devops"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P1",
+      "status": "CRAWL_REQUIRED",
+      "queries": {
+        "primary": "infrastructure as code with Terraform",
+        "alternatives": [
+          "IaC fundamentals",
+          "Terraform and Ansible automation"
+        ],
+        "negativeKeywords": [
+          "building architecture"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner",
+          "intermediate"
+        ]
+      },
+      "limits": {
+        "maxCourses": 5,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "kubernetes",
+      "canonicalName": "Kubernetes",
+      "aliases": [
+        "Cluster",
+        "Deployment",
+        "K8s",
+        "Kube",
+        "Pod"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "devops"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P0",
+      "status": "CRAWL_REQUIRED",
+      "queries": {
+        "primary": "Kubernetes container orchestration",
+        "alternatives": [
+          "Kubernetes fundamentals",
+          "Kubernetes application deployment"
+        ],
+        "negativeKeywords": [
+          "Docker only"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner",
+          "intermediate"
+        ]
+      },
+      "limits": {
+        "maxCourses": 8,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "local-storage",
+      "canonicalName": "Local Storage",
+      "aliases": [
+        "AsyncStorage",
+        "Mobile Cache",
+        "Offline Storage",
+        "Preferences"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "mobile"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P2",
+      "status": "CRAWL_OPTIONAL",
+      "queries": {
+        "primary": "mobile app local data storage",
+        "alternatives": [
+          "offline mobile data persistence",
+          "SQLite mobile storage"
+        ],
+        "negativeKeywords": [
+          "warehouse storage",
+          "cloud storage administration"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner"
+        ]
+      },
+      "limits": {
+        "maxCourses": 3,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "machine-learning",
+      "canonicalName": "Machine Learning",
+      "aliases": [
+        "ML",
+        "Scikit-learn",
+        "Supervised Learning",
+        "Unsupervised Learning"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "data_scientist"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P0",
+      "status": "CRAWL_REQUIRED",
+      "queries": {
+        "primary": "machine learning",
+        "alternatives": [
+          "applied machine learning with Python",
+          "supervised and unsupervised learning"
+        ],
+        "negativeKeywords": [
+          "hardware machine maintenance"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner",
+          "intermediate"
+        ]
+      },
+      "limits": {
+        "maxCourses": 8,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "mobile-ui",
+      "canonicalName": "Mobile UI",
+      "aliases": [
+        "Mobile Layout",
+        "Mobile Screen",
+        "React Native UI",
+        "Widget"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "mobile"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P1",
+      "status": "CRAWL_REQUIRED",
+      "queries": {
+        "primary": "mobile application UI design and development",
+        "alternatives": [
+          "mobile interface development",
+          "mobile app user experience"
+        ],
+        "negativeKeywords": [
+          "mobile hardware repair"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner",
+          "intermediate"
+        ]
+      },
+      "limits": {
+        "maxCourses": 5,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "model-training",
+      "canonicalName": "Model Training",
+      "aliases": [
+        "Feature Engineering",
+        "Hyperparameter Tuning",
+        "Model Evaluation",
+        "Training Pipeline"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "data_scientist"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P1",
+      "status": "CRAWL_REQUIRED",
+      "queries": {
+        "primary": "machine learning model training and evaluation",
+        "alternatives": [
+          "feature engineering and model validation",
+          "hyperparameter tuning machine learning"
+        ],
+        "negativeKeywords": [
+          "fitness training",
+          "fashion model"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner",
+          "intermediate"
+        ]
+      },
+      "limits": {
+        "maxCourses": 5,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "monitoring",
+      "canonicalName": "Monitoring",
+      "aliases": [
+        "Alerting",
+        "Grafana",
+        "Logging",
+        "Metrics",
+        "Observability",
+        "Prometheus"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "devops"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P1",
+      "status": "CRAWL_REQUIRED",
+      "queries": {
+        "primary": "software observability and monitoring",
+        "alternatives": [
+          "application monitoring with Prometheus and Grafana",
+          "DevOps metrics logs and alerts"
+        ],
+        "negativeKeywords": [
+          "health monitoring",
+          "environmental monitoring"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner",
+          "intermediate"
+        ]
+      },
+      "limits": {
+        "maxCourses": 5,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "navigation",
+      "canonicalName": "Navigation",
+      "aliases": [
+        "Deep Link",
+        "Mobile Navigation",
+        "React Navigation",
+        "Stack Navigation",
+        "Tab Navigation"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "mobile"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P2",
+      "status": "CRAWL_OPTIONAL",
+      "queries": {
+        "primary": "mobile app navigation",
+        "alternatives": [
+          "React Native navigation",
+          "mobile navigation architecture"
+        ],
+        "negativeKeywords": [
+          "GPS navigation",
+          "maritime navigation"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner"
+        ]
+      },
+      "limits": {
+        "maxCourses": 3,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "nlp-basics",
+      "canonicalName": "NLP Basics",
+      "aliases": [
+        "NLP",
+        "Text Classification",
+        "Text Processing",
+        "Tokenization"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "data_scientist"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P2",
+      "status": "CRAWL_OPTIONAL",
+      "queries": {
+        "primary": "natural language processing fundamentals",
+        "alternatives": [
+          "NLP with Python",
+          "text processing and classification"
+        ],
+        "negativeKeywords": [
+          "neuro linguistic programming"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner"
+        ]
+      },
+      "limits": {
+        "maxCourses": 3,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "react-ui",
+      "canonicalName": "React UI",
+      "aliases": [
+        "Frontend UI",
+        "JSX",
+        "React",
+        "React.js",
+        "ReactJS"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "frontend"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P0",
+      "status": "CRAWL_REQUIRED",
+      "queries": {
+        "primary": "React JavaScript user interfaces",
+        "alternatives": [
+          "React component development",
+          "React web development"
+        ],
+        "negativeKeywords": [
+          "React Native only"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner",
+          "intermediate"
+        ]
+      },
+      "limits": {
+        "maxCourses": 8,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "responsive-design",
+      "canonicalName": "Responsive Design",
+      "aliases": [
+        "Breakpoint",
+        "CSS Grid",
+        "Flexbox",
+        "Mobile-first Design",
+        "Responsive Web Design",
+        "RWD"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "frontend"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P1",
+      "status": "CRAWL_REQUIRED",
+      "queries": {
+        "primary": "responsive web design",
+        "alternatives": [
+          "mobile-first web design",
+          "CSS responsive layouts"
+        ],
+        "negativeKeywords": [
+          "responsive leadership"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner",
+          "intermediate"
+        ]
+      },
+      "limits": {
+        "maxCourses": 5,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "rest-api",
+      "canonicalName": "REST API",
+      "aliases": [
+        "API",
+        "Controller",
+        "Endpoint",
+        "Express",
+        "Express.js",
+        "Node.js",
+        "OpenAPI",
+        "REST",
+        "RESTful API",
+        "Route",
+        "Swagger"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "backend"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P0",
+      "status": "CRAWL_REQUIRED",
+      "queries": {
+        "primary": "REST API design and development",
+        "alternatives": [
+          "RESTful API development",
+          "Web API design"
+        ],
+        "negativeKeywords": [
+          "restaurant",
+          "real estate"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner",
+          "intermediate"
+        ]
+      },
+      "limits": {
+        "maxCourses": 8,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    },
+    {
+      "skillId": "state-management",
+      "canonicalName": "State Management",
+      "aliases": [
+        "Application State",
+        "Context API",
+        "Global State",
+        "Redux",
+        "Store"
+      ],
+      "sourceTypes": [
+        "dev2vec_skill_prototype",
+        "dev2vec_role_catalog",
+        "python_skill_gap",
+        "roadmap_skill_gap",
+        "learning_canonicalization"
+      ],
+      "roles": [
+        "frontend"
+      ],
+      "canAppearInPythonSkillGap": true,
+      "canAppearInRoadmap": true,
+      "hasLearningConsumer": true,
+      "existingYouTubeSupport": true,
+      "priority": "P1",
+      "status": "CRAWL_REQUIRED",
+      "queries": {
+        "primary": "frontend state management",
+        "alternatives": [
+          "React Redux state management",
+          "application state architecture"
+        ],
+        "negativeKeywords": [
+          "government state management"
+        ],
+        "preferredContentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ],
+        "preferredLevels": [
+          "beginner",
+          "intermediate"
+        ]
+      },
+      "limits": {
+        "maxCourses": 5,
+        "contentTypes": [
+          "course",
+          "specialization",
+          "guided_project"
+        ]
+      }
+    }
+  ],
+  "aliases": {
+    ".github/workflows": "ci-cd",
+    "alerting": "monitoring",
+    "ansible": "infrastructure-as-code",
+    "api": "rest-api",
+    "api client": "api-integration",
+    "app state": "app-state-management",
+    "application state": "state-management",
+    "asyncstorage": "local-storage",
+    "auth": "authentication",
+    "authorization": "authentication",
+    "axios": "api-integration",
+    "breakpoint": "responsive-design",
+    "charts": "data-visualization",
+    "ci cd": "ci-cd",
+    "cicd": "ci-cd",
+    "cluster": "kubernetes",
+    "component architecture": "component-design",
+    "component testing": "frontend-testing",
+    "components": "component-design",
+    "container": "docker-basics",
+    "containerization": "docker-basics",
+    "context api": "state-management",
+    "continuous deployment": "ci-cd",
+    "continuous integration": "ci-cd",
+    "controller": "rest-api",
+    "css grid": "responsive-design",
+    "dashboard": "data-visualization",
+    "data cleaning": "data-analysis",
+    "data modeling": "database",
+    "database design": "database",
+    "deep link": "navigation",
+    "deployment": "kubernetes",
+    "docker basics": "docker-basics",
+    "docker compose": "docker-basics",
+    "docker container": "docker",
+    "docker image": "docker",
+    "dockerfile": "docker-basics",
+    "eda": "data-analysis",
+    "endpoint": "rest-api",
+    "endpoint testing": "api-testing",
+    "exploratory data analysis": "data-analysis",
+    "express": "rest-api",
+    "express.js": "rest-api",
+    "feature engineering": "model-training",
+    "fetch api": "api-integration",
+    "flexbox": "responsive-design",
+    "frontend ui": "react-ui",
+    "frontend unit testing": "frontend-testing",
+    "github actions": "ci-cd",
+    "github workflow": "ci-cd",
+    "global state": "state-management",
+    "grafana": "monitoring",
+    "hyperparameter tuning": "model-training",
+    "iac": "infrastructure-as-code",
+    "index": "database",
+    "infrastructure code": "infrastructure-as-code",
+    "integration testing": "api-testing",
+    "jest": "api-testing",
+    "jsx": "react-ui",
+    "jwt": "authentication",
+    "jwt authentication": "authentication",
+    "k8s": "kubernetes",
+    "kube": "kubernetes",
+    "lifecycle state": "app-state-management",
+    "logging": "monitoring",
+    "login": "authentication",
+    "matplotlib": "data-visualization",
+    "metrics": "monitoring",
+    "ml": "machine-learning",
+    "mobile api integration": "api-integration",
+    "mobile cache": "local-storage",
+    "mobile first design": "responsive-design",
+    "mobile layout": "mobile-ui",
+    "mobile navigation": "navigation",
+    "mobile screen": "mobile-ui",
+    "mobile state management": "app-state-management",
+    "model evaluation": "model-training",
+    "mongodb": "database",
+    "mongoose": "database",
+    "mysql": "database",
+    "network request": "api-integration",
+    "nlp": "nlp-basics",
+    "node.js": "rest-api",
+    "numpy": "data-analysis",
+    "observability": "monitoring",
+    "offline storage": "local-storage",
+    "openapi": "rest-api",
+    "pandas": "data-analysis",
+    "permission": "authentication",
+    "pod": "kubernetes",
+    "postgresql": "database",
+    "preferences": "local-storage",
+    "prometheus": "monitoring",
+    "query": "database",
+    "rbac": "authentication",
+    "react": "react-ui",
+    "react components": "component-design",
+    "react native ui": "mobile-ui",
+    "react navigation": "navigation",
+    "react testing": "frontend-testing",
+    "react.js": "react-ui",
+    "reactive state": "app-state-management",
+    "reactjs": "react-ui",
+    "redux": "state-management",
+    "refresh token": "authentication",
+    "responsive web design": "responsive-design",
+    "rest": "rest-api",
+    "rest api testing": "api-testing",
+    "restful api": "rest-api",
+    "route": "rest-api",
+    "rwd": "responsive-design",
+    "schema design": "database",
+    "scikit learn": "machine-learning",
+    "seaborn": "data-visualization",
+    "sql": "database",
+    "stack navigation": "navigation",
+    "store": "state-management",
+    "supertest": "api-testing",
+    "supervised learning": "machine-learning",
+    "swagger": "rest-api",
+    "tab navigation": "navigation",
+    "terraform": "infrastructure-as-code",
+    "testing": "api-testing",
+    "text classification": "nlp-basics",
+    "text processing": "nlp-basics",
+    "tokenization": "nlp-basics",
+    "training pipeline": "model-training",
+    "ui component": "component-design",
+    "ui testing": "frontend-testing",
+    "unit testing": "api-testing",
+    "unsupervised learning": "machine-learning",
+    "visualization": "data-visualization",
+    "widget": "mobile-ui"
+  },
+  "excludedSkills": [
+    {
+      "name": "Accessibility",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "API Integration",
+      "classification": "DO_NOT_CRAWL",
+      "reason": "Duplicate legacy catalog entry; the Dev2Vec entry wins canonical lookup."
+    },
+    {
+      "name": "API Security",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "API Testing",
+      "classification": "DO_NOT_CRAWL",
+      "reason": "Duplicate legacy catalog entry; the Dev2Vec entry wins canonical lookup."
+    },
+    {
+      "name": "Authentication",
+      "classification": "DO_NOT_CRAWL",
+      "reason": "Duplicate legacy catalog entry; the Dev2Vec entry wins canonical lookup."
+    },
+    {
+      "name": "Axios",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Backend Development",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Bootstrap",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Chatbot",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "CI/CD",
+      "classification": "DO_NOT_CRAWL",
+      "reason": "Duplicate legacy catalog entry; the Dev2Vec entry wins canonical lookup."
+    },
+    {
+      "name": "Clean Code",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Code Review",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "CRUD",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "CSS",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Data Modeling",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Database Design",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Debugging",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Docker",
+      "classification": "DO_NOT_CRAWL",
+      "reason": "Duplicate legacy catalog entry; the Dev2Vec entry wins canonical lookup."
+    },
+    {
+      "name": "Docker Compose",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Environment Variables",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Error Handling",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Expo",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Express.js",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "File Upload",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Form Handling",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Formatting",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Frontend Development",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Fullstack Development",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Gemini API",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Git",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "GitHub",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "GitHub Actions",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "HTML",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "JavaScript",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Jest",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "JWT Authentication",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Linting",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "LLM API Integration",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Middleware",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "MongoDB",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "MongoDB Aggregation",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "MongoDB CRUD",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Mongoose",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "MySQL",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Node.js",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "OpenAI API",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Performance Optimization",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "PostgreSQL",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Postman",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Prompt Engineering",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "React",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "React Hooks",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "React Native",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "React Router",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Refactoring",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Render Deployment",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Responsive Design",
+      "classification": "DO_NOT_CRAWL",
+      "reason": "Duplicate legacy catalog entry; the Dev2Vec entry wins canonical lookup."
+    },
+    {
+      "name": "REST API",
+      "classification": "DO_NOT_CRAWL",
+      "reason": "Duplicate legacy catalog entry; the Dev2Vec entry wins canonical lookup."
+    },
+    {
+      "name": "Software Engineering",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "SQL",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "State Management",
+      "classification": "DO_NOT_CRAWL",
+      "reason": "Duplicate legacy catalog entry; the Dev2Vec entry wins canonical lookup."
+    },
+    {
+      "name": "Swagger",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Tailwind CSS",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Testing",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "TypeScript",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Unit Testing",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Validation",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Vercel Deployment",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    },
+    {
+      "name": "Vite",
+      "classification": "LEGACY",
+      "reason": "Legacy role/vector/shared-canonical catalog only; cannot occur in the current Python v4 skill gap."
+    }
+  ]
+}

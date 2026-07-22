@@ -148,25 +148,23 @@ const input = buildDev2VecInputFromRepositoryAnalysis({
     frameworks: ['React', 'Backend HTTP framework'],
     detectedFiles: [frontend, backend, mobile, data, devopsWorkflow, ambiguous],
   }],
-  commits: [],
+  commits: [{ sha: 'selected', message: 'touch manifest', normalizedFiles: [{
+    filename: 'package.json',
+    evidenceContent: JSON.stringify({ dependencies: { react: '^19', express: '^4' } }),
+  }] }],
+  contributionSummary: { accepted: true, selectedCommitShas: ['selected'], selectedPullRequests: [] },
   issues: [],
   requestId: 'source-usage-fixture',
 });
 
 assert(input.apiTokens.includes('react'));
 assert(input.apiTokens.includes('express'));
-assert(input.apiTokens.includes('import:react'));
-assert(input.apiTokens.includes('import:axios'));
-assert(input.apiTokens.includes('server_route:express.get'));
-assert(input.apiTokens.includes('client_http:axios.get'));
-assert(input.apiTokens.includes('mobile_location:getcurrentpositionasync'));
-assert(input.apiTokens.includes('data_io:pandas.read_csv'));
-assert(input.apiTokens.includes('devops_kubernetes:apply'));
+assert(!input.apiTokens.some((token) => token.includes(':')));
 
 const payload = normalizeDev2VecInput(input);
 assert(Array.isArray(payload.apiTokens));
 assert.strictEqual(typeof payload.repoDocument, 'string');
 assert.strictEqual(typeof payload.issueDocument, 'string');
-assert.strictEqual(payload.apiTokens.includes('client_http:axios.get'), true);
+assert.deepStrictEqual(payload.apiTokens, ['express', 'react']);
 
 console.log('PASS: Source usage evidence pipeline fixtures');

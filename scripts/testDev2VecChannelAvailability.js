@@ -28,17 +28,23 @@ const packageRecord = {
     sourceContent: 'import express from "express"; const router = express.Router(); router.get("/users", handler);',
   }],
 };
+const contributionSummary = { accepted: true, selectedCommitShas: ['abc'], selectedPullRequests: [] };
+const userCommit = { sha: 'abc', message: 'feat: add users route', normalizedFiles: [{
+  filename: 'package.json', evidenceContent: JSON.stringify({ dependencies: { express: '^4', react: '^19' } }),
+}] };
 
 const fullInput = buildDev2VecInputFromRepositoryAnalysis({
   repository,
   packages: [packageRecord],
-  commits: [{ sha: 'abc', message: 'feat: add users route' }],
+  commits: [userCommit],
+  contributionSummary,
   issues: [{
     number: 1,
     title: 'Users endpoint returns 401',
     body: 'Authentication token validation middleware fails.',
     labels: ['backend', 'bug'],
     repositoryFullName: 'example/channel-fixture',
+    relations: ['authored'],
   }],
   channelStatus: { issue: 'available' },
   requestId: 'channel-full',
@@ -52,14 +58,15 @@ assert.strictEqual(fullInput.evidenceChannels.channelStatus.issue, 'available');
 const noIssueInput = buildDev2VecInputFromRepositoryAnalysis({
   repository,
   packages: [packageRecord],
-  commits: [{ sha: 'abc', message: 'feat: add users route' }],
+  commits: [userCommit],
+  contributionSummary,
   issues: [],
-  channelStatus: { issue: 'no_issues' },
+  channelStatus: { issue: 'empty' },
   requestId: 'channel-no-issue',
 });
 assert.strictEqual(noIssueInput.issueDocument, '');
 assert.strictEqual(noIssueInput.evidenceChannels.availableChannels.issue, false);
-assert.strictEqual(noIssueInput.evidenceChannels.channelStatus.issue, 'no_issues');
+assert.strictEqual(noIssueInput.evidenceChannels.channelStatus.issue, 'empty');
 
 const fetchFailedInput = buildDev2VecInputFromRepositoryAnalysis({
   repository,
@@ -82,7 +89,7 @@ const legacyInput = buildDev2VecInputFromAnalysisSource({
   requestId: 'channel-legacy',
 });
 assert.strictEqual(legacyInput.evidenceChannels.channelStatus.issue, 'legacy_snapshot');
-assert.strictEqual(legacyInput.evidenceChannels.channelStatus.api, 'legacy_snapshot');
+assert.strictEqual(legacyInput.evidenceChannels.channelStatus.api, 'contribution_unverified');
 
 const apiParseFailedInput = buildDev2VecInputFromRepositoryAnalysis({
   repository,
@@ -98,15 +105,15 @@ const apiParseFailedInput = buildDev2VecInputFromRepositoryAnalysis({
   }],
   commits: [],
   issues: [],
-  channelStatus: { api: 'parse_failed', issue: 'no_issues' },
+  channelStatus: { api: 'parse_failed', issue: 'empty' },
   requestId: 'channel-api-parse-failed',
 });
 assert.strictEqual(apiParseFailedInput.evidenceChannels.availableChannels.api, false);
-assert.strictEqual(apiParseFailedInput.evidenceChannels.channelStatus.api, 'parse_failed');
+assert.strictEqual(apiParseFailedInput.evidenceChannels.channelStatus.api, 'contribution_unverified');
 
 const normalized = normalizeDev2VecInput(noIssueInput);
 assert.deepStrictEqual(normalized.evidenceChannels.availableChannels.issue, false);
-assert.strictEqual(normalized.evidenceChannels.channelStatus.issue, 'no_issues');
+assert.strictEqual(normalized.evidenceChannels.channelStatus.issue, 'empty');
 
 (async () => {
   const output = await runDev2VecInference(noIssueInput);

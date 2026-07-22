@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
 
-const AnalysisResult = require('../models/AnalysisResult');
 const AiFeedback = require('../models/AiFeedback');
 const RepoAnalysisSnapshot = require('../models/RepoAnalysisSnapshot');
 const Repository = require('../models/Repository');
@@ -11,6 +10,12 @@ const { buildFallbackFeedback, parseAiFeedbackResponse } = require('./ai-feedbac
 const { createStatusError, ensureAuthorizedUser } = require('./github/github.utils');
 const { mapDev2VecOutputToRoleMatches } = require('./dev2vec/dev2vecRoleMapper.service');
 const { resolveCurrentContext } = require('./currentContext.service');
+const {
+  findLatestCompatibleAnalysis,
+  isCompatibleSnapshot,
+  getCurrentDev2VecVersions,
+  getRecordMetadata,
+} = require('./dev2vec/dev2vecCompatibility.service');
 
 const PROMPT_VERSION = 'dev2vec-v1';
 const GEMINI_FALLBACK_RISK_NOTE = 'Gemini API failed, fallback feedback was used.';
@@ -56,7 +61,7 @@ const buildFeedbackResponse = (feedback) => {
   if (!feedback) {
     return null;
   }
-
+  const currentVersions = getCurrentDev2VecVersions();
   return {
     _id: feedback._id,
     repositoryId: feedback.repositoryId,
@@ -84,6 +89,11 @@ const buildFeedbackResponse = (feedback) => {
     createdAt: feedback.createdAt,
     updatedAt: feedback.updatedAt,
     isStale: Boolean(feedback.isStale),
+    staleReason: feedback.staleReason || null,
+    sourceModelVersion: feedback.metadata?.modelVersion || null,
+    sourcePipelineVersion: feedback.metadata?.analysisPipelineVersion || null,
+    currentModelVersion: currentVersions.modelVersion,
+    currentPipelineVersion: currentVersions.pipelineVersion,
     context: {
       repositoryId: feedback.repositoryId || null,
       analysisId: feedback.analysisId || null,
@@ -127,47 +137,12 @@ const toDisplayScore = (value) => {
   return Math.round((score <= 1 ? score * 100 : score) * 100) / 100;
 };
 
-const findLatestDev2VecSource = async (userId, repositoryId) => {
-  const query = {
-    userId,
-    repositoryId,
-    'dev2vec.rolePredictions.0': { $exists: true },
-  };
-
-  const analysisResult = await AnalysisResult.findOne(query)
-    .sort({ analyzedAt: -1, createdAt: -1 })
-    .select('repositoryId githubRepoId repoName fullName projectType careerDirection analyzedAt summary strengths weaknesses recommendations missingSkills skillVector dev2vec')
-    .lean();
-
-  if (analysisResult && hasDev2VecAnalysis(analysisResult)) {
-    return {
-      sourceType: 'AnalysisResult',
-      analysis: analysisResult,
-      analysisSnapshotId: analysisResult._id,
-    };
-  }
-
-  const snapshot = await RepoAnalysisSnapshot.findOne(query)
-    .sort({ analyzedAt: -1, createdAt: -1 })
-    .select('repositoryId githubRepoId repoName fullName projectType careerDirection analyzedAt analysisResultId summary strengths weaknesses recommendations missingSkills skillVector dev2vec')
-    .lean();
-
-  if (snapshot && hasDev2VecAnalysis(snapshot)) {
-    return {
-      sourceType: 'RepoAnalysisSnapshot',
-      analysis: snapshot,
-      analysisSnapshotId: snapshot.analysisResultId || snapshot._id,
-    };
-  }
-
-  return null;
-};
-
 const roundPercent = (probability) => Math.round((Number(probability) || 0) * 10000) / 100;
 
 const buildFeedbackContext = ({ repository, dev2vecSource }) => {
   const analysis = dev2vecSource.analysis;
   const dev2vecOutput = buildDev2VecOutput(analysis);
+  const pipelineMetadata = getRecordMetadata(analysis);
   const topPrediction = sortPredictions(dev2vecOutput.rolePredictions)[0] || null;
   const selectedSkillGap = dev2vecOutput.skillGaps[topPrediction?.roleId] || {};
   const roleMatches = mapDev2VecOutputToRoleMatches(dev2vecOutput, { limit: 3 }).matches;
@@ -199,6 +174,7 @@ const buildFeedbackContext = ({ repository, dev2vecSource }) => {
     analysisSource: 'dev2vec',
     analysisRecordType: dev2vecSource.sourceType,
     modelVersion: dev2vecOutput.modelVersion,
+    pipelineMetadata,
     scoringMethod: dev2vecOutput.scoringMethod,
     rolePrediction: topPrediction,
     topRole: topPrediction
@@ -252,6 +228,11 @@ const buildFeedbackMetadata = (context) => ({
   analysisSource: 'dev2vec',
   analysisRecordType: context.analysisRecordType,
   modelVersion: context.modelVersion,
+  analysisPipelineVersion: context.pipelineMetadata?.analysisPipelineVersion || null,
+  repoDocumentVersion: context.pipelineMetadata?.repoDocumentVersion || null,
+  issueDocumentVersion: context.pipelineMetadata?.issueDocumentVersion || null,
+  apiEvidenceVersion: context.pipelineMetadata?.apiEvidenceVersion || null,
+  evidenceFingerprint: context.pipelineMetadata?.evidenceFingerprint || null,
   scoringMethod: context.scoringMethod,
   rolePrediction: context.rolePrediction,
   vectorSources: context.vectorSources,
@@ -269,7 +250,32 @@ const buildFeedbackMetadata = (context) => ({
 const createDev2VecRequiredError = () => {
   const error = createStatusError(DEV2VEC_REQUIRED_MESSAGE, 400);
   error.errorCode = 'DEV2VEC_ANALYSIS_REQUIRED';
+  error.analysisStatus = 'analysis_required';
+  error.reason = 'no_compatible_dev2vec_analysis';
+  error.errors = [{ analysisStatus: error.analysisStatus, reason: error.reason }];
   return error;
+};
+
+const evaluateFeedbackCompatibility = async (userId, feedback) => {
+  if (!feedback) return { isStale: false, staleReason: null };
+  const repositoryId = feedback.repositoryId?._id || feedback.repositoryId;
+  const current = await findLatestCompatibleAnalysis({ userId, repositoryId });
+  if (!current) return { isStale: true, staleReason: 'no_compatible_dev2vec_analysis' };
+  if (String(current._id) !== String(feedback.analysisId || '')) return { isStale: true, staleReason: 'analysis_changed' };
+  const currentMetadata = getRecordMetadata(current);
+  const source = feedback.metadata || {};
+  for (const field of ['modelVersion', 'analysisPipelineVersion', 'repoDocumentVersion', 'issueDocumentVersion', 'apiEvidenceVersion']) {
+    const currentValue = field === 'modelVersion' ? current.dev2vec?.modelVersion : currentMetadata[field];
+    if (!source[field] || source[field] !== currentValue) return { isStale: true, staleReason: `${field}_changed` };
+  }
+  if (source.evidenceFingerprint && source.evidenceFingerprint !== currentMetadata.evidenceFingerprint) {
+    return { isStale: true, staleReason: 'evidence_fingerprint_changed' };
+  }
+  if (feedback.snapshotId) {
+    const snapshot = await RepoAnalysisSnapshot.findOne({ _id: feedback.snapshotId, userId }).lean();
+    if (!snapshot || !isCompatibleSnapshot(snapshot)) return { isStale: true, staleReason: 'snapshot_incompatible' };
+  }
+  return { isStale: false, staleReason: null };
 };
 
 const generateRepositoryFeedback = async (user, repoId, options = {}) => {
@@ -292,7 +298,7 @@ const generateRepositoryFeedback = async (user, repoId, options = {}) => {
     throw createStatusError('Selected context does not belong to the requested repository', 400);
   }
   const dev2vecSource = selectedContext.analysis && hasDev2VecAnalysis(selectedContext.analysis)
-    ? { sourceType: selectedContext.legacyFallback ? 'LegacyAnalysisSnapshot' : 'AnalysisResult', analysis: selectedContext.analysis, analysisSnapshotId: selectedContext.provenance.snapshotId }
+    ? { sourceType: 'AnalysisResult', analysis: selectedContext.analysis, analysisSnapshotId: selectedContext.provenance.snapshotId }
     : null;
 
   if (!dev2vecSource) {
@@ -380,23 +386,12 @@ const getRepositoryFeedback = async (user, repoId, options = {}) => {
     .select('-rawAiResponse')
     .lean();
 
-  let isStale = false;
-  if (feedback) {
-    try {
-      const current = await resolveCurrentContext(userId, { repositoryId: repository._id, roadmapId: options.roadmapId || feedback.roadmapId || null });
-      isStale = Boolean(
-        (current.provenance.analysisId && String(current.provenance.analysisId) !== String(feedback.analysisId || '')) ||
-        (current.provenance.progressUpdatedAt && new Date(current.provenance.progressUpdatedAt) > new Date(feedback.progressUpdatedAt || 0))
-      );
-    } catch (error) {
-      isStale = false;
-    }
-  }
+  const stale = feedback ? await evaluateFeedbackCompatibility(userId, feedback) : { isStale: false, staleReason: null };
   return {
     statusCode: 200,
     message: 'AI feedback result fetched successfully',
     data: {
-      feedback: buildFeedbackResponse(feedback ? { ...feedback, isStale } : feedback),
+      feedback: buildFeedbackResponse(feedback ? { ...feedback, ...stale } : feedback),
     },
   };
 };
@@ -420,7 +415,7 @@ const getMyFeedbacks = async (user) => {
     }
 
     seenRepositoryIds.add(repositoryId);
-    feedbacks.push(buildFeedbackResponse(feedback));
+    feedbacks.push(buildFeedbackResponse({ ...feedback, ...(await evaluateFeedbackCompatibility(userId, feedback)) }));
   }
 
   return {
@@ -438,4 +433,6 @@ module.exports = {
   generateRepositoryFeedback,
   getRepositoryFeedback,
   getMyFeedbacks,
+  buildFeedbackResponse,
+  evaluateFeedbackCompatibility,
 };

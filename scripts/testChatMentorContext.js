@@ -176,7 +176,7 @@ async function testComparisonContext() {
     }),
   });
 
-  const context = await buildRepoComparisonContext(userId, 'So sanh WDP_G3 va Plantcare_admin_Web');
+  const context = await buildRepoComparisonContext(userId, [String(repoA), String(repoB)]);
   assert.strictEqual(context.length, 2);
   assert.strictEqual(context[0].repoName, 'WDP_G3');
   assert(context.every((repo) => repo.topRole));

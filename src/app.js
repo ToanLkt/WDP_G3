@@ -26,6 +26,7 @@ const roleRoutes = require("./routes/role.routes");
 const errorMiddleware = require("./middlewares/error.middleware");
 const { errorResponse } = require("./utils/response");
 const { getDev2VecServiceHealth } = require('./services/dev2vec/dev2vec.service');
+const mongoose = require('mongoose');
 
 const app = express();
 
@@ -66,18 +67,29 @@ app.get("/", (req, res) => {
 const healthHandler = async (req, res) => {
   const python = await getDev2VecServiceHealth();
   const required = Boolean(process.env.DEV2VEC_SERVICE_URL);
-  const healthy = !required || python.healthy;
+  const mongoReady = mongoose.connection.readyState === 1;
+  const healthy = (!required || python.healthy) && mongoReady;
   return res.status(healthy ? 200 : 503).json({
     success: true,
     message: "Server is running",
     data: {
       status: healthy ? "ok" : "degraded",
+      ready: healthy,
+      mongoReady,
       environment: process.env.NODE_ENV || "development",
       dev2vecService: python,
+      dev2vec: {
+        enabled: String(process.env.DEV2VEC_ENABLED || 'true').toLowerCase() !== 'false',
+        modelVersion: require('../ml_service/artifacts/model_metadata.json').modelVersion || null,
+        pipelineVersion: require('./services/dev2vec/dev2vecPipelineMetadata.service').ANALYSIS_PIPELINE_VERSION,
+        transportMode: process.env.DEV2VEC_SERVICE_URL ? 'http_worker' : 'process',
+        artifactStatus: python.healthy ? 'ready' : (required ? 'unavailable' : 'local_process'),
+      },
     },
   });
 };
 
+app.get("/live", (req, res) => res.status(200).json({ success: true, data: { status: "alive" } }));
 app.get("/health", healthHandler);
 app.get("/api/health", healthHandler);
 

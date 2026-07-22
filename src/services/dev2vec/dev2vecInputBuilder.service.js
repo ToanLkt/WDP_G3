@@ -2,6 +2,9 @@ const crypto = require('crypto');
 const { detectDocumentationEvidence } = require('../../utils/documentationEvidence');
 const { parseSourceUsageEvidence } = require('./sourceUsageParser.service');
 const { SOURCE_USAGE_PARSER_VERSION } = require('./dev2vecPipelineMetadata.service');
+const { buildRepoDocument } = require('./repoDocumentBuilder.service');
+const { buildApiEvidence } = require('./apiEvidenceBuilder.service');
+const { buildAttributedIssueDocument } = require('./issueDocumentBuilder.service');
 
 const DEFAULT_TOP_N = 3;
 const DEFAULT_REPO_TEXT_LIMIT = 50000;
@@ -244,7 +247,7 @@ const uniqueByLower = (values) => {
 const clampTopN = (value) => {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) return DEFAULT_TOP_N;
-  return Math.max(1, Math.min(parsed, 5));
+  return Math.max(1, Math.min(parsed, 3));
 };
 
 const normalizeRequestId = (requestId) => {
@@ -1146,7 +1149,9 @@ const buildRepositoryEvidence = (payload = {}, options = {}) => {
   const repository = payload.repository || {};
   const packageRecords = toArray(payload.packages || payload.packageRecord).filter(Boolean);
   const commits = toArray(payload.commits).filter(Boolean);
+  const pullRequests = toArray(payload.pullRequests).filter(Boolean).slice(0, 5);
   const issues = toArray(payload.issues).filter(Boolean);
+  const contributionSummary = payload.contributionSummary || null;
   const analysisSource = payload.analysisSource || {};
 
   const repoParts = [
@@ -1202,9 +1207,17 @@ const buildRepositoryEvidence = (payload = {}, options = {}) => {
     );
   }
 
+  for (const pullRequest of pullRequests) {
+    repoParts.push(
+      pullRequest.title ? `user pull request ${pullRequest.title}` : '',
+      pullRequest.body,
+      toArray(pullRequest.changedPaths).slice(0, 20),
+    );
+  }
+
   repoParts.push(extractAnalysisParts(analysisSource));
 
-  const issueDocument = buildIssueDocument(issues, options);
+  const legacyIssueDocument = buildIssueDocument(issues, options);
   const availableFiles = packageRecords.flatMap((packageRecord) => toArray(packageRecord?.detectedFiles));
   const cachedSourceUsage = packageRecords
     .map((packageRecord) => packageRecord?.rawData?.__sourceUsageCache)
@@ -1221,7 +1234,7 @@ const buildRepositoryEvidence = (payload = {}, options = {}) => {
         limits: options.sourceUsageLimits,
       });
 
-  const apiTokens = normalizeApiTokens([
+  let apiTokens = normalizeApiTokens([
     packageRecords,
     sourceUsage.tokens,
     analysisSource?.packages,
@@ -1243,21 +1256,34 @@ const buildRepositoryEvidence = (payload = {}, options = {}) => {
   const metadataDocument = normalizeTextParts(repoParts, {
     maxLength: Math.max(1000, Math.floor((options.repoMaxLength || DEFAULT_REPO_TEXT_LIMIT) / 3)),
   });
-  const repoDocument = buildRepoDocumentWithSourceEvidence({
+  let repoDocument = buildRepoDocumentWithSourceEvidence({
     metadataText: metadataDocument,
     apiTokens,
     commits,
     sourceFiles: sourceEvidence.sourceFiles,
     userContributionFiles: userContributionEvidence.sourceFiles,
   });
-  const evidenceChannels = buildChannelAvailability({
-    repoDocument,
-    issueDocument,
-    apiTokens,
-    sourceUsage,
-    availableFiles,
-    overrides: payload.channelStatus || payload.evidenceChannels?.channelStatus || options.channelStatus || {},
-  });
+  const repoResult = buildRepoDocument({ repository, commits, pullRequests, contributionSummary: contributionSummary || {} });
+  const apiResult = buildApiEvidence(repoResult.attributedFiles, options.apiEvidenceOptions);
+  const issueResult = buildAttributedIssueDocument(issues);
+  repoDocument = repoResult.repoDocument;
+  apiTokens = contributionSummary?.accepted === true ? apiResult.apiTokens : [];
+  const issueOverride = compactString(
+    payload.channelStatus?.issue || payload.evidenceChannels?.channelStatus?.issue || options.channelStatus?.issue,
+  ).toLowerCase();
+  const issueStatusAllowsContent = !issueOverride || issueOverride === 'available';
+  const issueDocument = issueStatusAllowsContent ? issueResult.issueDocument : '';
+  const repoAvailable = contributionSummary?.accepted === true && Boolean(repoDocument.trim());
+  const issueAvailable = Boolean(issueDocument.trim());
+  const apiAvailable = contributionSummary?.accepted === true && apiTokens.length > 0;
+  const evidenceChannels = {
+    availableChannels: { repo: repoAvailable, issue: issueAvailable, api: apiAvailable },
+    channelStatus: {
+      repo: repoAvailable ? 'available' : (contributionSummary?.status || 'contribution_unverified'),
+      issue: issueAvailable ? 'available' : (issueOverride && issueOverride !== 'available' ? issueOverride : 'empty'),
+      api: apiAvailable ? 'available' : (contributionSummary?.accepted === true ? 'no_usage_tokens' : (contributionSummary?.status || 'contribution_unverified')),
+    },
+  };
 
   return {
     repoDocument,
@@ -1274,6 +1300,18 @@ const buildRepositoryEvidence = (payload = {}, options = {}) => {
     sourceEvidenceCharCount: sourceEvidence.sourceEvidenceCharCount,
     issueCount: issues.length,
     sourceUsage,
+    pullRequests,
+    contributionSummary,
+    inputDiagnostics: {
+      ...repoResult.diagnostics,
+      ...apiResult.diagnostics,
+      ...issueResult.diagnostics,
+      droppedWholeRepoSourceCount: availableFiles.length,
+      droppedUnattributedTokenCount: normalizeApiTokens([
+        packageRecords, sourceUsage.tokens, analysisSource?.packages, analysisSource?.frameworks,
+      ], options).length,
+      legacyIssueTextLength: legacyIssueDocument.length,
+    },
   };
 };
 
@@ -1388,6 +1426,7 @@ const buildDev2VecInputFromRepositoryAnalysis = (payload = {}, options = {}) => 
   const evidencePayload = {
     commits: evidence.commits,
     issues: evidence.issues,
+    pullRequests: evidence.pullRequests,
     apiTokens: evidence.apiTokens,
     sourceFiles: evidence.sourceFiles,
     userContributionFiles: evidence.userContributionFiles,
@@ -1418,6 +1457,9 @@ const buildDev2VecInputFromRepositoryAnalysis = (payload = {}, options = {}) => 
       commitCount: evidence.commits.length,
       changedFileCount: countChangedFiles(evidence.commits),
       issueCount: evidence.issues.length,
+      pullRequestCount: evidence.pullRequests.length,
+      contributionSummary: evidence.contributionSummary,
+      ...(evidence.inputDiagnostics || {}),
       packageFileCount: countPackageFiles(evidence.packageRecords),
       markdownFileCount: docsEvidence.markdownFileCount,
       readmeRootExists: docsEvidence.readmeRootExists,
@@ -1454,6 +1496,7 @@ const buildDev2VecInputFromRepositoryAnalysis = (payload = {}, options = {}) => 
   };
 };
 
+// Deprecated legacy synthetic input builder. Active role/roadmap flows must never infer from merged analyses.
 const buildDev2VecInputFromAnalysisSource = (analysisSource = {}, options = {}) => {
   const source = analysisSource || {};
   const repositories = toArray(source.repositories || source.repository).filter(Boolean);

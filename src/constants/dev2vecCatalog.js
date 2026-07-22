@@ -1,4 +1,6 @@
-const DEV2VEC_MODEL_VERSION = 'dev2vec-demo-v1';
+const { getCurrentDev2VecPipelineMetadata } = require('../services/dev2vec/dev2vecPipelineMetadata.service');
+
+const DEV2VEC_MODEL_VERSION = getCurrentDev2VecPipelineMetadata().modelVersion;
 const DEV2VEC_SCORING_METHOD = 'dev2vec_doc2vec_classifier';
 
 const DEV2VEC_ROLES = [

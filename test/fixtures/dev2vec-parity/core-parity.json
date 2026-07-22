@@ -1,0 +1,59 @@
+{
+  "fixtureVersion": "dev2vec-parity-v1",
+  "developerIdentity": { "username": "student-dev", "githubId": 42, "email": "student@example.com" },
+  "repository": {
+    "name": "parity-service", "fullName": "acme/parity-service", "description": "<b>Service</b> docs https://private.example/repo",
+    "topics": ["Node", "API"], "language": "JavaScript", "languages": ["TypeScript", "JavaScript"], "defaultBranch": "main",
+    "readme": "README ```secret code``` public setup"
+  },
+  "commits": [
+    { "sha": "user-a", "message": "feat: add parity route", "authorLogin": "student-dev", "additions": 3, "deletions": 2,
+      "files": [{ "filename": "src/route.js", "additions": 3, "deletions": 2 }],
+      "normalizedFiles": [{ "filename": "src/route.js", "evidenceContent": "import express from 'express';" }] },
+    { "sha": "team-a", "message": "teammate secret", "authorLogin": "teammate", "additions": 100, "deletions": 50,
+      "files": [{ "filename": "src/team.js" }] }
+  ],
+  "pullRequests": [
+    { "number": 7, "relation": "authored", "identityVerified": true, "authorLogin": "student-dev", "title": "Add user API", "body": "PR body", "additions": 2, "deletions": 1,
+      "updatedAt": "2026-07-20T00:00:00Z", "changedPaths": ["src/pr.js"], "files": [{ "filename": "src/pr.js", "evidenceContent": "const express = require('express');" }] },
+    { "number": 8, "relation": "authored", "authorLogin": "teammate", "title": "Teammate PR", "body": "private", "additions": 99, "deletions": 1, "files": [] }
+  ],
+  "issues": [
+    { "number": 1, "repositoryFullName": "acme/parity-service", "relations": ["authored", "commented"], "title": "Fix auth", "body": "User issue body", "labels": ["bug"], "updatedAt": "2026-07-20T00:00:00Z",
+      "userComments": [{ "body": "my first", "updatedAt": "2026-07-20T01:00:00Z" }, { "body": "my second" }, { "body": "my third" }, { "body": "ignored fourth" }],
+      "comments": [{ "body": "teammate comment" }] },
+    { "number": 2, "repositoryFullName": "acme/parity-service", "relations": ["assigned"], "title": "Assigned task", "body": "Assigned body", "labels": ["help wanted"], "updatedAt": "2026-07-19T00:00:00Z", "userComments": [] },
+    { "number": 3, "repositoryFullName": "acme/parity-service", "relations": [], "title": "Unrelated secret", "body": "must disappear", "labels": [], "updatedAt": "2026-07-21T00:00:00Z" }
+  ],
+  "touchedFiles": [
+    { "path": "package.json", "content": "{\"dependencies\":{\"Express\":\"^4\",\"@Scope/PKG\":\"1\"},\"devDependencies\":{\"Vitest\":\"1\"}}" },
+    { "path": "requirements.txt", "content": "Django==5.0\nrequests>=2" },
+    { "path": "package-lock.json", "content": "{\"dependencies\":{\"Socket.IO\":{}},\"packages\":{\"node_modules/Mongoose\":{}}}" },
+    { "path": "yarn.lock", "content": "\"Lodash@^4\":" },
+    { "path": "pnpm-lock.yaml", "content": "  Zod@3.0:" },
+    { "path": "pyproject.toml", "content": "[project]\ndependencies = [\"FastAPI>=0.1\"]\n[tool.poetry.dependencies]\nPydantic = \"^2\"" },
+    { "path": "Pipfile", "content": "Flask = \"*\"" },
+    { "path": "Gemfile", "content": "gem 'Rails', '~> 7'" },
+    { "path": "pom.xml", "content": "<project><dependency><groupId>org.springframework</groupId><artifactId>spring-core</artifactId></dependency></project>" },
+    { "path": "build.gradle", "content": "implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.9'" },
+    { "path": "build.gradle.kts", "content": "implementation(\"io.ktor:ktor-server-core:2\")" },
+    { "path": "pubspec.yaml", "content": "dependencies:\n  flutter:\n  dio: ^5" },
+    { "path": "Cargo.toml", "content": "[dependencies]\nSerde = \"1\"" },
+    { "path": "composer.json", "content": "{\"require\":{\"laravel/framework\":\"1\"}}" },
+    { "path": "go.mod", "content": "module github.com/acme/demo\nrequire golang.org/x/net v1.0.0" },
+    { "path": "Dockerfile", "content": "FROM Node:20" },
+    { "path": ".github/workflows/ci.yml", "content": "steps:\n  - uses: actions/checkout@v4" },
+    { "path": "src/a.js", "content": "import x from 'Axios/subpath'; import local from './local';" },
+    { "path": "src/b.js", "content": "const x = require('axios')" },
+    { "path": "src/c.ts", "content": "import x from 'AXIOS'" },
+    { "path": "src/d.tsx", "content": "import x from 'axios/client'" },
+    { "path": "src/e.jsx", "content": "import x from 'axios'" },
+    { "path": "src/f.js", "content": "import x from 'axios'" },
+    { "path": "src/p1.py", "content": "from sklearn.model_selection import train_test_split" },
+    { "path": "src/p2.py", "content": "import sklearn.model_selection" },
+    { "path": "src/p3.py", "content": "import sklearn.model_selection" },
+    { "path": "src/p4.py", "content": "import sklearn.model_selection" },
+    { "path": "src/p5.py", "content": "import sklearn.model_selection" }
+  ],
+  "untouchedFiles": [{ "path": "untouched/package.json", "content": "{\"dependencies\":{\"secret-package\":\"1\"}}" }]
+}

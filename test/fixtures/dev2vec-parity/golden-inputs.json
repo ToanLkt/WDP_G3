@@ -1,0 +1,39 @@
+[
+  {
+    "id": "all-channels",
+    "input": {
+      "requestId": "golden-all", "repoDocument": "repository backend api service user commit add authentication database docker testing",
+      "issueDocument": "user issue authored authentication endpoint bug user comment add validation",
+      "apiTokens": ["express", "mongoose", "jsonwebtoken", "docker"],
+      "evidenceChannels": { "availableChannels": { "repo": true, "issue": true, "api": true }, "channelStatus": { "repo": "available", "issue": "available", "api": "available" } },
+      "topN": 3
+    }
+  },
+  {
+    "id": "repo-only",
+    "input": {
+      "requestId": "golden-repo", "repoDocument": "repository frontend typescript react component responsive user interface",
+      "issueDocument": "", "apiTokens": [],
+      "evidenceChannels": { "availableChannels": { "repo": true, "issue": false, "api": false }, "channelStatus": { "repo": "available", "issue": "empty", "api": "no_usage_tokens" } },
+      "topN": 3
+    }
+  },
+  {
+    "id": "issue-only",
+    "input": {
+      "requestId": "golden-issue", "repoDocument": "",
+      "issueDocument": "user issue commented mobile location crash user comment reproduce android",
+      "apiTokens": [],
+      "evidenceChannels": { "availableChannels": { "repo": false, "issue": true, "api": false }, "channelStatus": { "repo": "contribution_unverified", "issue": "available", "api": "contribution_unverified" } },
+      "topN": 3
+    }
+  },
+  {
+    "id": "no-channels",
+    "input": {
+      "requestId": "golden-none", "repoDocument": "", "issueDocument": "", "apiTokens": [],
+      "evidenceChannels": { "availableChannels": { "repo": false, "issue": false, "api": false }, "channelStatus": { "repo": "contribution_unverified", "issue": "empty", "api": "contribution_unverified" } },
+      "topN": 3
+    }
+  }
+]

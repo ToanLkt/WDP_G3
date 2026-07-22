@@ -1,0 +1,486 @@
+{
+  "version": "coursera-roadmap-course-seed-v1",
+  "generatedAt": "2026-07-23T00:00:00+07:00",
+  "courses": [
+    {
+      "provider": "coursera",
+      "externalId": "devops-culture-and-mindset",
+      "canonicalUrl": "https://www.coursera.org/learn/devops-culture-and-mindset",
+      "title": "DevOps Culture and Mindset",
+      "description": "DevOps principles, collaboration, automation, continuous delivery and operational learning.",
+      "contentType": "course",
+      "partnerName": "University of California, Davis",
+      "level": "beginner",
+      "language": "en",
+      "estimatedDuration": "4 weeks",
+      "thumbnailUrl": "",
+      "pricingType": "provider_determined",
+      "isActive": true,
+      "verifiedAt": "2026-07-23T00:00:00.000Z",
+      "roadmapTopicMappings": [
+        {
+          "topicId": "devops-advanced",
+          "roleId": "devops",
+          "level": "advanced",
+          "relevanceScore": 62
+        },
+        {
+          "topicId": "devops-beginner",
+          "roleId": "devops",
+          "level": "beginner",
+          "relevanceScore": 90
+        }
+      ]
+    },
+    {
+      "provider": "coursera",
+      "externalId": "introduction-to-back-end-development",
+      "canonicalUrl": "https://www.coursera.org/learn/introduction-to-back-end-development",
+      "title": "Introduction to Back-End Development",
+      "description": "Fundamentals of server-side web development and back-end developer responsibilities.",
+      "contentType": "course",
+      "partnerName": "Meta",
+      "level": "beginner",
+      "language": "en",
+      "estimatedDuration": "2 weeks",
+      "thumbnailUrl": "",
+      "pricingType": "provider_determined",
+      "isActive": true,
+      "verifiedAt": "2026-07-23T00:00:00.000Z",
+      "roadmapTopicMappings": [
+        {
+          "topicId": "backend-advanced",
+          "roleId": "backend",
+          "level": "advanced",
+          "relevanceScore": 55
+        },
+        {
+          "topicId": "backend-beginner",
+          "roleId": "backend",
+          "level": "beginner",
+          "relevanceScore": 90
+        }
+      ]
+    },
+    {
+      "provider": "coursera",
+      "externalId": "react-native-developing-android-and-ios-apps",
+      "canonicalUrl": "https://www.coursera.org/learn/react-native-developing-android-and-ios-apps",
+      "title": "React Native: Developing Android and iOS Apps",
+      "description": "Intermediate cross-platform mobile application development with React Native.",
+      "contentType": "course",
+      "partnerName": "IBM",
+      "level": "intermediate",
+      "language": "en",
+      "estimatedDuration": "2 weeks",
+      "thumbnailUrl": "",
+      "pricingType": "provider_determined",
+      "isActive": true,
+      "verifiedAt": "2026-07-23T00:00:00.000Z",
+      "roadmapTopicMappings": [
+        {
+          "topicId": "mobile-advanced",
+          "roleId": "mobile",
+          "level": "advanced",
+          "relevanceScore": 82
+        },
+        {
+          "topicId": "mobile-beginner",
+          "roleId": "mobile",
+          "level": "beginner",
+          "relevanceScore": 78
+        },
+        {
+          "topicId": "mobile-intermediate",
+          "roleId": "mobile",
+          "level": "intermediate",
+          "relevanceScore": 96
+        }
+      ]
+    },
+    {
+      "provider": "coursera",
+      "externalId": "devops-and-software-engineering",
+      "canonicalUrl": "https://www.coursera.org/professional-certificates/devops-and-software-engineering",
+      "title": "IBM DevOps and Software Engineering Professional Certificate",
+      "description": "DevOps foundations, containers, Kubernetes, CI/CD, cloud-native development and monitoring.",
+      "contentType": "professional_certificate",
+      "partnerName": "IBM",
+      "level": "beginner",
+      "language": "en",
+      "estimatedDuration": "6 months",
+      "thumbnailUrl": "",
+      "pricingType": "provider_determined",
+      "isActive": true,
+      "verifiedAt": "2026-07-23T00:00:00.000Z",
+      "roadmapTopicMappings": [
+        {
+          "topicId": "devops-beginner",
+          "roleId": "devops",
+          "level": "beginner",
+          "relevanceScore": 99
+        },
+        {
+          "topicId": "devops-intermediate",
+          "roleId": "devops",
+          "level": "intermediate",
+          "relevanceScore": 87
+        }
+      ]
+    },
+    {
+      "provider": "coursera",
+      "externalId": "devops-engineering",
+      "canonicalUrl": "https://www.coursera.org/professional-certificates/devops-engineering",
+      "title": "Microsoft DevOps Engineering Professional Certificate",
+      "description": "Enterprise CI/CD, Kubernetes, Terraform, secure supply chains and observability.",
+      "contentType": "professional_certificate",
+      "partnerName": "Microsoft",
+      "level": "advanced",
+      "language": "en",
+      "estimatedDuration": "4 weeks",
+      "thumbnailUrl": "",
+      "pricingType": "provider_determined",
+      "isActive": true,
+      "verifiedAt": "2026-07-23T00:00:00.000Z",
+      "roadmapTopicMappings": [
+        {
+          "topicId": "devops-advanced",
+          "roleId": "devops",
+          "level": "advanced",
+          "relevanceScore": 99
+        },
+        {
+          "topicId": "devops-intermediate",
+          "roleId": "devops",
+          "level": "intermediate",
+          "relevanceScore": 82
+        }
+      ]
+    },
+    {
+      "provider": "coursera",
+      "externalId": "ibm-data-science",
+      "canonicalUrl": "https://www.coursera.org/professional-certificates/ibm-data-science",
+      "title": "IBM Data Science Professional Certificate",
+      "description": "Python, SQL, data analysis, visualization, machine learning and applied data science projects.",
+      "contentType": "professional_certificate",
+      "partnerName": "IBM",
+      "level": "beginner",
+      "language": "en",
+      "estimatedDuration": "4 months",
+      "thumbnailUrl": "",
+      "pricingType": "provider_determined",
+      "isActive": true,
+      "verifiedAt": "2026-07-23T00:00:00.000Z",
+      "roadmapTopicMappings": [
+        {
+          "topicId": "data-scientist-beginner",
+          "roleId": "data_scientist",
+          "level": "beginner",
+          "relevanceScore": 99
+        },
+        {
+          "topicId": "data-scientist-intermediate",
+          "roleId": "data_scientist",
+          "level": "intermediate",
+          "relevanceScore": 86
+        }
+      ]
+    },
+    {
+      "provider": "coursera",
+      "externalId": "ibm-frontend-developer",
+      "canonicalUrl": "https://www.coursera.org/professional-certificates/ibm-frontend-developer",
+      "title": "IBM Front-End Developer Professional Certificate",
+      "description": "HTML, CSS, JavaScript, React, UI/UX, responsive and accessible web applications.",
+      "contentType": "professional_certificate",
+      "partnerName": "IBM",
+      "level": "beginner",
+      "language": "en",
+      "estimatedDuration": "4 months",
+      "thumbnailUrl": "",
+      "pricingType": "provider_determined",
+      "isActive": true,
+      "verifiedAt": "2026-07-23T00:00:00.000Z",
+      "roadmapTopicMappings": [
+        {
+          "topicId": "frontend-advanced",
+          "roleId": "frontend",
+          "level": "advanced",
+          "relevanceScore": 68
+        },
+        {
+          "topicId": "frontend-beginner",
+          "roleId": "frontend",
+          "level": "beginner",
+          "relevanceScore": 96
+        },
+        {
+          "topicId": "frontend-intermediate",
+          "roleId": "frontend",
+          "level": "intermediate",
+          "relevanceScore": 86
+        }
+      ]
+    },
+    {
+      "provider": "coursera",
+      "externalId": "meta-back-end-developer",
+      "canonicalUrl": "https://www.coursera.org/professional-certificates/meta-back-end-developer",
+      "title": "Meta Back-End Developer Professional Certificate",
+      "description": "Python, SQL, databases, Django and REST APIs for entry-level back-end development.",
+      "contentType": "professional_certificate",
+      "partnerName": "Meta",
+      "level": "beginner",
+      "language": "en",
+      "estimatedDuration": "7 months",
+      "thumbnailUrl": "",
+      "pricingType": "provider_determined",
+      "isActive": true,
+      "verifiedAt": "2026-07-23T00:00:00.000Z",
+      "roadmapTopicMappings": [
+        {
+          "topicId": "backend-beginner",
+          "roleId": "backend",
+          "level": "beginner",
+          "relevanceScore": 98
+        },
+        {
+          "topicId": "backend-intermediate",
+          "roleId": "backend",
+          "level": "intermediate",
+          "relevanceScore": 82
+        }
+      ]
+    },
+    {
+      "provider": "coursera",
+      "externalId": "meta-front-end-developer",
+      "canonicalUrl": "https://www.coursera.org/professional-certificates/meta-front-end-developer",
+      "title": "Meta Front-End Developer Professional Certificate",
+      "description": "HTML, CSS, JavaScript, React, responsive interfaces and a front-end portfolio.",
+      "contentType": "professional_certificate",
+      "partnerName": "Meta",
+      "level": "beginner",
+      "language": "en",
+      "estimatedDuration": "7 months",
+      "thumbnailUrl": "",
+      "pricingType": "provider_determined",
+      "isActive": true,
+      "verifiedAt": "2026-07-23T00:00:00.000Z",
+      "roadmapTopicMappings": [
+        {
+          "topicId": "frontend-beginner",
+          "roleId": "frontend",
+          "level": "beginner",
+          "relevanceScore": 99
+        },
+        {
+          "topicId": "frontend-intermediate",
+          "roleId": "frontend",
+          "level": "intermediate",
+          "relevanceScore": 84
+        }
+      ]
+    },
+    {
+      "provider": "coursera",
+      "externalId": "microsoft-back-end-developer",
+      "canonicalUrl": "https://www.coursera.org/professional-certificates/microsoft-back-end-developer",
+      "title": "Microsoft Back-End Developer Professional Certificate",
+      "description": "Back-end systems, databases, APIs, secure scalable .NET services and CI/CD.",
+      "contentType": "professional_certificate",
+      "partnerName": "Microsoft",
+      "level": "beginner",
+      "language": "en",
+      "estimatedDuration": "6 months",
+      "thumbnailUrl": "",
+      "pricingType": "provider_determined",
+      "isActive": true,
+      "verifiedAt": "2026-07-23T00:00:00.000Z",
+      "roadmapTopicMappings": [
+        {
+          "topicId": "backend-advanced",
+          "roleId": "backend",
+          "level": "advanced",
+          "relevanceScore": 72
+        },
+        {
+          "topicId": "backend-beginner",
+          "roleId": "backend",
+          "level": "beginner",
+          "relevanceScore": 94
+        },
+        {
+          "topicId": "backend-intermediate",
+          "roleId": "backend",
+          "level": "intermediate",
+          "relevanceScore": 88
+        }
+      ]
+    },
+    {
+      "provider": "coursera",
+      "externalId": "microsoft-front-end-developer",
+      "canonicalUrl": "https://www.coursera.org/professional-certificates/microsoft-front-end-developer",
+      "title": "Microsoft Front-End Developer Professional Certificate",
+      "description": "Responsive front-end interfaces with HTML, CSS, JavaScript and modern development practices.",
+      "contentType": "professional_certificate",
+      "partnerName": "Microsoft",
+      "level": "beginner",
+      "language": "en",
+      "estimatedDuration": "4 months",
+      "thumbnailUrl": "",
+      "pricingType": "provider_determined",
+      "isActive": true,
+      "verifiedAt": "2026-07-23T00:00:00.000Z",
+      "roadmapTopicMappings": [
+        {
+          "topicId": "frontend-advanced",
+          "roleId": "frontend",
+          "level": "advanced",
+          "relevanceScore": 65
+        },
+        {
+          "topicId": "frontend-beginner",
+          "roleId": "frontend",
+          "level": "beginner",
+          "relevanceScore": 92
+        }
+      ]
+    },
+    {
+      "provider": "coursera",
+      "externalId": "data-science-statistics-machine-learning",
+      "canonicalUrl": "https://www.coursera.org/specializations/data-science-statistics-machine-learning",
+      "title": "Data Science: Statistics and Machine Learning Specialization",
+      "description": "Statistical inference, regression, machine learning, visualization and applied data products.",
+      "contentType": "specialization",
+      "partnerName": "Johns Hopkins University",
+      "level": "intermediate",
+      "language": "en",
+      "estimatedDuration": "3 months",
+      "thumbnailUrl": "",
+      "pricingType": "provider_determined",
+      "isActive": true,
+      "verifiedAt": "2026-07-23T00:00:00.000Z",
+      "roadmapTopicMappings": [
+        {
+          "topicId": "data-scientist-advanced",
+          "roleId": "data_scientist",
+          "level": "advanced",
+          "relevanceScore": 90
+        },
+        {
+          "topicId": "data-scientist-beginner",
+          "roleId": "data_scientist",
+          "level": "beginner",
+          "relevanceScore": 72
+        },
+        {
+          "topicId": "data-scientist-intermediate",
+          "roleId": "data_scientist",
+          "level": "intermediate",
+          "relevanceScore": 97
+        }
+      ]
+    },
+    {
+      "provider": "coursera",
+      "externalId": "developing-mobile-apps-with-react-native",
+      "canonicalUrl": "https://www.coursera.org/specializations/developing-mobile-apps-with-react-native",
+      "title": "Developing Mobile Apps with React Native Specialization",
+      "description": "React Native mobile UI, state management, navigation, databases and publishing.",
+      "contentType": "specialization",
+      "partnerName": "IBM",
+      "level": "beginner",
+      "language": "en",
+      "estimatedDuration": "12 weeks",
+      "thumbnailUrl": "",
+      "pricingType": "provider_determined",
+      "isActive": true,
+      "verifiedAt": "2026-07-23T00:00:00.000Z",
+      "roadmapTopicMappings": [
+        {
+          "topicId": "mobile-advanced",
+          "roleId": "mobile",
+          "level": "advanced",
+          "relevanceScore": 70
+        },
+        {
+          "topicId": "mobile-beginner",
+          "roleId": "mobile",
+          "level": "beginner",
+          "relevanceScore": 97
+        },
+        {
+          "topicId": "mobile-intermediate",
+          "roleId": "mobile",
+          "level": "intermediate",
+          "relevanceScore": 91
+        }
+      ]
+    },
+    {
+      "provider": "coursera",
+      "externalId": "machine-learning-introduction",
+      "canonicalUrl": "https://www.coursera.org/specializations/machine-learning-introduction",
+      "title": "Machine Learning Specialization",
+      "description": "Beginner-friendly supervised and unsupervised machine learning with practical model training.",
+      "contentType": "specialization",
+      "partnerName": "DeepLearning.AI",
+      "level": "beginner",
+      "language": "en",
+      "estimatedDuration": "2 months",
+      "thumbnailUrl": "",
+      "pricingType": "provider_determined",
+      "isActive": true,
+      "verifiedAt": "2026-07-23T00:00:00.000Z",
+      "roadmapTopicMappings": [
+        {
+          "topicId": "data-scientist-beginner",
+          "roleId": "data_scientist",
+          "level": "beginner",
+          "relevanceScore": 94
+        },
+        {
+          "topicId": "data-scientist-intermediate",
+          "roleId": "data_scientist",
+          "level": "intermediate",
+          "relevanceScore": 90
+        }
+      ]
+    },
+    {
+      "provider": "coursera",
+      "externalId": "meta-react-native",
+      "canonicalUrl": "https://www.coursera.org/specializations/meta-react-native",
+      "title": "Meta React Native Specialization",
+      "description": "Cross-platform mobile development, React Native UI, data, testing and APIs.",
+      "contentType": "specialization",
+      "partnerName": "Meta",
+      "level": "beginner",
+      "language": "en",
+      "estimatedDuration": "8 months",
+      "thumbnailUrl": "",
+      "pricingType": "provider_determined",
+      "isActive": true,
+      "verifiedAt": "2026-07-23T00:00:00.000Z",
+      "roadmapTopicMappings": [
+        {
+          "topicId": "mobile-beginner",
+          "roleId": "mobile",
+          "level": "beginner",
+          "relevanceScore": 99
+        },
+        {
+          "topicId": "mobile-intermediate",
+          "roleId": "mobile",
+          "level": "intermediate",
+          "relevanceScore": 86
+        }
+      ]
+    }
+  ]
+}
