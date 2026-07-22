@@ -134,18 +134,34 @@ Warnings/progress đi vào stderr. Hai output file luôn là JSON thuần.
 
 ```bash
 python3 ml_service/train.py \
-  --dataset ml_service/dataset/developers.extracted.json
+  --dataset ml_service/dataset/developers.extracted.json \
+  --cv-folds 5 \
+  --missing-channel-augmentation
 ```
 
 Training thực hiện:
 
-1. train Repo Doc2Vec với 230 dimensions;
-2. train Issue Doc2Vec với 150 dimensions;
-3. train API Doc2Vec với 200 dimensions;
-4. concat thành vector 580 dimensions;
-5. train Logistic Regression cho 5 roles;
-6. sinh 25 skill prototypes và skill vectors;
-7. ghi toàn bộ model vào `ml_service/artifacts/`.
+1. đánh giá out-of-fold bằng stratified group 5-fold cross-validation;
+2. giữ các developer dùng chung repository trong cùng fold để tránh data leakage;
+3. train lại ba Doc2Vec chỉ trên phần train của từng fold và infer vector cho phần test;
+4. đo accuracy, balanced accuracy, macro/weighted F1, top-3 accuracy, log loss,
+   per-role precision/recall/F1 và confusion matrix;
+5. train Repo Doc2Vec với 230 dimensions, Issue Doc2Vec với 150 dimensions và
+   API Doc2Vec với 200 dimensions trên toàn dataset;
+6. concat theo thứ tự repo + issue + api thành vector 580 dimensions;
+7. train Logistic Regression cho 5 roles; tùy chọn missing-channel augmentation
+   giúp classifier học cả trường hợp issue/API bị thiếu;
+8. sinh 25 skill prototypes/skill vectors và ghi artifacts vào
+   `ml_service/artifacts/`.
+
+Các metric thật được ghi tại:
+
+```txt
+model_metadata.json -> roleScoring.metrics
+```
+
+Không dùng accuracy trên chính training samples để đánh giá chất lượng. Metric
+được ghi là dự đoán out-of-fold của toàn bộ dataset.
 
 Sau khi train, kiểm tra metadata:
 
@@ -202,7 +218,7 @@ stdout trả đúng một JSON document:
 ```json
 {
   "success": true,
-  "modelVersion": "dev2vec-demo-v1",
+  "modelVersion": "dev2vec-demo-v4",
   "vectorDims": {
     "repo": 230,
     "issue": 150,
@@ -340,15 +356,82 @@ Lưu ý:
 
 ## 11. Skill gaps
 
-Mỗi predicted role được so sánh với 5 skill prototype bằng cosine similarity:
+Mỗi predicted role được so sánh với 5 skill prototype.
 
-| Similarity | Status |
+Từ `dev2vec-demo-v4`, skill score không còn dùng một cosine trên combined vector
+580 chiều. Service tính riêng:
+
+```text
+repo positive-cosine × 0.35
+issue positive-cosine × 0.15
+API/import direct overlap × 0.50
+```
+
+Các weight được renormalize khi channel bị thiếu. Cấu hình nằm trong
+`model_metadata.json -> skillGapScoring`.
+
+| Similarity mặc định | Status |
 |---:|---|
 | `>= 0.55` | `matched` |
 | `>= 0.35` và `< 0.55` | `weak` |
 | `< 0.35` | `missing` |
 
 `recommendedNextSkills` lấy missing trước, sau đó weak, tối đa 5 skills.
+
+Các giá trị `0.35/0.55` chỉ là fallback trước khi có ground truth. Khi
+`model_metadata.json` chứa `skillGapThresholds`, `infer.py` dùng hai threshold
+đã được hiệu chỉnh và khóa trong metadata.
+
+### Human-reviewed skill annotation
+
+Pilot annotation nằm tại:
+
+```text
+ml_service/dataset/skill_annotations.json
+```
+
+Annotation hiện có 70 developer và ba split:
+
+- `validation`: 30 developer đã review, chỉ dùng tune scoring/threshold;
+- `legacy_test_v3`: 20 developer test cũ, chỉ giữ để audit;
+- `test`: 20 developer mới chưa từng dùng, dành cho held-out test v4.
+
+Mọi nhãn test v4 ban đầu là `unknown`, vì không được dùng prediction/similarity
+của model để tự tạo ground truth. Reviewer kiểm tra contribution evidence rồi
+đổi thành:
+
+- `verified`: bằng chứng trực tiếp và đủ mạnh;
+- `partial_evidence`: bằng chứng hạn chế hoặc gián tiếp;
+- `not_observed`: đã review đủ evidence nhưng không quan sát thấy skill;
+- `unknown`: chưa review/không đủ evidence, luôn bị loại khỏi metric.
+
+Mỗi nhãn khác `unknown` bắt buộc có `reviewer`; nên ghi changed file, import,
+dependency, commit hoặc issue cụ thể trong `evidence`.
+
+Kiểm tra schema/progress mà không load test labels:
+
+```bash
+python3 ml_service/evaluate_skill_gaps.py --check-only
+```
+
+Sau khi review xong validation annotations, tune một cặp threshold cố định cho
+toàn bộ roles/skills bằng validation set. Evaluator bỏ qua `legacy_test_v3`:
+
+```bash
+python3 ml_service/evaluate_skill_gaps.py
+```
+
+Chỉ khi threshold đã chốt mới mở held-out test và ghi kết quả vào metadata:
+
+```bash
+python3 ml_service/evaluate_skill_gaps.py \
+  --evaluate-test \
+  --write-metadata
+```
+
+Evaluator ghi accuracy, macro/weighted F1, per-label/per-skill metrics và
+confusion matrix. Sau khi test metrics đã được ghi, script từ chối ghi đè để
+tránh tune lặp lại theo test set.
 
 ## 12. Validate trước khi tích hợp
 

@@ -8,11 +8,13 @@
     "repoSkillDocument": "backend server rest api controller route endpoint request response validation",
     "issueSkillDocument": "fix api endpoint request response validation status error",
     "apiSkillTokens": [
+      "express",
+      "nestjs",
+      "fastapi",
+      "spring-web",
+      "aspnetcore",
       "router",
-      "controller",
-      "request",
-      "response",
-      "express"
+      "controller"
     ]
   },
   {
@@ -28,7 +30,12 @@
       "mysql",
       "mongodb",
       "mongoose",
-      "sequelize"
+      "sequelize",
+      "prisma",
+      "typeorm",
+      "sqlalchemy",
+      "hibernate",
+      "redis"
     ]
   },
   {
@@ -44,7 +51,9 @@
       "passport",
       "oauth",
       "bcrypt",
-      "session"
+      "spring-security",
+      "jose",
+      "auth0"
     ]
   },
   {
@@ -59,8 +68,10 @@
       "jest",
       "pytest",
       "supertest",
+      "chai-http",
       "junit",
-      "mockito"
+      "mockito",
+      "testcontainers"
     ]
   },
   {
@@ -89,6 +100,7 @@
     "apiSkillTokens": [
       "react",
       "react-dom",
+      "next",
       "jsx",
       "vite"
     ]
@@ -105,7 +117,8 @@
       "storybook",
       "styled-components",
       "tailwindcss",
-      "sass"
+      "sass",
+      "vue"
     ]
   },
   {
@@ -121,7 +134,8 @@
       "zustand",
       "pinia",
       "mobx",
-      "rxjs"
+      "rxjs",
+      "vuex"
     ]
   },
   {
@@ -152,7 +166,8 @@
       "css",
       "tailwindcss",
       "bootstrap",
-      "sass"
+      "sass",
+      "scss"
     ]
   },
   {
@@ -167,7 +182,8 @@
       "flutter",
       "react-native",
       "swiftui",
-      "jetpack-compose"
+      "jetpack-compose",
+      "androidx.compose"
     ]
   },
   {
@@ -181,7 +197,8 @@
     "apiSkillTokens": [
       "react-navigation",
       "go-router",
-      "navigation-compose"
+      "navigation-compose",
+      "auto_route"
     ]
   },
   {
@@ -197,7 +214,9 @@
       "room",
       "realm",
       "shared_preferences",
-      "async-storage"
+      "async-storage",
+      "hive",
+      "coredata"
     ]
   },
   {
@@ -213,7 +232,7 @@
       "dio",
       "axios",
       "urlsession",
-      "http"
+      "alamofire"
     ]
   },
   {
@@ -229,7 +248,8 @@
       "provider",
       "riverpod",
       "redux",
-      "mobx"
+      "mobx",
+      "livedata"
     ]
   },
   {
@@ -258,7 +278,8 @@
       "kubernetes",
       "kubectl",
       "helm",
-      "kustomize"
+      "kustomize",
+      "client-go"
     ]
   },
   {
@@ -273,7 +294,8 @@
       "actions/checkout",
       "github-actions",
       "jenkins",
-      "gitlab-ci"
+      "gitlab-ci",
+      "circleci"
     ]
   },
   {
@@ -288,7 +310,8 @@
       "terraform",
       "ansible",
       "pulumi",
-      "cloudformation"
+      "cloudformation",
+      "bicep"
     ]
   },
   {
@@ -303,7 +326,8 @@
       "prometheus",
       "grafana",
       "opentelemetry",
-      "datadog"
+      "datadog",
+      "jaeger"
     ]
   },
   {
@@ -318,7 +342,9 @@
       "pandas",
       "numpy",
       "scipy",
-      "jupyter"
+      "jupyter",
+      "polars",
+      "statsmodels"
     ]
   },
   {
@@ -331,8 +357,10 @@
     "issueSkillDocument": "model accuracy prediction feature evaluation dataset",
     "apiSkillTokens": [
       "scikit-learn",
+      "sklearn",
       "tensorflow",
       "pytorch",
+      "torch",
       "xgboost"
     ]
   },
@@ -348,7 +376,9 @@
       "torch",
       "keras",
       "mlflow",
-      "optuna"
+      "optuna",
+      "lightning",
+      "transformers"
     ]
   },
   {
@@ -363,7 +393,8 @@
       "matplotlib",
       "seaborn",
       "plotly",
-      "altair"
+      "altair",
+      "bokeh"
     ]
   },
   {
@@ -378,7 +409,8 @@
       "transformers",
       "nltk",
       "spacy",
-      "gensim"
+      "gensim",
+      "sentence-transformers"
     ]
   }
 ]

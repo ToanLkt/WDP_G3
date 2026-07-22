@@ -1,84 +1,31 @@
 {
-  "sampleCount": 75,
-  "seedSampleCount": 75,
+  "extractionVersion": "dev2vec-dataset-v3-contribution-gated",
+  "extractionScope": {
+    "repoDocument": "contribution-gated repository context plus user commits and pull requests",
+    "issueDocument": "issues authored, assigned, or commented by the user",
+    "apiTokens": "dependencies and imports from user-touched file versions"
+  },
+  "sampleCount": 150,
+  "seedSampleCount": 150,
   "samplesPerRole": {
-    "Backend": 15,
-    "Data Scientist": 15,
-    "DevOps": 15,
-    "Frontend": 15,
-    "Mobile": 15
+    "Backend": 30,
+    "Data Scientist": 30,
+    "DevOps": 30,
+    "Frontend": 30,
+    "Mobile": 30
   },
   "developerIdsUnique": true,
-  "repoCountTotal": 208,
-  "fetchSuccessRepoCount": 202,
-  "fetchFailureRepoCount": 6,
-  "githubRequestCount": 6951,
-  "avgRepoTextLength": 41292,
-  "avgIssueTextLength": 19611,
-  "avgApiTokenCount": 647,
+  "repoCountTotal": 408,
+  "fetchSuccessRepoCount": 408,
+  "fetchFailureRepoCount": 0,
+  "contributionVerifiedRepoCount": 408,
+  "contributionRejectedRepoCount": 0,
+  "githubRequestCount": 17264,
+  "avgRepoTextLength": 24438,
+  "avgIssueTextLength": 6786,
+  "avgApiTokenCount": 47,
   "emptyRepoDocumentCount": 0,
-  "emptyIssueDocumentCount": 0,
-  "emptyApiTokensCount": 1,
-  "warnings": [
-    {
-      "developerId": "backend_003",
-      "repo": "https://github.com/hasan-py/Password-Manager-Nodejs-MongoDB",
-      "type": "README_NOT_FOUND",
-      "message": "README not found"
-    },
-    {
-      "developerId": "backend_003",
-      "repo": "https://github.com/hasan-py/CMS-Django-MySQL",
-      "type": "README_NOT_FOUND",
-      "message": "README not found"
-    },
-    {
-      "developerId": "backend_007",
-      "repo": "https://github.com/bezkoder/spring-boot-data-jpa-postgresql",
-      "type": "REPO_FETCH_FAILED",
-      "message": "GitHub API returned HTTP 404"
-    },
-    {
-      "developerId": "backend_007",
-      "repo": "https://github.com/bezkoder/spring-boot-mongodb-crud",
-      "type": "REPO_FETCH_FAILED",
-      "message": "GitHub API returned HTTP 404"
-    },
-    {
-      "developerId": "backend_007",
-      "repo": "https://github.com/bezkoder/node-js-express-sequelize-mysql",
-      "type": "REPO_FETCH_FAILED",
-      "message": "GitHub API returned HTTP 404"
-    },
-    {
-      "developerId": "backend_007",
-      "repo": "https://github.com/bezkoder/node-js-express-sequelize-postgresql",
-      "type": "REPO_FETCH_FAILED",
-      "message": "GitHub API returned HTTP 404"
-    },
-    {
-      "developerId": "backend_013",
-      "repo": "https://github.com/mcollina/type-safe-fastify",
-      "type": "README_NOT_FOUND",
-      "message": "README not found"
-    },
-    {
-      "developerId": "mobile_002",
-      "repo": "https://github.com/rrousselGit/provider",
-      "type": "README_NOT_FOUND",
-      "message": "README not found"
-    },
-    {
-      "developerId": "mobile_004",
-      "repo": "https://github.com/mrousavy/react-native-nitro-modules",
-      "type": "REPO_FETCH_FAILED",
-      "message": "GitHub API returned HTTP 404"
-    },
-    {
-      "developerId": "mobile_013",
-      "repo": "https://github.com/nicklockwood/SwiftFormatForXcode",
-      "type": "REPO_FETCH_FAILED",
-      "message": "GitHub API returned HTTP 404"
-    }
-  ]
+  "emptyIssueDocumentCount": 54,
+  "emptyApiTokensCount": 12,
+  "warnings": []
 }
