@@ -1,27 +1,38 @@
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Image,
+  Linking,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import {
   BookOpen,
   CheckCircle2,
-  ChevronRight,
   Circle,
   Code2,
-  FileText,
-  Lightbulb,
-  MessageSquareCode,
+  ChevronDown,
+  ChevronUp,
+  GraduationCap,
   Play,
   Sparkles,
+  Star,
   Target,
   Wand2,
-  AlertTriangle
+  AlertTriangle,
+  Lightbulb,
+  ExternalLink,
+  ChevronRight,
 } from 'lucide-react-native';
-import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { CustomAlert } from '../../components/ui/CustomAlert';
-import { SectionHeader } from '../../components/ui/SectionHeader';
 import { roadmapService } from '../../features/roadmaps/api';
 import type { LearningContent, LearningNode, Roadmap, IntegratedLearningListItem } from '../../features/roadmaps/types';
 import { useTabBarAwareScroll } from '../../hooks/useTabBarAwareScroll';
@@ -29,7 +40,37 @@ import type { RoadmapStackParamList } from '../../navigation/types';
 import { theme } from '../../theme';
 
 type DetailRoute = RouteProp<RoadmapStackParamList, 'SkillLearningDetail'>;
-type TabKey = 'theory' | 'practice' | 'video';
+
+interface CollapsibleSectionProps {
+  title: string;
+  count?: number;
+  isOpenInitial?: boolean;
+  children: React.ReactNode;
+}
+
+const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({ title, count, isOpenInitial = false, children }) => {
+  const [isOpen, setIsOpen] = useState(isOpenInitial);
+  return (
+    <Card style={styles.accordionCard} padded={false}>
+      <TouchableOpacity style={styles.accordionHeader} onPress={() => setIsOpen(!isOpen)} activeOpacity={0.7}>
+        <View style={styles.accordionHeaderLeft}>
+          <Text style={styles.accordionTitle}>{title}</Text>
+          {typeof count === 'number' && count > 0 && (
+            <View style={styles.accordionCountBadge}>
+              <Text style={styles.accordionCountText}>{count}</Text>
+            </View>
+          )}
+        </View>
+        {isOpen ? <ChevronUp size={16} color={theme.colors.textMuted} /> : <ChevronDown size={16} color={theme.colors.textMuted} />}
+      </TouchableOpacity>
+      {isOpen && (
+        <View style={styles.accordionContent}>
+          {children}
+        </View>
+      )}
+    </Card>
+  );
+};
 
 export const SkillLearningDetailScreen: React.FC = () => {
   const route = useRoute<DetailRoute>();
@@ -42,12 +83,63 @@ export const SkillLearningDetailScreen: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [learningContent, setLearningContent] = useState<LearningContent | null>(null);
-  const [activeTab, setActiveTab] = useState<TabKey>('theory');
-  const [aiResources, setAiResources] = useState<import('../../features/roadmaps/types').AILearningResource[]>([]);
+  const [aiResources, setAiResources] = useState<any[]>([]);
   const [isSearchingVideos, setIsSearchingVideos] = useState(false);
   const [error, setError] = useState<{ title: string; message: string } | null>(null);
-  // Integrated learning state
   const [learningListItem, setLearningListItem] = useState<IntegratedLearningListItem | null>(null);
+  const [status, setStatus] = useState<string>('unlocked');
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [courseRecommendations, setCourseRecommendations] = useState<any[]>([]);
+
+  // ── Compile content logic ──────────────────────────────────────────
+  const handleCompileWithAI = async () => {
+    setIsGenerating(true);
+    try {
+      let content: LearningContent | null = null;
+      const itemId = learningListItem?.itemId || nodeId;
+      if (itemId && roadmapId) {
+        try {
+          const resp = await roadmapService.generateRoadmapLearningItem(roadmapId, itemId, {
+            forceRegenerate: false,
+            includeResources: true,
+          });
+          if (resp?.learning) {
+            content = resp.learning;
+            if (resp.itemId) {
+              setLearningListItem((prev) => prev ? { ...prev, learningStatus: 'available' } : prev);
+            }
+          }
+        } catch {
+          // fallback
+        }
+      }
+
+      if (!content) {
+        const roleName = roadmap?.roleMatch?.roleName || roadmap?.title || 'vai trò này';
+        const difficulty = node?.difficulty || roadmap?.difficulty || 'Beginner';
+        content = await roadmapService.generateLearningContent({
+          skillName,
+          targetRole: roleName,
+          level: difficulty,
+          language: 'vi',
+        });
+      }
+
+      if (content) {
+        setLearningContent(content);
+      }
+    } catch (error) {
+      console.error('Error generating learning content:', error);
+      const roleName = roadmap?.roleMatch?.roleName || roadmap?.title || 'vai trò này';
+      navigation.navigate('ChatTab', {
+        repoId: undefined,
+        repoName: undefined,
+        initialMessage: `Hãy biên soạn cho tôi một bài học chi tiết về kỹ năng: "${skillName}" trong bối cảnh học ${roleName}. Cung cấp khái niệm, ví dụ code, và hướng dẫn thực hành.`
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -69,31 +161,57 @@ export const SkillLearningDetailScreen: React.FC = () => {
         }
         setNode(foundNode);
 
-        // Try fetching integrated learning list to check availability
-        roadmapService.getRoadmapLearningList(roadmapId)
-          .then((resp) => {
-            if (!resp?.items) return;
-            const match = resp.items.find((item) =>
-              item.itemId === nodeId ||
-              item.skillName === skillName ||
-              item.canonicalSkillName === skillName
-            );
-            if (match) {
-              setLearningListItem(match);
-              // Auto-load content if already available
-              if (match.learningStatus === 'available') {
-                return roadmapService.getRoadmapLearningItem(roadmapId, match.itemId);
+        // Fetch node progress status
+        roadmapService.getRoadmapProgress(roadmapId)
+          .then((progress) => {
+            const matchItem = progress.items.find(item => item.itemId === (nodeId || foundNode?.id));
+            if (matchItem) {
+              setStatus(matchItem.status);
+            }
+          })
+          .catch(() => {});
+
+        // Fetch Coursera recommendations
+        roadmapService.getCourseRecommendations(roadmapId, 8)
+          .then((courses) => {
+            if (courses?.length) {
+              const skillLower = skillName.toLowerCase();
+              const matched = courses.filter((c: any) =>
+                c.title?.toLowerCase().includes(skillLower) ||
+                c.description?.toLowerCase().includes(skillLower)
+              );
+              if (matched.length > 0) {
+                setCourseRecommendations(matched);
+              } else {
+                setCourseRecommendations(courses.slice(0, 3));
               }
             }
-            return null;
           })
-          .then((item) => {
-            if (item?.learning) {
-              setLearningContent(item.learning);
-              setActiveTab('theory');
+          .catch(() => {});
+
+        // Try fetching integrated learning list to check availability
+        const resp = await roadmapService.getRoadmapLearningList(roadmapId);
+        if (resp?.items) {
+          const match = resp.items.find((item) =>
+            item.itemId === nodeId ||
+            item.skillName === skillName ||
+            item.canonicalSkillName === skillName
+          );
+          if (match) {
+            setLearningListItem(match);
+            if (match.learningStatus === 'available') {
+              const item = await roadmapService.getRoadmapLearningItem(roadmapId, match.itemId);
+              if (item?.learning) {
+                setLearningContent(item.learning);
+              }
+            } else {
+              // Automatically compile if not available
+              setIsLoading(false);
+              handleCompileWithAI();
+              return;
             }
-          })
-          .catch(() => { /* Silently ignore – user can manually trigger */ });
+          }
+        }
       }
     } catch (err) {
       console.warn('[SkillLearningDetail] Load failed:', err);
@@ -106,82 +224,46 @@ export const SkillLearningDetailScreen: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  const roleName = roadmap?.roleMatch?.roleName || roadmap?.title || 'vai trò này';
-  const difficulty = node?.difficulty || roadmap?.difficulty || 'Beginner';
-
-  const handleCompileWithAI = async () => {
-    setIsGenerating(true);
+  const handleToggleCompleted = async () => {
+    if (!roadmapId || !nodeId || isUpdatingStatus) return;
+    const newStatus = status === 'completed' ? 'in_progress' : 'completed';
+    setIsUpdatingStatus(true);
     try {
-      let content: LearningContent | null = null;
-
-      // Use integrated endpoint if we have a nodeId or learningListItem
-      const itemId = learningListItem?.itemId || nodeId;
-      if (itemId && roadmapId) {
-        try {
-          const resp = await roadmapService.generateRoadmapLearningItem(roadmapId, itemId, {
-            forceRegenerate: false,
-            includeResources: true,
-          });
-          if (resp?.learning) {
-            content = resp.learning;
-            // Refresh learning list item status
-            if (resp.itemId) {
-              setLearningListItem((prev) => prev ? { ...prev, learningStatus: 'available' } : prev);
-            }
-          }
-        } catch {
-          // fallback to generic skill endpoint below
-        }
-      }
-
-      // Generic fallback
-      if (!content) {
-        content = await roadmapService.generateLearningContent({
-          skillName,
-          targetRole: roleName,
-          level: difficulty,
-          language: 'vi',
-        });
-      }
-
-      if (content) {
-        setLearningContent(content);
-        setActiveTab('theory');
-      }
-    } catch (error) {
-      console.error('Error generating learning content:', error);
-      // fallback to chat
-      navigation.navigate('ChatTab', {
-        repoId: undefined,
-        repoName: undefined,
-        initialMessage: `Hãy biên soạn cho tôi một bài học chi tiết về kỹ năng: "${skillName}" trong bối cảnh học ${roleName}. Cung cấp khái niệm, ví dụ code, và hướng dẫn thực hành.`
+      await roadmapService.updateRoadmapProgressItem(roadmapId, {
+        itemId: nodeId,
+        status: newStatus,
       });
+      setStatus(newStatus);
+    } catch (err) {
+      console.warn('Failed to update status:', err);
     } finally {
-      setIsGenerating(false);
+      setIsUpdatingStatus(false);
     }
   };
 
   const handleSearchVideos = async () => {
     setIsSearchingVideos(true);
     try {
-      const safeRole = (roleName && roleName !== 'vai trò này') ? roleName : 'Backend Developer';
-      console.log('[Video Search] skillName:', skillName, '| role:', safeRole, '| level:', difficulty);
+      const safeRole = roadmap?.roleMatch?.roleName || 'Developer';
+      const difficulty = node?.difficulty || 'Beginner';
       const results = await roadmapService.searchLearningResources(skillName, {
         targetRole: safeRole,
         level: difficulty,
         language: 'vi',
       });
-      console.log('[Video Search] results count:', results?.length, results);
       setAiResources(Array.isArray(results) ? results : []);
-      setActiveTab('video');
     } catch (error: any) {
       console.error('Error searching learning resources:', error);
-      const msg = error?.message || 'Không thể tìm kiếm video. Vui lòng thử lại.';
-      setError({ title: 'Tìm kiếm thất bại', message: msg });
     } finally {
       setIsSearchingVideos(false);
     }
   };
+
+  useEffect(() => {
+    if (learningContent && aiResources.length === 0) {
+      handleSearchVideos();
+    }
+  }, [learningContent]);
 
   const openUrl = (url?: string) => {
     if (url && url !== '#') {
@@ -189,634 +271,400 @@ export const SkillLearningDetailScreen: React.FC = () => {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || isGenerating) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-        <Text style={styles.loadingText}>Đang tải thông tin kỹ năng...</Text>
+        <Sparkles size={48} color={theme.colors.primary} style={{ marginBottom: 20 }} />
+        <Text style={styles.generatingTitle}>
+          Đang tạo nội dung học cho kỹ năng này...
+        </Text>
+        <Text style={styles.generatingSub}>
+          Vui lòng đợi trong giây lát.
+        </Text>
+        <ActivityIndicator size="small" color={theme.colors.primary} style={{ marginTop: 24 }} />
       </View>
     );
   }
 
-  if (isGenerating) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Wand2 size={40} color={theme.colors.primary} style={{ marginBottom: 16 }} />
-        <Text style={{ fontSize: 16, fontWeight: 'bold', color: theme.colors.textPrimary, marginBottom: 8 }}>
-          AI Mentor đang biên soạn...
-        </Text>
-        <Text style={{ color: theme.colors.textSecondary, textAlign: 'center', paddingHorizontal: 32 }}>
-          Quá trình này có thể mất vài chục giây để thu thập kiến thức tốt nhất cho {skillName}.
-        </Text>
-      </View>
-    );
-  }
-
-  // --- RENDERING TABS ---
-
-  const renderTabs = () => {
-    return (
-      <View style={styles.tabsContainer}>
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'theory' && styles.tabButtonActive]}
-          onPress={() => setActiveTab('theory')}
-        >
-          <BookOpen size={16} color={activeTab === 'theory' ? theme.colors.primary : theme.colors.textMuted} />
-          <Text style={[styles.tabText, activeTab === 'theory' && styles.tabTextActive]}>Lý thuyết</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'practice' && styles.tabButtonActive]}
-          onPress={() => setActiveTab('practice')}
-        >
-          <CheckCircle2 size={16} color={activeTab === 'practice' ? theme.colors.primary : theme.colors.textMuted} />
-          <Text style={[styles.tabText, activeTab === 'practice' && styles.tabTextActive]}>Thực hành</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'video' && styles.tabButtonActive]}
-          onPress={() => setActiveTab('video')}
-        >
-          <Play size={16} color={activeTab === 'video' ? theme.colors.primary : theme.colors.textMuted} />
-          <Text style={[styles.tabText, activeTab === 'video' && styles.tabTextActive]}>Video</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  };
-
-  const renderTheoryTab = () => {
-    if (!learningContent) return null;
-    return (
-      <View style={styles.tabContent}>
-        <Card style={styles.contentCard}>
-          <View style={styles.cardHeader}>
-            <BookOpen size={20} color={theme.colors.secondary} />
-            <Text style={styles.cardTitle}>Tổng Quan Kỹ Năng</Text>
-          </View>
-          <Text style={styles.contentText}>{learningContent.overview}</Text>
-        </Card>
-
-        <Card style={styles.contentCard}>
-          <View style={styles.cardHeader}>
-            <Lightbulb size={20} color={theme.colors.warning} />
-            <Text style={styles.cardTitle}>Tại sao cần học kỹ năng này?</Text>
-          </View>
-          <Text style={styles.contentText}>{learningContent.whyLearn}</Text>
-        </Card>
-
-        <Card style={styles.contentCard}>
-          <View style={styles.cardHeader}>
-            <Target size={20} color={theme.colors.primary} />
-            <Text style={styles.cardTitle}>Trường Hợp Áp Dụng</Text>
-          </View>
-          {learningContent.useCases?.map((useCase, idx) => (
-            <View key={idx} style={styles.listItem}>
-              <CheckCircle2 size={16} color={theme.colors.primary} style={{ marginRight: 8, marginTop: 2 }} />
-              <Text style={styles.listText}>{useCase}</Text>
-            </View>
-          ))}
-        </Card>
-
-        <Card style={styles.contentCard}>
-          <View style={styles.cardHeader}>
-            <Wand2 size={20} color={theme.colors.secondaryLight} />
-            <Text style={styles.cardTitle}>Cách Thức Áp Dụng</Text>
-          </View>
-          <Text style={styles.contentText}>{learningContent.howToApply}</Text>
-        </Card>
-
-        {learningContent.examples && learningContent.examples.length > 0 && (
-          <View style={styles.section}>
-            <SectionHeader title="Ví dụ thực hành minh họa" icon={<Code2 size={20} color={theme.colors.primary} />} />
-            {learningContent.examples.map((example, idx) => (
-              <Card key={idx} style={styles.exampleCard}>
-                <Text style={styles.exampleTitle}>{example.title}</Text>
-                {example.code && (
-                  <View style={styles.codeBlock}>
-                    <Text style={styles.codeText}>{example.code}</Text>
-                  </View>
-                )}
-                <Text style={styles.exampleExplanation}>{example.explanation}</Text>
-              </Card>
-            ))}
-          </View>
-        )}
-      </View>
-    );
-  };
-
-  const renderPracticeTab = () => {
-    if (!learningContent) return null;
-    return (
-      <View style={styles.tabContent}>
-        {learningContent.exercises && learningContent.exercises.length > 0 && (
-          <View style={styles.section}>
-            <SectionHeader title="Bài Tập Thực Hành" icon={<Code2 size={20} color={theme.colors.primary} />} />
-            {learningContent.exercises.map((exercise, idx) => (
-              <Card key={idx} style={styles.exerciseCard}>
-                <Text style={styles.exerciseTitle}>{exercise.title}</Text>
-                <Text style={styles.contentText}>{exercise.description}</Text>
-              </Card>
-            ))}
-          </View>
-        )}
-
-        {learningContent.commonMistakes && learningContent.commonMistakes.length > 0 && (
-          <Card style={[styles.contentCard, { borderColor: theme.colors.error, borderWidth: 1 }]}>
-            <View style={styles.cardHeader}>
-              <AlertTriangle size={20} color={theme.colors.error} />
-              <Text style={[styles.cardTitle, { color: theme.colors.error }]}>Lỗi Phổ Biến Cần Tránh</Text>
-            </View>
-            {learningContent.commonMistakes.map((mistake, idx) => (
-              <View key={idx} style={styles.listItem}>
-                <View style={styles.dotError} />
-                <Text style={styles.listText}>{mistake}</Text>
-              </View>
-            ))}
-          </Card>
-        )}
-
-        {learningContent.checklist && learningContent.checklist.length > 0 && (
-          <Card style={styles.contentCard}>
-            <View style={styles.cardHeader}>
-              <CheckCircle2 size={20} color={theme.colors.success} />
-              <Text style={styles.cardTitle}>Checklist Tự Đánh Giá</Text>
-            </View>
-            <Text style={{ fontSize: 13, color: theme.colors.textMuted, marginBottom: 16 }}>
-              Hãy đánh dấu các mục dưới đây sau khi bạn đã tự tin nắm vững.
-            </Text>
-            {learningContent.checklist.map((item, idx) => (
-              <TouchableOpacity key={idx} style={styles.checklistItem}>
-                <Circle size={20} color={theme.colors.border} style={{ marginRight: 12 }} />
-                <Text style={styles.checklistText}>{item}</Text>
-              </TouchableOpacity>
-            ))}
-          </Card>
-        )}
-      </View>
-    );
-  };
-
-  const renderVideoTab = () => {
-    const nodeResources = node?.resources || [];
-    const allResources = aiResources.length > 0 ? aiResources : [];
-
-    if (allResources.length === 0 && nodeResources.length === 0) {
-      return (
-        <View style={styles.tabContent}>
-          <Card style={styles.emptyStateCard}>
-            <Play size={40} color={theme.colors.error} style={{ marginBottom: 16 }} />
-            <Text style={styles.title}>Chưa Có Video Gợi Ý</Text>
-            <Text style={styles.description}>
-              Bạn có muốn hệ thống tự động tìm kiếm các video bài học phù hợp nhất từ YouTube cho kỹ năng này không?
-            </Text>
-            <Button
-              title={isSearchingVideos ? 'Đang tìm kiếm...' : 'Tìm kiếm video bài học từ YouTube'}
-              icon={<Play size={16} color="#FFF" />}
-              onPress={handleSearchVideos}
-              variant="primary"
-              disabled={isSearchingVideos}
-            />
-          </Card>
-        </View>
-      );
-    }
-
-    const displayResources = allResources.length > 0 ? allResources : nodeResources;
-
-    return (
-      <View style={styles.tabContent}>
-        <View style={styles.videoSectionHeader}>
-          <Text style={styles.videoSectionTitle}>
-            {allResources.length > 0 ? `${allResources.length} video từ YouTube` : `${nodeResources.length} tài nguyên`}
-          </Text>
-          <TouchableOpacity onPress={handleSearchVideos} disabled={isSearchingVideos} style={styles.refreshBtn}>
-            {isSearchingVideos ? (
-              <ActivityIndicator size="small" color={theme.colors.primary} />
-            ) : (
-              <Text style={styles.refreshBtnText}>Tải lại</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {displayResources.map((res, idx) => {
-          const thumbnailUrl = (res as any).thumbnailUrl;
-          const channelTitle = (res as any).channelTitle;
-          const isYouTube = res.provider === 'YouTube' || res.url?.includes('youtube.com');
-          return (
-            <TouchableOpacity
-              key={(res as any)._id || (res as any).id || idx}
-              style={styles.videoCard}
-              activeOpacity={0.75}
-              onPress={() => openUrl(res.url)}
-            >
-              {thumbnailUrl ? (
-                <Image source={{ uri: thumbnailUrl }} style={styles.videoThumbnail} resizeMode="cover" />
-              ) : (
-                <View style={styles.videoThumbnailPlaceholder}>
-                  <Play size={28} color={theme.colors.error} />
-                </View>
-              )}
-              <View style={styles.videoInfo}>
-                <Text style={styles.videoTitle} numberOfLines={2}>{res.title}</Text>
-                <View style={styles.videoMeta}>
-                  {isYouTube && (
-                    <View style={styles.youtubeTag}>
-                      <Play size={10} color="#FF0000" />
-                      <Text style={styles.youtubeTagText}>YouTube</Text>
-                    </View>
-                  )}
-                  {channelTitle && (
-                    <Text style={styles.channelTitle} numberOfLines={1}>{channelTitle}</Text>
-                  )}
-                </View>
-              </View>
-              <ChevronRight size={18} color={theme.colors.textMuted} />
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    );
-  };
+  const roleName = roadmap?.roleMatch?.roleName || roadmap?.title || 'vai trò này';
+  const difficulty = node?.difficulty || roadmap?.difficulty || 'Beginner';
+  const statusLabel = status === 'completed' ? 'Đã hoàn thành' : status === 'in_progress' ? 'Đang học' : 'Chưa học';
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={[
-        styles.contentContainer,
-        { paddingBottom: tabBarPaddingBottom, flexGrow: 1, justifyContent: !learningContent ? 'center' : 'flex-start' }
-      ]}
-    >
-      {learningContent ? (
-        <>
-          <View style={styles.header}>
-            <View style={styles.badgesRow}>
-              <Badge label={difficulty} variant={difficulty === 'Advanced' ? 'error' : difficulty === 'Intermediate' ? 'warning' : 'success'} />
-              <Badge label={roleName} variant="primary" />
-            </View>
-            <Text style={styles.title}>{learningContent.title || skillName}</Text>
-          </View>
-          
-          {renderTabs()}
-          
-          {activeTab === 'theory' && renderTheoryTab()}
-          {activeTab === 'practice' && renderPracticeTab()}
-          {activeTab === 'video' && renderVideoTab()}
-        </>
-      ) : (
-        <Card style={styles.emptyStateCard} glow="violet">
-          <View style={styles.iconContainer}>
-            <BookOpen size={48} color={theme.colors.primaryLight} strokeWidth={1.5} />
-          </View>
-          
-          <Text style={styles.title}>Chưa Có Bài Học Cho Kỹ Năng Này</Text>
-          
-          <Text style={styles.description}>
-            Hệ thống chưa tìm thấy giáo trình biên soạn sẵn cho kỹ năng "{skillName}" với vai trò {roleName} ở trình độ {difficulty}.
-          </Text>
-          
-          <Button
-            title="Biên soạn bài học bằng AI"
-            icon={<Wand2 size={18} color="#FFF" />}
-            onPress={handleCompileWithAI}
-            variant="primary"
-            style={styles.compileBtn}
-          />
-        </Card>
-      )}
-    </ScrollView>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.contentContainer, { paddingBottom: tabBarPaddingBottom }]}
+      >
+        {learningContent ? (
+          <>
+            {/* ─── Header Section ─────────────────────────────────────── */}
+            <View style={styles.header}>
+              <View style={styles.headerTopRow}>
+                <View style={styles.badgesRow}>
+                  <Badge label={difficulty.toLowerCase()} variant="secondary" />
+                  <Badge label={roleName} variant="primary" />
+                  <Badge label={statusLabel} variant={status === 'completed' ? 'success' : status === 'in_progress' ? 'warning' : 'muted'} />
+                </View>
 
-    <CustomAlert
-      visible={!!error}
-      title={error?.title || ''}
-      message={error?.message || ''}
-      type="error"
-      confirmText="Đóng"
-      onConfirm={() => setError(null)}
-    />
+                {/* Mark as completed button */}
+                <TouchableOpacity
+                  style={[styles.completeBtn, status === 'completed' && styles.completeBtnActive]}
+                  onPress={handleToggleCompleted}
+                  disabled={isUpdatingStatus}
+                >
+                  <CheckCircle2 size={16} color={status === 'completed' ? '#fff' : theme.colors.primary} />
+                  <Text style={[styles.completeBtnText, status === 'completed' && styles.completeBtnTextActive]}>
+                    {status === 'completed' ? 'Hoàn thành' : 'Đánh dấu hoàn thành'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.title}>{learningContent.title || skillName}</Text>
+              <Text style={styles.subtitle}>{node?.description || 'Giáo trình tự động tổng hợp từ AI Mentor'}</Text>
+            </View>
+
+            {/* ─── Collapsible Accordion ──────────────────────────────── */}
+
+            {/* 1. Video/tài nguyên */}
+            <CollapsibleSection title="Video/tài nguyên" count={node?.resources?.length || aiResources.length} isOpenInitial={false}>
+              {node?.resources && node.resources.length > 0 ? (
+                node.resources.map((res, idx) => (
+                  <TouchableOpacity key={idx} style={styles.resourceItem} onPress={() => openUrl(res.url)}>
+                    <Play size={16} color={theme.colors.primary} />
+                    <Text style={styles.resourceTitle} numberOfLines={1}>{res.title}</Text>
+                    <ExternalLink size={12} color={theme.colors.textMuted} />
+                  </TouchableOpacity>
+                ))
+              ) : aiResources && aiResources.length > 0 ? (
+                aiResources.map((res, idx) => (
+                  <TouchableOpacity key={idx} style={styles.resourceItem} onPress={() => openUrl(res.url)}>
+                    <Play size={16} color={theme.colors.primary} />
+                    <Text style={styles.resourceTitle} numberOfLines={1}>{res.title}</Text>
+                    <ExternalLink size={12} color={theme.colors.textMuted} />
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <Text style={styles.emptyText}>Chưa tìm thấy video hỗ trợ.</Text>
+              )}
+            </CollapsibleSection>
+
+            {/* 2. Tổng quan */}
+            <CollapsibleSection title="Tổng quan" isOpenInitial={true}>
+              <Text style={styles.contentText}>{learningContent.overview}</Text>
+            </CollapsibleSection>
+
+            {/* 3. Vì sao cần học? */}
+            <CollapsibleSection title="Vì sao cần học?">
+              <Text style={styles.contentText}>{learningContent.whyLearn}</Text>
+            </CollapsibleSection>
+
+            {/* 4. Use cases */}
+            <CollapsibleSection title="Use cases" count={learningContent.useCases?.length || 0}>
+              {learningContent.useCases && learningContent.useCases.length > 0 ? (
+                learningContent.useCases.map((useCase, idx) => (
+                  <View key={idx} style={styles.listItem}>
+                    <CheckCircle2 size={15} color={theme.colors.primary} style={{ marginRight: 8, marginTop: 2 }} />
+                    <Text style={styles.listText}>{useCase}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.emptyText}>Không có thông tin.</Text>
+              )}
+            </CollapsibleSection>
+
+            {/* 5. Cách áp dụng */}
+            <CollapsibleSection title="Cách áp dụng">
+              <Text style={styles.contentText}>{learningContent.howToApply}</Text>
+            </CollapsibleSection>
+
+            {/* 6. Ví dụ */}
+            <CollapsibleSection title="Ví dụ" count={learningContent.examples?.length || 0}>
+              {learningContent.examples && learningContent.examples.length > 0 ? (
+                learningContent.examples.map((example, idx) => (
+                  <View key={idx} style={styles.exampleBlock}>
+                    <Text style={styles.exampleTitle}>{example.title}</Text>
+                    {example.code && (
+                      <View style={styles.codeBlock}>
+                        <Text style={styles.codeText}>{example.code}</Text>
+                      </View>
+                    )}
+                    <Text style={styles.exampleExplanation}>{example.explanation}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.emptyText}>Chưa có ví dụ.</Text>
+              )}
+            </CollapsibleSection>
+
+            {/* 7. Bài tập */}
+            <CollapsibleSection title="Bài tập" count={learningContent.exercises?.length || 0}>
+              {learningContent.exercises && learningContent.exercises.length > 0 ? (
+                learningContent.exercises.map((ex, idx) => (
+                  <View key={idx} style={styles.exampleBlock}>
+                    <Text style={styles.exampleTitle}>{ex.title}</Text>
+                    <Text style={styles.contentText}>{ex.description}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.emptyText}>Chưa có bài tập.</Text>
+              )}
+            </CollapsibleSection>
+
+            {/* 8. Checklist */}
+            <CollapsibleSection title="Checklist" count={learningContent.checklist?.length || 0}>
+              {learningContent.checklist && learningContent.checklist.length > 0 ? (
+                learningContent.checklist.map((chk, idx) => (
+                  <View key={idx} style={styles.checklistItem}>
+                    <Circle size={16} color={theme.colors.border} style={{ marginRight: 8 }} />
+                    <Text style={styles.checklistText}>{chk}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.emptyText}>Không có checklist.</Text>
+              )}
+            </CollapsibleSection>
+
+            {/* 9. Lỗi thường gặp */}
+            <CollapsibleSection title="Lỗi thường gặp" count={learningContent.commonMistakes?.length || 0}>
+              {learningContent.commonMistakes && learningContent.commonMistakes.length > 0 ? (
+                learningContent.commonMistakes.map((mistake, idx) => (
+                  <View key={idx} style={styles.listItem}>
+                    <AlertTriangle size={15} color={theme.colors.error} style={{ marginRight: 8, marginTop: 2 }} />
+                    <Text style={styles.listText}>{mistake}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.emptyText}>Không có dữ liệu.</Text>
+              )}
+            </CollapsibleSection>
+
+            {/* 10. Kỹ năng tiếp theo */}
+            <CollapsibleSection title="Kỹ năng tiếp theo" count={learningContent.nextSkills?.length || 0}>
+              <View style={styles.chipRow}>
+                {learningContent.nextSkills && learningContent.nextSkills.length > 0 ? (
+                  learningContent.nextSkills.map((sk) => (
+                    <View key={sk} style={styles.chipDefault}>
+                      <Text style={styles.chipText}>{sk}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.emptyText}>Chưa có đề xuất.</Text>
+                )}
+              </View>
+            </CollapsibleSection>
+
+            {/* 11. Coursera Recommendations */}
+            {courseRecommendations.length > 0 && (
+              <CollapsibleSection title="Khóa học Coursera đề xuất" count={courseRecommendations.length}>
+                {courseRecommendations.map((course: any, idx: number) => (
+                  <TouchableOpacity
+                    key={idx}
+                    style={styles.courseCard}
+                    onPress={() => course.url && Linking.openURL(course.url)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.courseCardHeader}>
+                      <GraduationCap size={18} color={theme.colors.primary} />
+                      <Text style={styles.courseTitle} numberOfLines={2}>
+                        {course.title}
+                      </Text>
+                    </View>
+                    {course.partner && (
+                      <Text style={styles.coursePartner}>{course.partner}</Text>
+                    )}
+                    {course.description && (
+                      <Text style={styles.courseDescription} numberOfLines={2}>
+                        {course.description}
+                      </Text>
+                    )}
+                    <View style={styles.courseMeta}>
+                      {course.rating && (
+                        <View style={styles.courseMetaItem}>
+                          <Star size={12} color="#f59e0b" />
+                          <Text style={styles.courseMetaText}>{course.rating}</Text>
+                        </View>
+                      )}
+                      {course.duration && (
+                        <Text style={styles.courseMetaText}>{course.duration}</Text>
+                      )}
+                      {course.level && (
+                        <View style={[styles.courseLevel]}>
+                          <Text style={styles.courseLevelText}>{course.level}</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.courseViewRow}>
+                      <ExternalLink size={13} color={theme.colors.primary} />
+                      <Text style={styles.courseViewText}>Xem trên Coursera</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </CollapsibleSection>
+            )}
+          </>
+        ) : (
+          <Card style={styles.emptyStateCard}>
+            <BookOpen size={48} color={theme.colors.primaryLight} style={{ marginBottom: 16 }} />
+            <Text style={styles.title}>Chưa có giáo trình</Text>
+            <Text style={styles.description}>
+              Hệ thống chưa biên soạn bài học cho kỹ năng này.
+            </Text>
+            <Button
+              title="Biên soạn bằng AI"
+              icon={<Wand2 size={18} color="#fff" />}
+              onPress={handleCompileWithAI}
+              variant="primary"
+            />
+          </Card>
+        )}
+      </ScrollView>
+
+      <CustomAlert
+        visible={!!error}
+        title={error?.title || ''}
+        message={error?.message || ''}
+        type="error"
+        confirmText="Đóng"
+        onConfirm={() => setError(null)}
+      />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
+  container: { flex: 1, backgroundColor: theme.colors.background },
+  contentContainer: { padding: theme.spacing.md, gap: 10 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background, paddingHorizontal: 32 },
+  generatingTitle: { fontSize: 16, fontWeight: 'bold', color: theme.colors.textPrimary, textAlign: 'center', marginBottom: 8 },
+  generatingSub: { fontSize: 13, color: theme.colors.textMuted, textAlign: 'center' },
+
+  header: { marginBottom: theme.spacing.md },
+  headerTopRow: { flexDirection: 'column', gap: 8, marginBottom: 8 },
+  badgesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  title: { fontSize: theme.typography.sizes.lg + 2, fontWeight: 'bold', color: theme.colors.textPrimary, marginTop: 4 },
+  subtitle: { fontSize: 13, color: theme.colors.textSecondary, marginTop: 4 },
+
+  completeBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    borderWidth: 1, borderColor: theme.colors.primary,
+    borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, alignSelf: 'flex-start',
   },
-  contentContainer: {
-    padding: theme.spacing.lg,
+  completeBtnActive: { backgroundColor: theme.colors.success, borderColor: theme.colors.success },
+  completeBtnText: { fontSize: 12, fontWeight: '600', color: theme.colors.primary },
+  completeBtnTextActive: { color: '#fff' },
+
+  // Accordion Card styles
+  accordionCard: { padding: 0, overflow: 'hidden', borderWidth: 1, borderColor: theme.colors.border },
+  accordionHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: 14, paddingHorizontal: 16, backgroundColor: theme.colors.surface,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: theme.colors.background,
+  accordionHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  accordionTitle: { fontSize: 14, fontWeight: 'bold', color: theme.colors.textPrimary },
+  accordionCountBadge: { backgroundColor: theme.colors.surfaceLight, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 },
+  accordionCountText: { fontSize: 10, color: theme.colors.textSecondary },
+  accordionContent: { padding: 16, borderTopWidth: 1, borderTopColor: theme.colors.border, backgroundColor: theme.colors.surfaceLight },
+
+  contentText: { fontSize: 13, color: theme.colors.textSecondary, lineHeight: 22 },
+  emptyText: { fontSize: 12, color: theme.colors.textMuted, fontStyle: 'italic' },
+
+  resourceItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: theme.colors.border,
   },
-  loadingText: {
-    marginTop: theme.spacing.sm,
-    color: theme.colors.textMuted,
-    fontSize: theme.typography.sizes.sm,
-  },
-  header: {
-    marginBottom: theme.spacing.lg,
-  },
-  badgesRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
-    flexWrap: 'wrap',
-  },
-  title: {
-    fontSize: theme.typography.sizes.xl,
-    fontWeight: theme.typography.weights.heavy,
-    color: theme.colors.textPrimary,
-  },
-  emptyStateCard: {
-    padding: theme.spacing.xl,
-    alignItems: 'center',
+  resourceTitle: { flex: 1, fontSize: 13, color: theme.colors.textSecondary },
+
+  listItem: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 8 },
+  listText: { flex: 1, fontSize: 13, color: theme.colors.textSecondary, lineHeight: 20 },
+
+  exampleBlock: { marginBottom: 16 },
+  exampleTitle: { fontSize: 13, fontWeight: 'bold', color: theme.colors.textPrimary, marginBottom: 6 },
+  codeBlock: { backgroundColor: '#1e1e1e', padding: 12, borderRadius: 6, marginBottom: 8 },
+  codeText: { fontFamily: 'monospace', fontSize: 11, color: '#9cdcfe' },
+  exampleExplanation: { fontSize: 12, color: theme.colors.textSecondary, lineHeight: 18 },
+
+  checklistItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  checklistText: { fontSize: 13, color: theme.colors.textSecondary },
+
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chipDefault: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border },
+  chipText: { fontSize: 11, color: theme.colors.textSecondary },
+
+  emptyStateCard: { padding: 24, alignItems: 'center' },
+  description: { fontSize: 13, color: theme.colors.textSecondary, textAlign: 'center', marginBottom: 16 },
+
+  // Coursera course card styles
+  courseCard: {
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(124, 58, 237, 0.2)', // primary with opacity
-  },
-  iconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 24,
-    backgroundColor: 'rgba(124, 58, 237, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: theme.spacing.lg,
-  },
-  description: {
-    fontSize: theme.typography.sizes.sm,
-    color: theme.colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: theme.typography.lineHeights.md,
-    marginBottom: theme.spacing.xl,
-    paddingHorizontal: theme.spacing.md,
-  },
-  compileBtn: {
-    width: '100%',
-    height: 48,
-  },
-  // Tabs styles
-  tabsContainer: {
-    flexDirection: 'row',
-    backgroundColor: theme.colors.surfaceLight,
-    borderRadius: theme.roundness.md,
-    padding: 4,
-    marginBottom: theme.spacing.lg,
-  },
-  tabButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
+    borderColor: theme.colors.border,
     borderRadius: theme.roundness.sm,
+    padding: 12,
+    marginBottom: 10,
     gap: 6,
   },
-  tabButtonActive: {
-    backgroundColor: theme.colors.surface,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  tabText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: theme.colors.textMuted,
-  },
-  tabTextActive: {
-    color: theme.colors.primary,
-    fontWeight: 'bold',
-  },
-  tabContent: {
-    flex: 1,
-  },
-  contentCard: {
-    padding: theme.spacing.md,
-    marginBottom: theme.spacing.md,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: theme.spacing.md,
-    gap: 8,
-  },
-  cardTitle: {
-    fontSize: theme.typography.sizes.md,
-    fontWeight: theme.typography.weights.bold,
-    color: theme.colors.textPrimary,
-  },
-  contentText: {
-    fontSize: theme.typography.sizes.sm,
-    color: theme.colors.textSecondary,
-    lineHeight: theme.typography.lineHeights.md,
-  },
-  listItem: {
+  courseCardHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 10,
+    gap: 10,
   },
-  listText: {
+  courseTitle: {
     flex: 1,
-    fontSize: theme.typography.sizes.sm,
-    color: theme.colors.textSecondary,
-    lineHeight: theme.typography.lineHeights.sm + 2,
-  },
-  dotError: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: theme.colors.error,
-    marginTop: 8,
-    marginRight: 10,
-  },
-  section: {
-    marginBottom: theme.spacing.lg,
-  },
-  exampleCard: {
-    padding: theme.spacing.md,
-    marginBottom: theme.spacing.md,
-    backgroundColor: theme.colors.surfaceLight,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  exampleTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: theme.colors.textPrimary,
-    marginBottom: 8,
-  },
-  codeBlock: {
-    backgroundColor: '#1E1E1E',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  codeText: {
-    fontFamily: 'monospace',
-    color: '#D4D4D4',
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  exampleExplanation: {
     fontSize: 13,
-    color: theme.colors.textSecondary,
-    fontStyle: 'italic',
-  },
-  exerciseCard: {
-    padding: theme.spacing.md,
-    marginBottom: theme.spacing.sm,
-    borderLeftWidth: 3,
-    borderLeftColor: theme.colors.primary,
-  },
-  exerciseTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: theme.colors.textPrimary,
-    marginBottom: 6,
+    lineHeight: 19,
   },
-  checklistItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  checklistText: {
-    flex: 1,
-    fontSize: 14,
-    color: theme.colors.textSecondary,
-  },
-  resourceItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.surfaceLight,
-    padding: theme.spacing.md,
-    borderRadius: theme.roundness.sm,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    marginBottom: theme.spacing.sm,
-  },
-  resourceIconWrapper: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: theme.colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: theme.spacing.sm,
-  },
-  resourceContent: {
-    flex: 1,
-  },
-  resourceTitle: {
-    fontSize: theme.typography.sizes.sm,
-    fontWeight: theme.typography.weights.bold,
-    color: theme.colors.textPrimary,
-    marginBottom: 2,
-  },
-  resourceMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  resourceProvider: {
-    fontSize: theme.typography.sizes.xs,
-    color: theme.colors.secondaryLight,
-    fontWeight: theme.typography.weights.medium,
-  },
-  resourceDuration: {
-    fontSize: theme.typography.sizes.xs,
-    color: theme.colors.textMuted,
-  },
-  // Video tab styles
-  videoSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: theme.spacing.md,
-  },
-  videoSectionTitle: {
-    fontSize: theme.typography.sizes.sm,
-    fontWeight: theme.typography.weights.bold,
-    color: theme.colors.textSecondary,
-  },
-  refreshBtn: {
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: 4,
-    borderRadius: theme.roundness.sm,
-    borderWidth: 1,
-    borderColor: theme.colors.primary,
-    minWidth: 60,
-    alignItems: 'center',
-  },
-  refreshBtnText: {
-    fontSize: theme.typography.sizes.xs,
+  coursePartner: {
+    fontSize: 11,
     color: theme.colors.primary,
-    fontWeight: theme.typography.weights.medium,
+    fontWeight: '600',
+    marginLeft: 28,
   },
-  videoCard: {
+  courseDescription: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    lineHeight: 17,
+    marginLeft: 28,
+  },
+  courseMeta: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.surfaceLight,
-    borderRadius: theme.roundness.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    marginBottom: theme.spacing.sm,
-    overflow: 'hidden',
-  },
-  videoThumbnail: {
-    width: 110,
-    height: 72,
-    backgroundColor: theme.colors.surface,
-  },
-  videoThumbnailPlaceholder: {
-    width: 110,
-    height: 72,
-    backgroundColor: theme.colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  videoInfo: {
-    flex: 1,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-  },
-  videoTitle: {
-    fontSize: theme.typography.sizes.sm,
-    fontWeight: theme.typography.weights.bold,
-    color: theme.colors.textPrimary,
-    marginBottom: 6,
-    lineHeight: 18,
-  },
-  videoMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
     flexWrap: 'wrap',
+    gap: 8,
+    marginLeft: 28,
+    alignItems: 'center',
   },
-  youtubeTag: {
+  courseMetaItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    backgroundColor: 'rgba(255,0,0,0.08)',
+  },
+  courseMetaText: {
+    fontSize: 11,
+    color: theme.colors.textMuted,
+  },
+  courseLevel: {
+    backgroundColor: '#6366f110',
+    borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 4,
   },
-  youtubeTagText: {
+  courseLevelText: {
     fontSize: 10,
-    color: '#FF0000',
-    fontWeight: 'bold',
+    color: theme.colors.primary,
+    fontWeight: '600',
   },
-  channelTitle: {
-    fontSize: theme.typography.sizes.xs,
-    color: theme.colors.textMuted,
-    flex: 1,
+  courseViewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginLeft: 28,
+    marginTop: 2,
+  },
+  courseViewText: {
+    fontSize: 12,
+    color: theme.colors.primary,
+    fontWeight: '600',
   },
 });
-

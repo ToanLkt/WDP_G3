@@ -86,7 +86,10 @@ export type BackendRoadmap = {
     missingSkills?: string[]
     latestAnalysisSnapshotId?: string
   }
-  roadmapSource?: string
+  roadmapSource?: string | Record<string, any>
+  requestedLevel?: string
+  effectiveLevel?: string
+  userLevel?: string
   roleMatch?: {
     roleId: string
     roleName: string
@@ -104,6 +107,12 @@ export type BackendRoadmap = {
   status?: 'active' | 'archived'
   createdAt?: string
   updatedAt?: string
+  progressSummary?: {
+    totalItems?: number
+    completedItems?: number
+    inProgressItems?: number
+    overallProgress?: number
+  }
 }
 
 const roleLabels: Record<string, string> = {
@@ -372,6 +381,14 @@ export const normalizeBackendRoadmap = (backend: BackendRoadmap): Roadmap => {
     }
   })
 
+  // Parse roadmapSource if it was stored as JSON string
+  let parsedRoadmapSource: Record<string, any> | undefined;
+  if (typeof backend.roadmapSource === 'string' && backend.roadmapSource.startsWith('{')) {
+    try { parsedRoadmapSource = JSON.parse(backend.roadmapSource); } catch { parsedRoadmapSource = undefined; }
+  } else if (backend.roadmapSource && typeof backend.roadmapSource === 'object') {
+    parsedRoadmapSource = backend.roadmapSource as Record<string, any>;
+  }
+
   return {
     id,
     slug,
@@ -409,9 +426,20 @@ export const normalizeBackendRoadmap = (backend: BackendRoadmap): Roadmap => {
       skills: unique(path.skills ?? []),
       suggestedTasks: (path.suggestedTasks ?? []).map((task) => toUserText(task)).filter(Boolean)
     })),
-    roadmapSource: backend.roadmapSource,
+    roadmapSource: parsedRoadmapSource,
     roleMatch: backend.roleMatch,
-    skillGapSummary: backend.skillGapSummary
+    skillGapSummary: backend.skillGapSummary,
+    requestedLevel: backend.requestedLevel ?? parsedRoadmapSource?.requestedLevel ?? parsedRoadmapSource?.userLevel,
+    effectiveLevel: backend.effectiveLevel ?? parsedRoadmapSource?.effectiveLevel ?? parsedRoadmapSource?.userLevel,
+    // Pass through server progressSummary if available (overrides local calculation)
+    ...(backend.progressSummary ? {
+      progressSummary: {
+        totalItems: backend.progressSummary.totalItems,
+        completedItems: backend.progressSummary.completedItems,
+        inProgressItems: backend.progressSummary.inProgressItems,
+      },
+      progress: backend.progressSummary.overallProgress ?? progress,
+    } : {}),
   }
 }
 
@@ -526,6 +554,36 @@ export const roadmapService = {
     const response = await apiClient.patch(`/roadmaps/${roadmapId}/archive`);
     const roadmap = extractApiResource<BackendRoadmap>(response.data, ['roadmap']);
     return normalizeBackendRoadmap(roadmap);
+  },
+
+  async deleteRoadmap(roadmapId: string): Promise<void> {
+    await apiClient.delete(`/roadmaps/${roadmapId}`);
+  },
+
+  async getCourseRecommendations(roadmapId: string, limit: number = 5): Promise<any[]> {
+    const response = await apiClient.get(`/roadmaps/${roadmapId}/course-recommendations`, {
+      params: { limit },
+    });
+    // Response shape: { success, data: { roadmapId, topic, courses: [...] } }
+    const payload = response.data as any;
+    const dataObj = payload?.data ?? payload;
+    const raw: any[] = dataObj?.courses ?? dataObj?.recommendations ?? [];
+    if (!Array.isArray(raw)) return [];
+    // Normalize API field names to our internal CourseRecommendation shape
+    return raw.map((c: any) => ({
+      id: c.id ?? c.url,
+      title: c.title ?? '',
+      provider: c.provider ?? c.partnerName ?? 'Coursera',
+      platform: c.platform ?? c.provider ?? 'Coursera',
+      url: c.url,
+      thumbnailUrl: c.thumbnailUrl,
+      duration: c.estimatedDuration ?? c.duration,
+      language: c.language,
+      type: c.contentType ?? c.type,
+      level: c.level,
+      description: c.description,
+      partnerName: c.partnerName,
+    }));
   },
 
   async generateLearningContent(data: {

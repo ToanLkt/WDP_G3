@@ -90,6 +90,18 @@ export const searchLearningResources = async (
   return data.resources || [];
 };
 
+export const addManualResource = async (
+  skillName: string,
+  resourceData: Partial<LearningResource>
+): Promise<LearningResource> => {
+  const encodedSkill = encodeURIComponent(skillName);
+  const response = await apiClient.post(`/learning/skills/${encodedSkill}/resources`, resourceData);
+  const res = response as any;
+  const data = res.data?.data || res.data;
+  return data.resource || data;
+};
+
+
 export const getOrGenerateLearningFlow = async (
   skillName: string,
   targetRole: string

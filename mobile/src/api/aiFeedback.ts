@@ -16,4 +16,9 @@ export const aiFeedbackApi = {
     const response = await apiClient.get('/ai-feedback/me');
     return normalizeFeedbackList(unwrapResponse(response.data));
   },
+
+  async getHealth() {
+    const response = await apiClient.get('/ai/health');
+    return unwrapResponse(response.data);
+  },
 };

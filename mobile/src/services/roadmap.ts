@@ -184,3 +184,12 @@ export const archiveRoadmap = async (roadmapId: string) => {
   const roadmap = await roadmapService.archiveRoadmap(roadmapId);
   return webRoadmapToMobile(roadmap);
 };
+
+export const deleteRoadmap = async (roadmapId: string) => {
+  return roadmapService.deleteRoadmap(roadmapId);
+};
+
+export const fetchCourseRecommendations = async (roadmapId: string, limit?: number) => {
+  return roadmapService.getCourseRecommendations(roadmapId, limit);
+};
+

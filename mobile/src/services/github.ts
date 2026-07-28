@@ -38,6 +38,11 @@ const parseGitHubAccount = (payload: unknown) => {
   return extractApiResource<Record<string, unknown>>(payload, ['githubAccount', 'github', 'account', 'user']);
 };
 
+export const fetchGitHubAccount = async () => {
+  const payload = await githubApi.getAccount();
+  return parseGitHubAccount(payload);
+};
+
 /** Lightweight check — GET /github/me only (used during OAuth polling) */
 export const checkGitHubConnected = async (): Promise<boolean> => {
   try {

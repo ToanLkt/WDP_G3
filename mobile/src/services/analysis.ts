@@ -56,3 +56,13 @@ export const fetchRoleMatches = async (params: {
   const payload = await analysisApi.getRoleMatches(params);
   return extractApiResource<RoleMatchesResponse>(payload);
 };
+
+export const fetchRoleCatalog = async () => {
+  const payload = await analysisApi.getRolesCatalog();
+  return extractApiResource<any>(payload, ['roles']);
+};
+
+export const fetchSkillCatalog = async () => {
+  const payload = await analysisApi.getSkillsCatalog();
+  return extractApiResource<any>(payload, ['skills']);
+};

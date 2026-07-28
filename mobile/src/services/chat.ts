@@ -102,3 +102,8 @@ export const sendChatMessage = async (
     status,
   };
 };
+
+export const deleteChatSession = async (sessionId: string): Promise<void> => {
+  await chatApi.deleteSession(sessionId);
+};
+

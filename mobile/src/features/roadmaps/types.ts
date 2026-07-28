@@ -111,13 +111,25 @@ export interface Roadmap {
     skills: string[];
     suggestedTasks: string[];
   }[];
-  roadmapSource?: string;
+  roadmapSource?: {
+    selectedRoleId?: string;
+    selectedRoleName?: string;
+    roleSelectionType?: string;
+    sourceRepositoryName?: string;
+    fullName?: string;
+    repoName?: string;
+    pipelineVersion?: string;
+    sourceMode?: string;
+  } | string;
   roleMatch?: {
     roleId: string;
     roleName: string;
     matchScore: number;
     matchLevel: string;
     matchLevelLabel: string;
+    topMatchedSkills?: string[];
+    topMissingSkills?: string[];
+    recommendedNextSkills?: string[];
   };
   skillGapSummary?: {
     totalGaps: number;
@@ -125,6 +137,13 @@ export interface Roadmap {
     weakSkillCount: number;
     recommendedNextSkills: string[];
     prioritySkills: string[];
+  };
+  requestedLevel?: string;
+  effectiveLevel?: string;
+  progressSummary?: {
+    totalItems?: number;
+    completedItems?: number;
+    inProgressItems?: number;
   };
 }
 
@@ -219,14 +238,15 @@ export interface RoadmapProgressItem {
 
 export interface RoadmapProgressRecord {
   roadmapId: string;
-  overallProgress: number;
+  overallProgress?: number; // may not exist at root level
   items: RoadmapProgressItem[];
   progressSummary?: {
     totalItems?: number;
     completedItems?: number;
     inProgressItems?: number;
     notStartedItems?: number;
-    overallProgressPercent?: number;
+    overallProgress?: number;       // API puts overall % HERE (e.g. 4 = 4%)
+    overallProgressPercent?: number; // fallback alias
   };
 }
 

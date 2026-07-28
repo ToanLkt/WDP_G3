@@ -12,6 +12,11 @@ export const githubApi = {
     }>(response.data);
   },
 
+  async getAccount() {
+    const response = await apiClient.get('/github/account');
+    return unwrapResponse(response.data);
+  },
+
   async me() {
     const response = await apiClient.get('/github/me');
     return unwrapResponse(response.data);

@@ -20,4 +20,14 @@ export const analysisApi = {
     const response = await apiClient.post('/analysis/role-matches', data);
     return unwrapResponse(response.data);
   },
+
+  async getRolesCatalog() {
+    const response = await apiClient.get('/roles/catalog');
+    return unwrapResponse(response.data);
+  },
+
+  async getSkillsCatalog() {
+    const response = await apiClient.get('/skills/catalog');
+    return unwrapResponse(response.data);
+  },
 };

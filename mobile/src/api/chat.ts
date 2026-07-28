@@ -20,4 +20,9 @@ export const chatApi = {
     const response = await apiClient.post(`/chat/sessions/${sessionId}/messages`, { message });
     return unwrapResponse(response.data);
   },
+
+  async deleteSession(sessionId: string) {
+    const response = await apiClient.delete(`/chat/sessions/${sessionId}`);
+    return unwrapResponse(response.data);
+  },
 };

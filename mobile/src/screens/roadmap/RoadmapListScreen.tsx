@@ -20,6 +20,7 @@ import {
   Search,
   ChevronDown,
   Bell,
+  CheckCircle2,
 } from 'lucide-react-native';
 
 import { theme } from '../../theme';
@@ -63,6 +64,14 @@ export const RoadmapListScreen: React.FC = () => {
   const [rolePickerVisible, setRolePickerVisible] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'active' | 'archived'>('active');
   const [filters, setFilters] = useState(defaultRoadmapFilters);
+  
+  // Customization States for Source Selection
+  const [sourceMode, setSourceMode] = useState<'single_repo' | 'selected_repos' | 'all_analyzed_repos'>('single_repo');
+  const [selectedRepoIds, setSelectedRepoIds] = useState<string[]>([]);
+  const [showCreateSection, setShowCreateSection] = useState(true);
+  const [isMatchingRoles, setIsMatchingRoles] = useState(false);
+  const [repoPickerVisible, setRepoPickerVisible] = useState(false);
+  const [repoPickerMulti, setRepoPickerMulti] = useState(false);
   // Server-based role recommendations (primary). Falls back to local logic if unavailable.
   const [serverRecommendedRole, setServerRecommendedRole] = useState<RoadmapRoleRecommendation | null>(null);
   const [serverJobRoadmaps, setServerJobRoadmaps] = useState<RoadmapRoleRecommendation[]>([]);
@@ -70,6 +79,7 @@ export const RoadmapListScreen: React.FC = () => {
   const [serverRoleMatches, setServerRoleMatches] = useState<RoleMatch[]>([]);
   // Error alert state
   const [errorAlert, setErrorAlert] = useState<{ visible: boolean; message: string }>({ visible: false, message: '' });
+  const [deleteDialog, setDeleteDialog] = useState<{ visible: boolean; roadmap: Roadmap | null }>({ visible: false, roadmap: null });
 
   React.useLayoutEffect(() => {
     navigation.setOptions({
@@ -96,34 +106,30 @@ export const RoadmapListScreen: React.FC = () => {
         roadmapService.getRoadmaps({ status: statusFilter }),
         fetchMyAnalyses().catch(() => [] as AnalysisResult[]),
       ]);
-      setRoadmaps(roadmapList);
-      setAnalyses(analysisList);
 
-      // Fetch server-side role matches (best effort)
-      if (analysisList.length > 0) {
-        fetchRoleMatches({ sourceMode: 'all_analyzed_repos', limit: 5 })
-          .then((result) => {
-            if (result?.matches?.length > 0) {
-              setServerRoleMatches(result.matches);
-              const [top, ...rest] = result.matches;
-              setServerRecommendedRole({
-                role: top.roleName as any,
-                title: 'Đề xuất chính theo phân tích',
-                reason: `Điểm phù hợp: ${top.matchScore}% – ${top.matchLevelLabel}`,
-                focus: top.recommendedNextSkills?.join(', ') || 'Tập trung theo các kỹ năng chính đã phát hiện.',
-              });
-              setServerJobRoadmaps(
-                rest.slice(0, 2).map((m) => ({
-                  role: m.roleName as any,
-                  title: `Đề xuất phụ: ${m.roleName}`,
-                  reason: `Điểm phù hợp: ${m.matchScore}% – ${m.matchLevelLabel}`,
-                  focus: m.recommendedNextSkills?.join(', ') || 'Phát triển thêm kỹ năng còn thiếu.',
-                }))
-              );
+      // Fetch progress for each roadmap in parallel (best-effort) to show correct % in card
+      const withProgress = await Promise.all(
+        roadmapList.map(async (roadmap) => {
+          try {
+            const prog = await roadmapService.getRoadmapProgress(roadmap.id);
+            if (prog?.progressSummary) {
+              return {
+                ...roadmap,
+                progress: prog.progressSummary.overallProgress ?? roadmap.progress,
+                progressSummary: {
+                  totalItems: prog.progressSummary.totalItems,
+                  completedItems: prog.progressSummary.completedItems,
+                  inProgressItems: prog.progressSummary.inProgressItems,
+                },
+              };
             }
-          })
-          .catch(() => { /* Use local fallback silently */ });
-      }
+          } catch { /* ignore */ }
+          return roadmap;
+        })
+      );
+
+      setRoadmaps(withProgress);
+      setAnalyses(analysisList);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể tải danh sách roadmap.');
     } finally {
@@ -148,6 +154,57 @@ export const RoadmapListScreen: React.FC = () => {
     });
   }, [roadmaps, filters]);
 
+  const analyzedRepos = useMemo(() => {
+    const repos = new Map<string, { id: string; name: string }>();
+    analyses.forEach((a) => {
+      if (a.repositoryId) {
+        repos.set(a.repositoryId, { id: a.repositoryId, name: a.repositoryName || a.repositoryId });
+      }
+    });
+    return Array.from(repos.values());
+  }, [analyses]);
+
+  const handleConfirmSource = async () => {
+    setIsMatchingRoles(true);
+    setError(null);
+    try {
+      const result = await fetchRoleMatches({
+        sourceMode,
+        repoId: sourceMode === 'single_repo' ? selectedRepoIds[0] : undefined,
+        repoIds: sourceMode === 'selected_repos' ? selectedRepoIds : undefined,
+        limit: 5,
+      });
+      if (result?.matches?.length > 0) {
+        setServerRoleMatches(result.matches);
+        const [top, ...rest] = result.matches;
+        setServerRecommendedRole({
+          role: top.roleName as any,
+          title: 'Đề xuất chính theo phân tích',
+          reason: `Điểm phù hợp: ${top.matchScore}% – ${top.matchLevelLabel}`,
+          focus: top.recommendedNextSkills?.join(', ') || 'Tập trung theo các kỹ năng chính đã phát hiện.',
+        });
+        setServerJobRoadmaps(
+          rest.slice(0, 2).map((m) => ({
+            role: m.roleName as any,
+            title: `Đề xuất phụ: ${m.roleName}`,
+            reason: `Điểm phù hợp: ${m.matchScore}% – ${m.matchLevelLabel}`,
+            focus: m.recommendedNextSkills?.join(', ') || 'Phát triển thêm kỹ năng còn thiếu.',
+          }))
+        );
+      } else {
+        setServerRoleMatches([]);
+        setServerRecommendedRole(null);
+        setServerJobRoadmaps([]);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể tính vai trò phù hợp.');
+      setServerRoleMatches([]);
+    } finally {
+      setIsMatchingRoles(false);
+    }
+  };
+
+
   const inProgressCount = roadmaps.filter((r) => r.progress > 0 && r.progress < 100).length;
   const archivedCount = roadmaps.filter((r) => r.status === 'archived').length;
   const completedNodes = roadmaps.reduce((sum, r) => sum + countCompletedNodes(r), 0);
@@ -155,6 +212,22 @@ export const RoadmapListScreen: React.FC = () => {
 
   const openRoadmap = (roadmap: Roadmap) => {
     navigation.navigate('RoadmapDetail', { roadmapId: roadmap.id, title: roadmap.title });
+  };
+
+  const handleDeleteRoadmap = (roadmap: Roadmap) => {
+    setDeleteDialog({ visible: true, roadmap });
+  };
+
+  const confirmDeleteRoadmap = async () => {
+    const r = deleteDialog.roadmap;
+    if (!r) return;
+    setDeleteDialog({ visible: false, roadmap: null });
+    try {
+      await roadmapService.deleteRoadmap(r.id);
+      await loadData();
+    } catch (err: any) {
+      setErrorAlert({ visible: true, message: err?.message || 'Không thể xóa roadmap.' });
+    }
   };
 
   const handleGenerate = async (role: string, actionKey = role) => {
@@ -224,41 +297,102 @@ export const RoadmapListScreen: React.FC = () => {
         </Card>
       </View>
 
-      <Card style={styles.createCard} padded={false}>
-        <View style={styles.createGradient} />
-        <Text style={styles.sectionTitle}>Bạn muốn đi theo hướng nào tiếp theo?</Text>
-        <Text style={styles.sectionDesc}>
-          Chọn vai trò mục tiêu, hệ thống sẽ tạo hoặc mở lại roadmap phù hợp với tài khoản của bạn.
-        </Text>
-        <View style={styles.createColumn}>
-          <TouchableOpacity
-            style={styles.rolePicker}
-            onPress={() => setRolePickerVisible(true)}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.rolePickerLabel}>Vai trò mục tiêu</Text>
-            <View style={styles.rolePickerValueRow}>
-              <Text style={styles.rolePickerText} numberOfLines={2}>{targetRole}</Text>
-              <ChevronDown size={18} color={theme.colors.secondaryLight} />
+      {showCreateSection && (
+        <Card style={styles.createCard} padded={false}>
+          <Text style={styles.sectionTitle}>Tạo lộ trình học theo vai trò mục tiêu</Text>
+          <Text style={[styles.sectionDesc, { marginBottom: theme.spacing.md }]}>
+            Chọn dữ liệu học tập đã phân tích, hệ thống sẽ đề xuất các hướng nghề nghiệp phù hợp để bạn tạo lộ trình học.
+          </Text>
+
+          <View style={styles.sourceModeTabs}>
+            <TouchableOpacity 
+              style={[styles.sourceModeTab, sourceMode === 'single_repo' && styles.sourceModeTabActive]}
+              onPress={() => setSourceMode('single_repo')}
+            >
+              <Text style={[styles.sourceModeTabText, sourceMode === 'single_repo' && styles.sourceModeTabTextActive]}>
+                Một dự án
+              </Text>
+              <Text style={styles.sourceModeTabDesc}>
+                Đề xuất vai trò từ một dự án cụ thể.
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.sourceModeTab, sourceMode === 'selected_repos' && styles.sourceModeTabActive]}
+              onPress={() => setSourceMode('selected_repos')}
+            >
+              <Text style={[styles.sourceModeTabText, sourceMode === 'selected_repos' && styles.sourceModeTabTextActive]}>
+                Một vài dự án
+              </Text>
+              <Text style={styles.sourceModeTabDesc}>
+                Đề xuất dựa trên các dự án đã chọn.
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.sourceModeTab, sourceMode === 'all_analyzed_repos' && styles.sourceModeTabActive]}
+              onPress={() => setSourceMode('all_analyzed_repos')}
+            >
+              <Text style={[styles.sourceModeTabText, sourceMode === 'all_analyzed_repos' && styles.sourceModeTabTextActive]}>
+                Portfolio đã phân tích
+              </Text>
+              <Text style={styles.sourceModeTabDesc}>
+                Dựa trên tất cả các repo.
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {(sourceMode === 'single_repo' || sourceMode === 'selected_repos') && (
+            <View style={styles.repoPickerContainer}>
+              <TouchableOpacity
+                style={styles.rolePicker}
+                onPress={() => {
+                  setRepoPickerMulti(sourceMode === 'selected_repos');
+                  setRepoPickerVisible(true);
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.rolePickerLabel}>Nguồn dữ liệu</Text>
+                <View style={styles.rolePickerValueRow}>
+                  <Text style={styles.rolePickerText} numberOfLines={2}>
+                    {selectedRepoIds.length > 0 
+                      ? `${selectedRepoIds.length} dự án đã chọn` 
+                      : 'Chọn dự án để phân tích'}
+                  </Text>
+                  <ChevronDown size={18} color={theme.colors.secondaryLight} />
+                </View>
+              </TouchableOpacity>
             </View>
-          </TouchableOpacity>
-          <View style={styles.buttonBlock}>
+          )}
+
+          <View style={styles.confirmSourceBtnContainer}>
             <Button
-              title="Tạo lộ trình"
-              onPress={() => handleGenerate(targetRole, 'manual')}
-              loading={generatingKey === 'manual'}
-              disabled={isGenerating}
-              icon={<Sparkles size={16} color={theme.colors.textPrimary} />}
+              title={isMatchingRoles ? "Đang xử lý..." : "Xác nhận nguồn tạo lộ trình"}
+              onPress={handleConfirmSource}
+              disabled={isMatchingRoles || (sourceMode !== 'all_analyzed_repos' && selectedRepoIds.length === 0)}
             />
           </View>
-        </View>
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
-      </Card>
+          
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        </Card>
+      )}
 
       <Card style={styles.aiCard} padded={false}>
-        <Text style={styles.sectionTitle}>Gợi ý vai trò phù hợp với hồ sơ học tập</Text>
+        <View style={styles.toggleRow}>
+          <Text style={styles.sectionTitle}>Tạo lộ trình mới</Text>
+          <TouchableOpacity onPress={() => setShowCreateSection(!showCreateSection)}>
+             <View style={[styles.toggleSwitch, showCreateSection && styles.toggleSwitchActive]}>
+               <View style={[styles.toggleThumb, showCreateSection && styles.toggleThumbActive]} />
+             </View>
+          </TouchableOpacity>
+        </View>
+        <Text style={[styles.sectionDesc, { marginBottom: theme.spacing.md }]}>
+          Bật khi bạn muốn tạo lại từ đầu. Tắt để ưu tiên dùng lộ trình đã có và phản hồi nhanh hơn.
+        </Text>
+
+        <Text style={styles.sectionTitle}>Vai trò từ kết quả phân tích repository</Text>
         <Text style={[styles.sectionDesc, { marginBottom: theme.spacing.sm }]}>
-          Chọn vai trò bạn muốn theo đuổi để tạo lộ trình học cá nhân hóa.
+          Chọn nguồn dữ liệu và bấm Xác nhận và tiếp tục để xem gợi ý.
         </Text>
 
         {serverRoleMatches.length === 0 && !recommendedRoadmap && (
@@ -269,127 +403,84 @@ export const RoadmapListScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Featured role – first / best match */}
-        {serverRoleMatches.length > 0 && serverRoleMatches.slice(0, 1).map((match) => (
-          <View key={match.roleId} style={styles.roleMatchCardFeatured}>
-            <View style={styles.roleMatchHeader}>
-              <View style={{ flex: 1 }}>
-                <Badge label="Gợi ý phù hợp nhất" variant="secondary" />
-                <Text style={styles.roleMatchName}>{match.roleName}</Text>
-                <Text style={styles.roleMatchLevel}>{match.matchLevelLabel}</Text>
+        {serverRoleMatches.length > 0 && (
+          <>
+            {/* Vai trò chính */}
+            <View style={styles.roleMatchCardFeatured}>
+              <View style={styles.roleMatchHeader}>
+                <View style={styles.scoreCircle}>
+                  <Text style={styles.scoreValue}>{Math.round(serverRoleMatches[0].matchScore)}%</Text>
+                  <Text style={styles.scoreLabel}>Phù hợp</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Badge label="Vai trò chính từ phân tích" variant="primary" />
+                  <Text style={styles.roleMatchName}>{serverRoleMatches[0].roleName}</Text>
+                  <Text style={styles.roleMatchLevel}>{serverRoleMatches[0].matchLevelLabel}</Text>
+                </View>
               </View>
-              <View style={styles.scoreCircle}>
-                <Text style={styles.scoreValue}>{match.matchScore}%</Text>
-                <Text style={styles.scoreLabel}>phù hợp</Text>
-              </View>
-            </View>
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: `${Math.min(match.matchScore, 100)}%` }]} />
-            </View>
-            {match.topMatchedSkills && match.topMatchedSkills.length > 0 && (
+
               <View style={styles.skillSection}>
                 <Text style={styles.skillSectionLabel}>NĂNG LỰC HIỆN CÓ</Text>
                 <View style={styles.skillChips}>
-                  {match.topMatchedSkills.slice(0, 5).map((s) => (
+                  {serverRoleMatches[0].topMatchedSkills?.slice(0, 5).map((s: string) => (
                     <View key={s} style={styles.skillChipGreen}><Text style={styles.skillChipTextGreen}>{s}</Text></View>
                   ))}
+                  {(!serverRoleMatches[0].topMatchedSkills || serverRoleMatches[0].topMatchedSkills.length === 0) && (
+                    <Text style={{ fontSize: 11, color: theme.colors.textMuted }}>Chưa có tín hiệu nổi bật.</Text>
+                  )}
                 </View>
               </View>
-            )}
-            {match.topMissingSkills && match.topMissingSkills.length > 0 && (
+
               <View style={styles.skillSection}>
                 <Text style={styles.skillSectionLabel}>CẦN CỦNG CỐ</Text>
                 <View style={styles.skillChips}>
-                  {match.topMissingSkills.slice(0, 5).map((s) => (
+                  {serverRoleMatches[0].topMissingSkills?.slice(0, 5).map((s: string) => (
                     <View key={s} style={styles.skillChipOrange}><Text style={styles.skillChipTextOrange}>{s}</Text></View>
                   ))}
                 </View>
               </View>
-            )}
-            {match.recommendedNextSkills && match.recommendedNextSkills.length > 0 && (
+
               <View style={styles.skillSection}>
                 <Text style={styles.skillSectionLabel}>NÊN HỌC TIẾP</Text>
                 <View style={styles.skillChips}>
-                  {match.recommendedNextSkills.slice(0, 5).map((s) => (
+                  {serverRoleMatches[0].recommendedNextSkills?.slice(0, 5).map((s: string) => (
                     <View key={s} style={styles.skillChipBlue}><Text style={styles.skillChipTextBlue}>{s}</Text></View>
                   ))}
                 </View>
               </View>
-            )}
-            <View style={[styles.buttonBlock, { marginTop: theme.spacing.md }]}>
+
               <Button
                 title="Tạo lộ trình học"
-                onPress={() => handleGenerate(match.roleName, `role-${match.roleId}`)}
-                loading={generatingKey === `role-${match.roleId}`}
+                onPress={() => handleGenerate(serverRoleMatches[0].roleName, 'ai')}
+                loading={generatingKey === 'ai'}
                 disabled={isGenerating}
-                icon={<Sparkles size={16} color={theme.colors.textPrimary} />}
+                icon={<Sparkles size={16} color={theme.colors.surface} />}
+                style={{ marginTop: theme.spacing.sm }}
               />
             </View>
-          </View>
-        ))}
 
-        {/* Secondary matches */}
-        {serverRoleMatches.length > 1 && (
-          <View style={styles.roleMatchGrid}>
-            {serverRoleMatches.slice(1, 3).map((match) => (
-              <View key={match.roleId} style={styles.roleMatchCardSmall}>
-                <View style={styles.roleMatchSmallHeader}>
-                  <Text style={styles.roleMatchNameSmall}>{match.roleName}</Text>
-                  <Text style={styles.scoreSmall}>{match.matchScore}%</Text>
-                </View>
-                <View style={styles.progressBarBg}>
-                  <View style={[styles.progressBarFillSec, { width: `${Math.min(match.matchScore, 100)}%` }]} />
-                </View>
-                {match.topMissingSkills && match.topMissingSkills.length > 0 && (
-                  <View style={styles.skillSection}>
-                    <Text style={styles.skillSectionLabel}>CẦN CỦNG CỐ</Text>
-                    <View style={styles.skillChips}>
-                      {match.topMissingSkills.slice(0, 3).map((s) => (
-                        <View key={s} style={styles.skillChipOrange}><Text style={styles.skillChipTextOrange}>{s}</Text></View>
-                      ))}
+            {/* Vai trò phụ */}
+            {serverRoleMatches.length > 1 && (
+              <View style={styles.roleMatchGrid}>
+                {serverRoleMatches.slice(1, 3).map((match, idx) => (
+                  <View key={idx} style={styles.roleMatchCardSmall}>
+                    <View style={styles.roleMatchSmallHeader}>
+                      <Text style={styles.roleMatchNameSmall} numberOfLines={2}>{match.roleName}</Text>
+                      <Text style={styles.scoreSmall}>{Math.round(match.matchScore)}%</Text>
                     </View>
+                    <TouchableOpacity
+                      style={styles.createSmallBtn}
+                      onPress={() => handleGenerate(match.roleName, `ai_${idx}`)}
+                      disabled={isGenerating}
+                    >
+                      <Text style={styles.createSmallBtnText}>
+                        {generatingKey === `ai_${idx}` ? 'Đang tạo...' : 'Tạo lộ trình'}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
-                )}
-                {match.recommendedNextSkills && match.recommendedNextSkills.length > 0 && (
-                  <View style={styles.skillSection}>
-                    <Text style={styles.skillSectionLabel}>NÊN HỌC TIẾP</Text>
-                    <View style={styles.skillChips}>
-                      {match.recommendedNextSkills.slice(0, 3).map((s) => (
-                        <View key={s} style={styles.skillChipBlue}><Text style={styles.skillChipTextBlue}>{s}</Text></View>
-                      ))}
-                    </View>
-                  </View>
-                )}
-                <TouchableOpacity
-                  style={styles.createSmallBtn}
-                  onPress={() => handleGenerate(match.roleName, `role-${match.roleId}`)}
-                  disabled={isGenerating}
-                >
-                  <Text style={styles.createSmallBtnText}>
-                    {generatingKey === `role-${match.roleId}` ? 'Đang tạo...' : 'Tạo lộ trình học'}
-                  </Text>
-                </TouchableOpacity>
+                ))}
               </View>
-            ))}
-          </View>
-        )}
-
-        {/* Local fallback when no server matches */}
-        {serverRoleMatches.length === 0 && recommendedRoadmap && (
-          <>
-            <View style={styles.roleMatchCardFeatured}>
-              <Text style={styles.roleMatchName}>{recommendedRoadmap.role}</Text>
-              <Text style={[styles.sectionDesc, { marginTop: 4 }]}>{recommendedRoadmap.reason}</Text>
-              <View style={styles.buttonBlock}>
-                <Button
-                  title="Tạo lộ trình học"
-                  onPress={() => handleGenerate(recommendedRoadmap.role, 'primary-recommendation')}
-                  loading={generatingKey === 'primary-recommendation'}
-                  disabled={isGenerating}
-                  icon={<Sparkles size={16} color={theme.colors.textPrimary} />}
-                />
-              </View>
-            </View>
+            )}
           </>
         )}
       </Card>
@@ -442,7 +533,12 @@ export const RoadmapListScreen: React.FC = () => {
         </View>
       ) : filteredRoadmaps.length > 0 ? (
         filteredRoadmaps.map((roadmap) => (
-          <RoadmapCard key={roadmap.id} roadmap={roadmap} onPress={() => openRoadmap(roadmap)} />
+          <RoadmapCard
+            key={roadmap.id}
+            roadmap={roadmap}
+            onPress={() => openRoadmap(roadmap)}
+            onDelete={() => handleDeleteRoadmap(roadmap)}
+          />
         ))
       ) : roadmaps.length > 0 ? (
         <Card style={styles.emptyCard}>
@@ -488,6 +584,61 @@ export const RoadmapListScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Repo Picker Modal */}
+      <Modal visible={repoPickerVisible} transparent animationType="slide" onRequestClose={() => setRepoPickerVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setRepoPickerVisible(false)} />
+          <View style={[styles.modalSheet, { maxHeight: '70%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.spacing.md }}>
+              <Text style={styles.modalTitle}>
+                {repoPickerMulti ? 'Chọn các repository' : 'Chọn 1 repository'}
+              </Text>
+              {repoPickerMulti && (
+                <TouchableOpacity onPress={() => setRepoPickerVisible(false)}>
+                  <Text style={{ color: theme.colors.primary, fontWeight: 'bold' }}>Xong</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {analyzedRepos.length === 0 ? (
+              <View style={{ padding: 20, alignItems: 'center' }}>
+                <Text style={{ color: theme.colors.textMuted }}>Bạn chưa phân tích repository nào.</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={analyzedRepos}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => {
+                  const isSelected = selectedRepoIds.includes(item.id);
+                  return (
+                    <TouchableOpacity
+                      style={[styles.roleOption, isSelected && styles.roleOptionActive]}
+                      onPress={() => {
+                        if (repoPickerMulti) {
+                          setSelectedRepoIds(prev => 
+                            prev.includes(item.id) ? prev.filter(id => id !== item.id) : [...prev, item.id]
+                          );
+                        } else {
+                          setSelectedRepoIds([item.id]);
+                          setRepoPickerVisible(false);
+                        }
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Text style={[styles.roleOptionText, isSelected && styles.roleOptionTextActive]} numberOfLines={1}>
+                          {item.name}
+                        </Text>
+                        {isSelected && <CheckCircle2 size={18} color={theme.colors.secondaryLight} />}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
 
     <CustomAlert
@@ -497,6 +648,18 @@ export const RoadmapListScreen: React.FC = () => {
       type="error"
       confirmText="Đóng"
       onConfirm={() => setErrorAlert({ visible: false, message: '' })}
+    />
+
+    <CustomAlert
+      visible={deleteDialog.visible}
+      title="Xóa Lộ Trình?"
+      message={`Bạn có chắc chắn muốn xóa lộ trình "${deleteDialog.roadmap?.title}" không? Hành động này không thể hoàn tác.`}
+      type="warning"
+      showCancel
+      cancelText="Hủy"
+      confirmText="Xóa"
+      onCancel={() => setDeleteDialog({ visible: false, roadmap: null })}
+      onConfirm={confirmDeleteRoadmap}
     />
     </View>
   );
@@ -567,7 +730,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.lg,
   },
   sectionTitle: {
-    fontSize: theme.typography.sizes.md,
+    fontSize: theme.typography.sizes.lg,
     fontWeight: theme.typography.weights.bold,
     color: theme.colors.textPrimary,
     marginBottom: 4,
@@ -576,7 +739,53 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.sm,
     color: theme.colors.textSecondary,
     lineHeight: theme.typography.lineHeights.sm,
+  },
+  sourceModeTabs: {
+    flexDirection: 'row',
+    backgroundColor: theme.colors.surfaceLight,
+    borderRadius: theme.roundness.sm,
+    padding: 4,
     marginBottom: theme.spacing.md,
+  },
+  sourceModeTab: {
+    flex: 1,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: 4,
+    borderRadius: theme.roundness.sm - 2,
+    alignItems: 'center',
+  },
+  sourceModeTabActive: {
+    backgroundColor: theme.colors.surface,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  sourceModeTabText: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textMuted,
+    fontWeight: theme.typography.weights.medium,
+  },
+  sourceModeTabTextActive: {
+    color: theme.colors.primary,
+    fontWeight: theme.typography.weights.bold,
+  },
+  sourceModeTabDesc: {
+    fontSize: 9,
+    color: theme.colors.textMuted,
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  repoPickerContainer: {
+    marginBottom: theme.spacing.md,
+  },
+  confirmSourceBtnContainer: {
+    marginTop: theme.spacing.sm,
+  },
+  createColumn: {
+    marginTop: theme.spacing.md,
+    gap: theme.spacing.md,
   },
   sectionDescLast: {
     marginBottom: theme.spacing.sm,
@@ -589,9 +798,7 @@ const styles = StyleSheet.create({
     color: theme.colors.secondaryLight,
     fontWeight: theme.typography.weights.bold,
   },
-  createColumn: {
-    gap: theme.spacing.md,
-  },
+
   rolePicker: {
     width: '100%',
     borderWidth: 1,
@@ -965,5 +1172,32 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
     color: '#000',
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: theme.spacing.sm,
+  },
+  toggleSwitch: {
+    width: 44,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: theme.colors.border,
+    padding: 2,
+    justifyContent: 'center',
+  },
+  toggleSwitchActive: {
+    backgroundColor: theme.colors.primary,
+  },
+  toggleThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: theme.colors.surface,
+    alignSelf: 'flex-start',
+  },
+  toggleThumbActive: {
+    alignSelf: 'flex-end',
   },
 });
