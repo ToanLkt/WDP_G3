@@ -86,10 +86,8 @@ const mapTask = (task, { scope, phaseIndex, taskIndex, roadmap, path } = {}) => 
 
 const extractRoadmapTasks = (roadmap) => {
   const items = [];
-  const seen = new Set();
   const add = (task) => {
-    if (!task || !task.itemId || seen.has(task.itemId)) return;
-    seen.add(task.itemId);
+    if (!task || !task.itemId) return;
     items.push(task);
   };
 
@@ -118,7 +116,15 @@ const findRoadmapTaskByItemId = (roadmap, itemId) => {
   if (!normalizedItemId) {
     throw createStatusError('Invalid itemId', 400);
   }
-  return extractRoadmapTasks(roadmap).find((task) => task.itemId === normalizedItemId) || null;
+  const matches = extractRoadmapTasks(roadmap).filter((task) => task.itemId === normalizedItemId);
+  if (matches.length > 1) {
+    const error = createStatusError('Roadmap itemId is ambiguous.', 409);
+    error.code = 'ROADMAP_ITEM_ID_CONFLICT';
+    error.details = { roadmapId: String(roadmap?._id || ''), itemId: normalizedItemId, titles: matches.map((task) => task.title) };
+    console.error('[roadmap_item_id_conflict]', error.details);
+    throw error;
+  }
+  return matches[0] || null;
 };
 
 const buildLearningQueryFromTask = (roadmap, task) => ({
@@ -127,6 +133,8 @@ const buildLearningQueryFromTask = (roadmap, task) => ({
   targetRole: task.targetRole || roadmap.targetRole,
   level: task.level || roadmap.effectiveLevel || 'beginner',
   language: roadmap.language || 'vi',
+  roadmapId: String(roadmap._id || ''),
+  roadmapItemId: task.itemId,
   contentCacheKey: task.itemId || task.title,
 });
 

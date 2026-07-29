@@ -48,6 +48,9 @@ Important rules:
 - mainPath phases and tasks must use only canonical skills from Roadmap Skill Gap Context skillGapSummary/skillGaps.
 - Do not invent a new primary skillName or canonicalSkillName for mainPath tasks.
 - canonicalSkillName must semantically match the task title and description.
+- Treat each prioritySkills/missing skill as a required learning topic and cover every high-priority missing skill at least once.
+- Keep title, description, canonicalSkillName, technology and difficulty on the same topic; never relabel an unrelated task to satisfy coverage.
+- Ground framework-specific tasks in repository technologies. For Node.js/Express repositories, authentication examples must use Node.js/Express rather than Python, .NET, Django or ASP.NET.
 - For Backend Developer mainPath tasks, do not use frontend-only skills such as React UI, Responsive Design, Component Design, State Management, or Frontend Testing.
 - Within the same week, do not assign every task the same canonicalSkillName when task titles cover different sub-skills.
 - For Frontend Developer tasks, prefer the most specific matching skill among React UI, Component Design, State Management, API Integration, Frontend Testing, Responsive Design, Accessibility, Performance Optimization, and Documentation.

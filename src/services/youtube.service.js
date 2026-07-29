@@ -56,7 +56,19 @@ const parseIso8601DurationSeconds = (duration = '') => {
     + Number(seconds || 0);
 };
 
-const calculateYouTubeVideoScore = ({ title, description = '', channelTitle, skillName, level, relevanceTerms = [] }) => {
+const hasAnyTerm = (content, terms = []) =>
+  [...new Set(terms.map(normalizeText).filter(Boolean))].some((term) => content.includes(term));
+
+const calculateYouTubeVideoScore = ({
+  title,
+  description = '',
+  channelTitle,
+  skillName,
+  level,
+  relevanceTerms = [],
+  requiredTermGroups = [],
+  excludedTerms = [],
+}) => {
   const normalizedTitle = String(title || '').toLowerCase();
   const normalizedDescription = String(description || '').toLowerCase();
   const normalizedChannel = String(channelTitle || '').toLowerCase();
@@ -64,6 +76,8 @@ const calculateYouTubeVideoScore = ({ title, description = '', channelTitle, ski
   const normalizedLevel = String(level || '').toLowerCase();
   let score = 0;
   const normalizedContent = normalizeText(`${normalizedTitle} ${normalizedDescription}`);
+  if (requiredTermGroups.some((group) => !hasAnyTerm(normalizedContent, group))) return -100;
+  if (hasAnyTerm(normalizedContent, excludedTerms)) return -100;
   const hasSkill = normalizedSkill && normalizedContent.includes(normalizedSkill);
   const matchedTermCount = [...new Set((relevanceTerms || []).map(normalizeText).filter(Boolean))]
     .filter((term) => normalizedContent.includes(term)).length;
@@ -71,7 +85,7 @@ const calculateYouTubeVideoScore = ({ title, description = '', channelTitle, ski
   if (hasSkill) {
     score += 40;
   } else if (matchedTermCount) {
-    score += Math.min(35, matchedTermCount * 12);
+    score += Math.min(45, matchedTermCount * 12);
   } else {
     score -= 30;
   }
@@ -175,7 +189,16 @@ const validateYouTubeVideoMetadata = (video = {}) => {
   };
 };
 
-const searchYoutubeVideos = async ({ skillName, targetRole, level, language = 'en', query, relevanceTerms = [] }) => {
+const searchYoutubeVideos = async ({
+  skillName,
+  targetRole,
+  level,
+  language = 'en',
+  query,
+  relevanceTerms = [],
+  requiredTermGroups = [],
+  excludedTerms = [],
+}) => {
   if (!process.env.YOUTUBE_API_KEY) {
     const error = new Error('YOUTUBE_API_KEY is not configured');
     error.statusCode = 500;
@@ -220,6 +243,8 @@ const searchYoutubeVideos = async ({ skillName, targetRole, level, language = 'e
         skillName,
         level,
         relevanceTerms,
+        requiredTermGroups,
+        excludedTerms,
       }),
       safetyStatus: 'allowed',
       safetyReasons: [],

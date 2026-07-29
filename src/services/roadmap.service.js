@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 
 const AiFeedback = require('../models/AiFeedback');
 const AnalysisResult = require('../models/AnalysisResult');
@@ -295,6 +296,7 @@ const sanitizeRoadmapTask = (task = {}, fallback = {}) => {
   });
   return {
     itemId,
+    prerequisites: Array.isArray(task.prerequisites) ? task.prerequisites.map(String) : [],
     title,
     description: String(task.description || task.goal || '').trim(),
     skillName: canonicalSkillName,
@@ -955,6 +957,12 @@ const buildTaskItemId = ({ scope = 'main', phaseIndex, taskIndex, canonicalSkill
   return `main-${Number(phaseIndex || 0) + 1}-${Number(taskIndex || 0) + 1}-${taskSlug}`;
 };
 
+const buildStableTaskItemId = ({ scope = 'main', canonicalSkillName, title }) => {
+  const seed = `${scope}|${normalizeKey(canonicalSkillName)}|${normalizeKey(title)}`;
+  const hash = crypto.createHash('sha1').update(seed).digest('hex').slice(0, 10);
+  return `${scope === 'alt' ? 'alt' : 'main'}-${slugifySkill(canonicalSkillName)}-${hash}`;
+};
+
 const normalizeTask = (task, index, skillGaps = [], phase = {}, targetRole = '', context = {}) => {
   const skillTags = Array.isArray(task?.skillTags)
     ? uniqueStrings(task.skillTags.map(canonicalizeSkillName), 10)
@@ -983,13 +991,12 @@ const normalizeTask = (task, index, skillGaps = [], phase = {}, targetRole = '',
     ? 'high'
     : task?.priority || priorityLabel(gapForSkill?.priority || 3);
   return {
-    itemId: buildTaskItemId({
+    itemId: String(task?.itemId || '').trim() || buildStableTaskItemId({
       scope: context.scope || 'main',
-      phaseIndex,
-      taskIndex: index,
       canonicalSkillName,
       title,
     }),
+    prerequisites: Array.isArray(task?.prerequisites) ? task.prerequisites.map(String) : [],
     title,
     description: String(task?.description || '').trim(),
     skillTags: normalizedSkillTags,
@@ -1183,6 +1190,65 @@ const buildRepairTaskForWeek = ({ week, taskIndex = 0, skillGaps = [], targetRol
   );
 };
 
+const buildGroundedTaskContent = ({ canonicalSkillName, targetRole, effectiveLevel, technologies = [] }) => {
+  const stack = technologies.join(' ').toLowerCase();
+  const isNode = /node|express|javascript|typescript/.test(stack);
+  const isMongo = /mongo|mongoose/.test(stack);
+  const templates = {
+    Database: isMongo
+      ? ['Thiết kế schema MongoDB và chiến lược indexing', 'Mô hình hóa dữ liệu, xác định index và kiểm chứng query bằng explain plan.']
+      : ['Thiết kế mô hình dữ liệu và tối ưu truy vấn', 'Xác định quan hệ dữ liệu, index cần thiết và đo hiệu năng truy vấn.'],
+    Authentication: isNode
+      ? ['Triển khai JWT và middleware xác thực cho Express', 'Xây access/refresh token, authorization middleware và test protected routes.']
+      : ['Triển khai JWT, authorization và middleware xác thực', 'Xây access/refresh token, phân quyền và test các protected routes.'],
+    'REST API': ['Thiết kế REST API có validation và xử lý lỗi', 'Hoàn thiện endpoint, validation, error contract và tài liệu API.'],
+    'Docker Basics': ['Đóng gói ứng dụng bằng Docker Compose', 'Viết Dockerfile, cấu hình environment và healthcheck có thể kiểm chứng.'],
+    'API Testing': ['Viết integration test cho REST API', 'Kiểm thử success/error/auth flows với assertions có thể chạy lặp lại.'],
+    'React UI': ['Làm rõ JSX và cơ chế rendering trong React', 'Thực hành JSX, reconciliation, virtual DOM và component render cycle.'],
+  };
+  const [title, description] = templates[canonicalSkillName] || [
+    `Thực hành ${canonicalSkillName} ở mức ${effectiveLevel || 'phù hợp'}`,
+    `Hoàn thành một nhiệm vụ đo lường được, bám sát ${canonicalSkillName} cho vai trò ${targetRole}.`,
+  ];
+  return { title, description };
+};
+
+const validateAndEnsureGapCoverage = (phases = [], context = {}) => {
+  const output = phases.map((phase) => ({ ...phase, tasks: [...(phase.tasks || [])] }));
+  const required = (context.skillGaps || []).filter((gap) =>
+    gap.priority === 'high' || gap.gapType === 'missing'
+  );
+  const technologies = context.technologies || [];
+
+  for (const gap of required) {
+    const skill = canonicalizeSkillName(gap.canonicalSkillName || gap.skillName);
+    if (!skill || output.some((phase) => phase.tasks.some((task) => task.canonicalSkillName === skill))) continue;
+    const phaseIndex = output.reduce(
+      (best, phase, index) => ((phase.tasks || []).length < (output[best]?.tasks || []).length ? index : best),
+      0
+    );
+    const phase = output[phaseIndex];
+    const content = buildGroundedTaskContent({
+      canonicalSkillName: skill,
+      targetRole: context.targetRole,
+      effectiveLevel: context.effectiveLevel,
+      technologies,
+    });
+    const task = normalizeTask(
+      { ...content, canonicalSkillName: skill, priority: gap.priority || 'high', week: phaseIndex + 1, estimatedHours: 6 },
+      phase.tasks.length,
+      context.skillGaps,
+      { skills: [skill], targetRole: context.targetRole },
+      context.targetRole,
+      { effectiveLevel: context.effectiveLevel, phaseIndex, durationWeeks: output.length }
+    );
+    if (phase.tasks.length >= 4) phase.tasks[phase.tasks.length - 1] = task;
+    else phase.tasks.push(task);
+    phase.skills = uniqueStrings(phase.tasks.map((item) => item.canonicalSkillName), 12);
+  }
+  return output;
+};
+
 const ensureMainWeekCoverage = (phases = [], context = {}) => {
   const durationWeeks = normalizeDurationWeeks(context.durationWeeks);
   const skillGaps = Array.isArray(context.skillGaps) ? context.skillGaps : [];
@@ -1310,13 +1376,7 @@ const ensureUniqueTaskIds = (mainPhases = [], alternativeRoadmaps = []) => {
     ...phase,
     tasks: (phase.tasks || []).map((task, taskIndex) => ({
       ...task,
-      itemId: uniqueId(buildTaskItemId({
-        scope: 'main',
-        phaseIndex,
-        taskIndex,
-        canonicalSkillName: task.canonicalSkillName,
-        title: task.title,
-      })),
+      itemId: uniqueId(String(task.itemId || '').trim() || buildStableTaskItemId({ scope: 'main', canonicalSkillName: task.canonicalSkillName, title: task.title })),
     })),
   }));
 
@@ -1324,17 +1384,31 @@ const ensureUniqueTaskIds = (mainPhases = [], alternativeRoadmaps = []) => {
     ...roadmap,
     tasks: (roadmap.tasks || []).map((task, taskIndex) => ({
       ...task,
-      itemId: uniqueId(buildTaskItemId({
-        scope: 'alt',
-        phaseIndex: roadmapIndex,
-        taskIndex,
-        canonicalSkillName: task.canonicalSkillName,
-        title: task.title,
-      })),
+      itemId: uniqueId(String(task.itemId || '').trim() || buildStableTaskItemId({ scope: 'alt', canonicalSkillName: task.canonicalSkillName, title: task.title })),
     })),
   }));
 
   return { phases, alternativeRoadmaps: alternatives };
+};
+
+const validateRoadmapTaskItemIds = (roadmapPayload = {}) => {
+  const tasks = [];
+  const phases = Array.isArray(roadmapPayload?.mainRoadmap?.phases)
+    ? roadmapPayload.mainRoadmap.phases
+    : roadmapPayload?.mainPath?.phases || [];
+  phases.forEach((phase, phaseIndex) => (phase.tasks || []).forEach((task, taskIndex) => tasks.push({ task, phaseIndex, taskIndex })));
+  (roadmapPayload.alternativeRoadmaps || []).forEach((path, pathIndex) => (path.tasks || []).forEach((task, taskIndex) => tasks.push({ task, phaseIndex: pathIndex, taskIndex })));
+  const missing = tasks.filter(({ task }) => !String(task?.itemId || '').trim());
+  const byId = new Map();
+  tasks.forEach((entry) => { const id = String(entry.task?.itemId || '').trim(); if (id) byId.set(id, [...(byId.get(id) || []), entry]); });
+  const duplicates = [...byId.entries()].filter(([, entries]) => entries.length > 1);
+  if (missing.length || duplicates.length) {
+    const error = createStatusError('Roadmap task itemId validation failed', 409);
+    error.code = 'ROADMAP_ITEM_ID_CONFLICT';
+    error.details = { missing: missing.length, duplicates: duplicates.map(([itemId, entries]) => ({ itemId, titles: entries.map(({ task }) => task.title) })) };
+    throw error;
+  }
+  return true;
 };
 
 const enforceMainRoadmapDev2VecSkills = (roadmapData, roadmapGapContext) => {
@@ -1436,6 +1510,12 @@ const normalizeRoadmapPayload = ({
     targetRole,
     skillGaps: roadmapGapContext?.skillGaps || [],
   });
+  const validatedPhases = validateAndEnsureGapCoverage(diversifiedPhases, {
+    targetRole,
+    effectiveLevel,
+    skillGaps: roadmapGapContext?.skillGaps || [],
+    technologies: sourceContextSummary?.detectedSkills || [],
+  });
   const supportingPaths = Array.isArray(roadmapData.supportingPaths)
     ? roadmapData.supportingPaths.slice(0, 2).map(normalizeSupportingPath)
     : [];
@@ -1459,14 +1539,19 @@ const normalizeRoadmapPayload = ({
     effectiveLevel,
     durationWeeks: requestedDurationWeeks,
   });
-  const uniqueTasks = ensureUniqueTaskIds(diversifiedPhases, alternativeRoadmaps);
+  const uniqueTasks = ensureUniqueTaskIds(validatedPhases, alternativeRoadmaps);
   const phases = uniqueTasks.phases;
+  phases.forEach((phase, phaseIndex) => {
+    const previousIds = phaseIndex > 0 ? (phases[phaseIndex - 1].tasks || []).map((task) => task.itemId) : [];
+    phase.tasks = (phase.tasks || []).map((task) => ({ ...task, prerequisites: previousIds }));
+  });
   const mainRoadmap = {
     title: roadmapData.mainPath?.title || `${targetRole} MVP Path`,
     targetRole,
     reason: roadmapData.mainPath?.reason || buildAnalysisGapReason(roadmapGapContext),
     phases,
   };
+  validateRoadmapTaskItemIds({ mainRoadmap, alternativeRoadmaps: uniqueTasks.alternativeRoadmaps });
   const allTasks = [
     ...phases.flatMap((phase) => phase.tasks || []),
     ...uniqueTasks.alternativeRoadmaps.flatMap((roadmap) => roadmap.tasks || []),
@@ -2008,5 +2093,7 @@ module.exports = {
   applyRoadmapSkillGapPriorities,
   inferPrimarySkillForTask,
   normalizeRoadmapPayload,
+  validateAndEnsureGapCoverage,
+  validateRoadmapTaskItemIds,
   formatGeneratedRoadmapResponse,
 };
