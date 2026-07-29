@@ -48,6 +48,7 @@ const getCommitCacheTtlMs = () => parsePositiveInteger(
 );
 
 const getCommitApiUrl = (owner, repo) => `https://api.github.com/repos/${owner}/${repo}/commits`;
+const getBranchApiUrl = (owner, repo) => `https://api.github.com/repos/${owner}/${repo}/branches`;
 const getCommitDetailCacheTtlMs = () => parsePositiveInteger(
   process.env.GITHUB_COMMIT_DETAIL_CACHE_TTL_MS,
   DEFAULT_COMMIT_DETAIL_CACHE_TTL_MS
@@ -169,6 +170,7 @@ const fetchGithubCommits = async ({ owner, repo, accessToken, branch, perPage, m
   const commitsUrl = getCommitApiUrl(owner, repo);
   const commits = [];
   let githubStatus = null;
+  let fetchTruncated = false;
 
   for (let page = 1; page <= maxPages; page += 1) {
     const started = nowMs();
@@ -185,9 +187,73 @@ const fetchGithubCommits = async ({ owner, repo, accessToken, branch, perPage, m
     const pageItems = Array.isArray(response.data) ? response.data : [];
     commits.push(...pageItems);
     if (pageItems.length < perPage) break;
+    if (page === maxPages) fetchTruncated = true;
   }
 
-  return { commits, githubStatus, commitApiUrlWithoutToken: `${commitsUrl}?sha=${encodeURIComponent(branch)}` };
+  return { commits, githubStatus, fetchTruncated, commitApiUrlWithoutToken: `${commitsUrl}?sha=${encodeURIComponent(branch)}` };
+};
+
+const fetchGithubBranches = async ({ owner, repo, accessToken, perPage = 100, maxPages = 10 }) => {
+  const url = getBranchApiUrl(owner, repo);
+  const branches = [];
+  let githubStatus = null;
+  let fetchTruncated = false;
+  for (let page = 1; page <= maxPages; page += 1) {
+    const started = nowMs();
+    let response;
+    try {
+      response = await axios.get(url, { params: { per_page: perPage, page }, headers: getGithubHeaders(accessToken) });
+    } finally {
+      recordGithubCall('branch_list', nowMs() - started);
+    }
+    githubStatus = response.status;
+    const pageItems = Array.isArray(response.data) ? response.data : [];
+    branches.push(...pageItems.map((item) => String(item?.name || '').trim()).filter(Boolean));
+    if (pageItems.length < perPage) break;
+    if (page === maxPages) fetchTruncated = true;
+  }
+  return { branches: [...new Set(branches)], githubStatus, fetchTruncated };
+};
+
+const fetchAllBranchCommits = async ({ owner, repo, accessToken, branches, perPage, maxPages }) => {
+  const concurrency = Math.min(parsePositiveInteger(process.env.GITHUB_BRANCH_FETCH_CONCURRENCY, 4), 5);
+  const results = await runWithConcurrency(branches, concurrency, (branch) => fetchGithubCommits({
+    owner, repo, accessToken, branch, perPage, maxPages,
+  }));
+  const commitsBySha = new Map();
+  const failedBranches = [];
+  let fetchTruncated = false;
+  results.forEach((result, index) => {
+    if (result.status !== 'fulfilled') {
+      failedBranches.push({ branch: branches[index], errorCode: result.reason?.code || result.reason?.response?.data?.message || 'GITHUB_COMMIT_FETCH_FAILED' });
+      return;
+    }
+    for (const commit of result.value.commits || []) {
+      if (commit?.sha && !commitsBySha.has(commit.sha)) commitsBySha.set(commit.sha, { commit, branch: branches[index] });
+    }
+    if (result.value.fetchTruncated) fetchTruncated = true;
+  });
+  return { commits: [...commitsBySha.values()], failedBranches, fetchTruncated };
+};
+
+const fetchAndCacheRepositoryCommitsAllBranches = async ({ authUser, repository, githubAccount, query = {}, forceRefresh = false }) => {
+  const perPage = Math.min(Number(query.perPage) || 100, 100);
+  const maxPages = Math.min(parsePositiveInteger(query.maxPages || process.env.GITHUB_COMMIT_MAX_PAGES, 10), 10);
+  const account = githubAccount?.accessToken ? githubAccount : await GithubAccount.findOne({ userId: authUser.userId }).select('+accessToken').lean();
+  const [owner, repo] = String(repository.fullName || '').split('/');
+  if (!account?.accessToken || !owner || !repo) return { commits: [], metadata: { source: 'cache', commitScope: 'all_branches', fetchComplete: false, fetchTruncated: false, failedBranches: [], errorCode: 'GITHUB_ACCOUNT_OR_REPOSITORY_MISSING' } };
+  try {
+    const branchResult = await fetchGithubBranches({ owner, repo, accessToken: account.accessToken });
+    const branches = branchResult.branches.length ? branchResult.branches : [getBranchForCommitFetch(repository)];
+    const fetchedResult = await fetchAllBranchCommits({ owner, repo, accessToken: account.accessToken, branches, perPage, maxPages });
+    const normalized = fetchedResult.commits.map(({ commit, branch }) => normalizeCommit({ commit, authUser, repository, branch, githubAccount: account }));
+    if (normalized.length) await RepositoryCommit.bulkWrite(normalized.map((base) => ({ updateOne: { filter: { userId: authUser.userId, repositoryId: repository._id, sha: base.sha }, update: { $set: base }, upsert: true } })), { ordered: false });
+    const saved = await RepositoryCommit.find({ userId: authUser.userId, repositoryId: repository._id }).sort({ authorDate: -1 }).lean();
+    const fetchTruncated = Boolean(branchResult.fetchTruncated || fetchedResult.fetchTruncated);
+    return { commits: saved, metadata: { source: 'github', commitScope: 'all_branches', branchesDiscovered: branches.length, branchesAnalyzed: branches.length - fetchedResult.failedBranches.length, failedBranches: fetchedResult.failedBranches, fetchComplete: fetchedResult.failedBranches.length === 0 && !fetchTruncated, fetchTruncated, fetchedCommitCount: fetchedResult.commits.length, normalizedCommitCount: normalized.length, analysisLimit: 400, selectionStrategy: 'temporal_stratified_sha_dedupe' } };
+  } catch (error) {
+    return { commits: [], metadata: { source: 'none', commitScope: 'all_branches', fetchComplete: false, fetchTruncated: false, failedBranches: [], fetchFailed: true, errorCode: error?.code || 'GITHUB_BRANCH_FETCH_FAILED' } };
+  }
 };
 
 const fetchCurrentDefaultBranchHead = async ({ repository, githubAccount }) => {
@@ -777,6 +843,7 @@ const getRepositoryCommitsCached = async (authUser, repoId, query = {}) => {
 module.exports = {
   fetchCurrentDefaultBranchHead,
   fetchAndCacheRepositoryCommits,
+  fetchAndCacheRepositoryCommitsAllBranches,
   fetchAndCacheCommitDetailsForUserCommits,
   getBranchForCommitFetch,
   getRepositoryCommits,

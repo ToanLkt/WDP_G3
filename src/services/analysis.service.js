@@ -20,6 +20,7 @@ const { getUserPullRequestEvidence } = require('./github/github.pullRequest.serv
 const { buildContributionSummary, selectCommitEvidence } = require('./github/github.contribution.service');
 const {
   fetchAndCacheRepositoryCommits,
+  fetchAndCacheRepositoryCommitsAllBranches,
   fetchAndCacheCommitDetailsForUserCommits,
   fetchCurrentDefaultBranchHead,
 } = require('./github/github.commit.service');
@@ -286,6 +287,8 @@ const buildDev2VecAnalysisPayload = ({
   repository,
   packageRecord,
   commits,
+  allUserCommits,
+  commitMetadata,
   contributionScope,
   githubAccount,
   dev2vecInput,
@@ -426,7 +429,7 @@ const buildDev2VecAnalysisPayload = ({
     });
   }
   const skillVector = buildSkillVectorFromDev2VecSkills(skillMapping);
-  const commitSummary = buildCommitSummary(commits);
+  const commitSummary = buildCommitSummary(allUserCommits || commits);
   const packages = uniqueStrings([
     ...stringArray(packageRecord?.packages),
     ...dev2vecInput.apiTokens,
@@ -509,12 +512,23 @@ const buildDev2VecAnalysisPayload = ({
       type: 'user_contribution',
       githubUsername: githubAccount?.username || '',
       totalRepoCommits: Number(contributionScope?.totalRepoCommits || commits.length),
-      userCommits: commits.length,
+      userCommits: Number(allUserCommits?.length || commits.length),
       activeDays: commitSummary.activeDays,
       firstCommitDate: commitSummary.firstCommitDate,
       lastCommitDate: commitSummary.lastCommitDate,
       analyzedCommitShas: commits.map((commit) => commit.sha).filter(Boolean),
       source: 'dev2vec',
+      commitScope: commitMetadata?.commitScope || 'all_branches',
+      branchesDiscovered: Number(commitMetadata?.branchesDiscovered || 0),
+      branchesAnalyzed: Number(commitMetadata?.branchesAnalyzed || 0),
+      fetchComplete: commitMetadata?.fetchComplete !== false,
+      fetchTruncated: Boolean(commitMetadata?.fetchTruncated),
+      failedBranches: commitMetadata?.failedBranches || [],
+      analysisLimit: 400,
+      analyzedSampleCommits: commits.length,
+      selectionStrategy: 'temporal_stratified_sha_dedupe',
+      activeDayDateSource: 'authorDate',
+      activeDayTimezone: 'UTC',
     },
     scoreBreakdown: {
       scoringMethod: 'dev2vec_doc2vec_classifier',
@@ -597,6 +611,16 @@ const unwrapSettled = (result, fallback = null) => (
 
 const getCommitBranch = (repository = {}) => String(repository.defaultBranch || repository.rawData?.default_branch || 'main').trim();
 
+const selectAnalysisCommitSample = (commits = [], limit = 400) => {
+  const unique = [...new Map((Array.isArray(commits) ? commits : []).filter((commit) => commit?.sha).map((commit) => [String(commit.sha), commit])).values()]
+    .sort((a, b) => new Date(a.authorDate || 0).getTime() - new Date(b.authorDate || 0).getTime() || String(a.sha).localeCompare(String(b.sha)));
+  if (unique.length <= limit) return unique;
+  const selected = [];
+  const step = (unique.length - 1) / (limit - 1);
+  for (let index = 0; index < limit; index += 1) selected.push(unique[Math.round(index * step)]);
+  return [...new Map(selected.map((commit) => [commit.sha, commit])).values()];
+};
+
 const inferProjectTypeFromRepositoryContext = (dev2vecInput = {}, fallback = '') => {
   const stats = dev2vecInput.sourceStats || {};
   const features = dev2vecInput.repoFeatureEvidence || {};
@@ -642,26 +666,15 @@ const inferCareerDirectionFromUserContribution = (dev2vecInput = {}, projectType
 };
 
 const loadRepositoryCommitsForAnalysis = async ({ user, repository, githubAccount, existingCommits = [], currentHeadSha = null }) => {
-  const branch = getCommitBranch(repository);
-  const branchCommits = (Array.isArray(existingCommits) ? existingCommits : [])
-    .filter((commit) => !commit.branch || commit.branch === branch);
-  const cacheFresh = branchCommits.some((commit) => (
-    commit.lastFetchedAt
-    && Date.now() - new Date(commit.lastFetchedAt).getTime() < 15 * 60 * 1000
-  ));
-  const cachedHeadMatches = !currentHeadSha || branchCommits.some((commit) => commit.sha === currentHeadSha);
-  if (branchCommits.length && cacheFresh && cachedHeadMatches) {
-    return { commits: branchCommits, metadata: { source: 'cache', branch } };
-  }
-
-  const result = await fetchAndCacheRepositoryCommits({
+  const cachedCommits = [...new Map((Array.isArray(existingCommits) ? existingCommits : []).filter((commit) => commit?.sha).map((commit) => [commit.sha, commit])).values()];
+  const result = await fetchAndCacheRepositoryCommitsAllBranches({
     authUser: user,
     repository,
     githubAccount,
-    query: { sha: branch, perPage: 100 },
-    forceRefresh: branchCommits.length === 0 || !cachedHeadMatches,
+    query: { perPage: 100 },
+    forceRefresh: true,
   });
-  return { commits: result.commits || branchCommits, metadata: result.metadata || { branch } };
+  return { commits: result.commits || cachedCommits, metadata: result.metadata || { commitScope: 'all_branches' } };
 };
 
 const logAnalysisRequestStage = ({ requestId, user, repoId, startedAt, stage, errorCode }) => console.info(
@@ -759,7 +772,9 @@ const analyzeRepositoryCore = async ({ user, params, query = {}, body = {}, requ
   }));
   const commits = commitLoad.commits || [];
   const contributionScope = filterUserContributionCommits(commits, githubAccount);
-  let userCommits = contributionScope.userCommits;
+  const allUserCommits = contributionScope.userCommits;
+  const analysisSampleCommits = selectAnalysisCommitSample(allUserCommits, 400);
+  let userCommits = analysisSampleCommits;
   const previousFingerprint = getCacheMetadata(latestAnalysis)?.repositoryFingerprint || {};
   const metadataCompatible = compareMetadata(
     getCacheMetadata(latestAnalysis), getCurrentDev2VecPipelineMetadata()
@@ -839,7 +854,7 @@ const analyzeRepositoryCore = async ({ user, params, query = {}, body = {}, requ
     githubAccount,
   }));
   const contributionSummary = buildContributionSummary({
-    commits: userCommits,
+    commits: allUserCommits,
     pullRequests: pullRequestEvidence.pullRequests,
     githubAccount,
   });
@@ -945,6 +960,8 @@ const analyzeRepositoryCore = async ({ user, params, query = {}, body = {}, requ
     repository,
     packageRecord,
     commits: dev2vecCommits,
+    allUserCommits,
+    commitMetadata: commitLoad.metadata,
     contributionScope,
     githubAccount,
     dev2vecInput,
@@ -1638,6 +1655,7 @@ const generateRoleMatches = async ({ user, body = {}, query = {} }) => {
 };
 
 module.exports = {
+  selectAnalysisCommitSample,
   analyzeRepository,
   buildDev2VecAnalysisPayload,
   getAnalysisResults,
