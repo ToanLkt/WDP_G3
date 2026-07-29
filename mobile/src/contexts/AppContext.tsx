@@ -19,6 +19,7 @@ import {
   AnalyzeRepositoryOptions,
 } from '../services/repo';
 import { ChatMessage, createChatSession, fetchChatSessions, fetchChatSessionDetail, sendChatMessage } from '../services/chat';
+import { disconnectChatSocket } from '../services/socket/chatSocket';
 import { Roadmap, generateRoadmap as apiGenerateRoadmap, fetchMyRoadmapsList } from '../services/roadmap';
 import {
   clearStoredUser,
@@ -82,6 +83,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [logoutHintVisible, setLogoutHintVisible] = useState(false);
 
   const resetSessionState = useCallback(() => {
+    disconnectChatSocket();
     setUser(null);
     setProfile(null);
     setTokenState(null);

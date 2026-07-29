@@ -201,6 +201,12 @@ export interface ChatSession {
   createdAt: string;
   messages: ChatMessage[];
   repositoryContext?: string;
+  status?: 'active' | 'waiting_admin' | 'answered' | 'closed' | string;
+  mode?: 'AI_AUTO' | 'MANUAL' | string | null;
+  modeSource?: string;
+  effectiveMode?: 'AI_AUTO' | 'MANUAL' | string;
+  lastMessageAt?: string | null;
+  updatedAt?: string;
 }
 
 export interface ChatMessage {

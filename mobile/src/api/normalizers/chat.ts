@@ -22,6 +22,12 @@ export const normalizeChatSession = (payload: unknown): ChatSession => {
     createdAt: firstString(session.createdAt, new Date().toISOString()),
     messages: asArray(session.messages).map(normalizeChatMessage),
     repositoryContext: firstString(session.repositoryContext) || undefined,
+    status: firstString(session.status) || undefined,
+    mode: typeof session.mode === 'string' ? session.mode : null,
+    modeSource: firstString(session.modeSource) || undefined,
+    effectiveMode: firstString(session.effectiveMode) || undefined,
+    lastMessageAt: firstString(session.lastMessageAt) || null,
+    updatedAt: firstString(session.updatedAt) || undefined,
   };
 };
 

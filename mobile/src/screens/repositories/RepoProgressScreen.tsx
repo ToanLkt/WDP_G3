@@ -70,6 +70,32 @@ function levelColor(level?: string): string {
   }
 }
 
+function levelLabel(level?: string): string {
+  switch (level?.toLowerCase()) {
+    case 'beginner': return 'Cơ bản';
+    case 'intermediate': return 'Trung cấp';
+    case 'advanced': return 'Nâng cao';
+    default: return level || 'Chưa xác định';
+  }
+}
+
+function skillName(item: SkillComparisonItem): string {
+  return item.skill || item.canonicalSkillName || 'Kỹ năng';
+}
+
+function skillGroups(comparison: SnapshotComparison | null) {
+  const changes = comparison?.skillChanges ?? [];
+  return {
+    improved: (comparison?.topImprovedSkills?.length
+      ? comparison.topImprovedSkills
+      : changes.filter((item) => item.status === 'improved' || (item.changePercent ?? 0) > 0)).slice(0, 6),
+    stable: changes.filter((item) => item.status === 'unchanged' || (item.changePercent ?? 0) === 0).slice(0, 6),
+    regressed: (comparison?.topRegressedSkills?.length
+      ? comparison.topRegressedSkills
+      : changes.filter((item) => item.status === 'regressed' || (item.changePercent ?? 0) < 0)).slice(0, 6),
+  };
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 const SectionTitle: React.FC<{ text: string; icon?: string }> = ({ text, icon }) => (
@@ -316,6 +342,14 @@ export const RepoProgressScreen: React.FC<Props> = ({ route }) => {
   const topRegressed = comparison?.topRegressedSkills ?? [];
   const newSkills = comparison?.newSkills ?? [];
   const overallChange = comparison?.overallChange ?? 0;
+  const latestSnapshot = comparison?.latestSnapshot ?? snapshots[snapshots.length - 1] ?? null;
+  const firstSnapshot = comparison?.firstSnapshot ?? snapshots[0] ?? null;
+  const skillGroupData = skillGroups(comparison);
+  const currentLevel = latestSnapshot?.userLevel || comparison?.delta?.toLevel;
+  const previousLevel = firstSnapshot?.userLevel || comparison?.delta?.fromLevel;
+  const currentScore = latestSnapshot?.overallScore ?? 0;
+  const currentCommits = latestSnapshot?.analysisScope?.userCommits ?? 0;
+  const currentActiveDays = latestSnapshot?.analysisScope?.activeDays ?? 0;
 
   return (
     <View style={styles.root}>
@@ -342,6 +376,43 @@ export const RepoProgressScreen: React.FC<Props> = ({ route }) => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+      <View style={styles.overviewCard}>
+        <View style={styles.overviewHeader}>
+          <View style={styles.overviewTitleBlock}>
+            <Text style={styles.overviewTitle}>{repoName}</Text>
+            <Text style={styles.overviewSubtitle}>Quan sát điểm sẵn sàng, kỹ năng nổi bật và thay đổi giữa các mốc phân tích.</Text>
+          </View>
+          <Text style={styles.scopeBadge}>Đóng góp cá nhân</Text>
+        </View>
+        <View style={styles.overviewGrid}>
+          <View style={styles.currentScoreCard}>
+            <Text style={styles.metricLabel}>ĐIỂM SẴN SÀNG HIỆN TẠI</Text>
+            <View style={styles.scoreLine}>
+              <Text style={styles.currentScore}>{formatScore(currentScore)}</Text>
+              <Text style={styles.scoreUnit}>/ 100</Text>
+            </View>
+            <Text style={styles.levelText}>Trình độ: {levelLabel(currentLevel)}</Text>
+          </View>
+          <View style={styles.metricCard}>
+            <Text style={styles.metricLabel}>THAY ĐỔI ĐIỂM</Text>
+            <Text style={[styles.metricValue, { color: changeColor(overallChange) }]}>
+              {overallChange > 0 ? '+' : ''}{Math.round(overallChange)} điểm
+            </Text>
+            <Text style={styles.metricHint}>{previousLevel && currentLevel ? `${levelLabel(previousLevel)} → ${levelLabel(currentLevel)}` : 'Chưa có dữ liệu'}</Text>
+          </View>
+          <View style={styles.metricCard}>
+            <Text style={styles.metricLabel}>COMMIT ĐƯỢC GHI NHẬN</Text>
+            <Text style={styles.metricValue}>{currentCommits}</Text>
+            <Text style={styles.metricHint}>Thay đổi: {comparison?.delta?.userCommitsDelta ?? 0}</Text>
+          </View>
+          <View style={styles.metricCard}>
+            <Text style={styles.metricLabel}>NGÀY HOẠT ĐỘNG</Text>
+            <Text style={styles.metricValue}>{currentActiveDays}</Text>
+            <Text style={styles.metricHint}>Thay đổi: {comparison?.delta?.activeDaysDelta ?? 0}</Text>
+          </View>
+        </View>
+      </View>
+
         {/* ── Timeline Chart ───────────────────────────────────────────── */}
         {snapshots.length > 0 && (
           <View style={styles.card}>
@@ -398,6 +469,60 @@ export const RepoProgressScreen: React.FC<Props> = ({ route }) => {
         )}
 
         {/* ── Not enough data notice ───────────────────────────────────── */}
+        {comparison && (
+          <>
+            <View style={styles.assessmentCard}>
+              <Text style={styles.assessmentText}>
+                {overallChange > 0
+                  ? 'Mốc phân tích mới ghi nhận tiến bộ so với mốc trước.'
+                  : overallChange < 0
+                    ? 'Một số chỉ số đang giảm, nên xem lại các kỹ năng hoặc dữ liệu còn thiếu.'
+                    : 'Điểm tổng quan chưa đổi. Dự án có thể chưa có thay đổi đủ lớn giữa hai mốc.'}
+              </Text>
+            </View>
+
+            <View style={styles.card}>
+              <SectionTitle text="Tổng quan kỹ năng" icon="📊" />
+              <View style={styles.skillColumns}>
+                {[
+                  { title: 'Tăng', color: '#10B981', items: skillGroupData.improved, empty: 'Chưa có kỹ năng tăng rõ.' },
+                  { title: 'Ổn định', color: theme.colors.textSecondary, items: skillGroupData.stable, empty: 'Chưa có kỹ năng ổn định.' },
+                  { title: 'Giảm', color: '#EF4444', items: skillGroupData.regressed, empty: 'Chưa có kỹ năng giảm rõ.' },
+                ].map((group) => (
+                  <View key={group.title} style={styles.skillColumn}>
+                    <Text style={[styles.skillColumnTitle, { color: group.color }]}>{group.title}</Text>
+                    {group.items.length ? group.items.map((item, index) => (
+                      <View key={`${skillName(item)}-${index}`} style={styles.skillListItem}>
+                        <Text style={styles.skillListText} numberOfLines={1}>{skillName(item)}</Text>
+                      </View>
+                    )) : <Text style={styles.emptyGroupText}>{group.empty}</Text>}
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.card}>
+              <SectionTitle text="Chi tiết kỹ năng thay đổi" icon="🧠" />
+              {comparison.skillChanges.length ? comparison.skillChanges.slice(0, 10).map((item, index) => (
+                <View key={`${skillName(item)}-${index}`} style={styles.detailSkillCard}>
+                  <View style={styles.detailSkillHeader}>
+                    <View style={styles.detailSkillTitleBlock}>
+                      <Text style={styles.detailSkillTitle}>{skillName(item)}</Text>
+                      <Text style={styles.detailSkillCategory}>{item.category || 'Kỹ năng'}</Text>
+                    </View>
+                    <Text style={[styles.detailSkillStatus, { color: item.status === 'improved' ? '#10B981' : item.status === 'regressed' ? '#EF4444' : theme.colors.textMuted }]}>
+                      {item.status === 'improved' ? 'Tăng' : item.status === 'regressed' ? 'Giảm' : 'Ổn định'}
+                    </Text>
+                  </View>
+                  <Text style={styles.detailSkillValue}>
+                    {item.beforePercent ?? 0}% → {item.afterPercent ?? 0}% ({item.changePercent && item.changePercent > 0 ? '+' : ''}{item.changePercent ?? 0})
+                  </Text>
+                </View>
+              )) : <Text style={styles.emptyText}>Chưa có kỹ năng thay đổi.</Text>}
+            </View>
+          </>
+        )}
+
         {!hasEnoughData && snapshots.length < 2 && (
           <View style={[styles.card, styles.noticeCard]}>
             <Text style={styles.noticeIcon}>📊</Text>
@@ -676,6 +801,79 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  overviewCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(129, 140, 248, 0.35)',
+  },
+  overviewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 14,
+  },
+  overviewTitleBlock: { flex: 1 },
+  overviewTitle: {
+    color: theme.colors.textPrimary,
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  overviewSubtitle: {
+    color: theme.colors.textMuted,
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 4,
+  },
+  scopeBadge: {
+    color: '#67E8F9',
+    backgroundColor: 'rgba(6, 182, 212, 0.14)',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  overviewGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  currentScoreCard: {
+    width: '100%',
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: 'rgba(99, 102, 241, 0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(129, 140, 248, 0.55)',
+  },
+  metricCard: {
+    flex: 1,
+    minWidth: '47%',
+    padding: 11,
+    borderRadius: 12,
+    backgroundColor: theme.colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  metricLabel: {
+    color: theme.colors.textMuted,
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  scoreLine: { flexDirection: 'row', alignItems: 'baseline', marginTop: 3 },
+  currentScore: { color: '#818CF8', fontSize: 38, fontWeight: '900' },
+  scoreUnit: { color: theme.colors.textSecondary, fontSize: 11, marginLeft: 5 },
+  levelText: { color: theme.colors.textSecondary, fontSize: 11, marginTop: 3 },
+  metricValue: { color: theme.colors.textPrimary, fontSize: 18, fontWeight: '800', marginTop: 7 },
+  metricHint: { color: theme.colors.textMuted, fontSize: 10, marginTop: 3 },
+
   scroll: { flex: 1 },
   scrollContent: { padding: 16, paddingTop: 12 },
 
@@ -705,6 +903,40 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
   },
+  assessmentCard: {
+    marginBottom: 14,
+    padding: 13,
+    borderRadius: 12,
+    backgroundColor: theme.colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  assessmentText: { color: theme.colors.textSecondary, fontSize: 12, lineHeight: 18 },
+  skillColumns: { gap: 14 },
+  skillColumn: { gap: 6 },
+  skillColumnTitle: { fontSize: 12, fontWeight: '800', marginBottom: 2 },
+  skillListItem: {
+    backgroundColor: 'rgba(148, 163, 184, 0.12)',
+    borderRadius: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  skillListText: { color: theme.colors.textSecondary, fontSize: 11 },
+  emptyGroupText: { color: theme.colors.textMuted, fontSize: 11 },
+  detailSkillCard: {
+    padding: 11,
+    marginBottom: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceLight,
+  },
+  detailSkillHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  detailSkillTitleBlock: { flex: 1 },
+  detailSkillTitle: { color: theme.colors.textPrimary, fontSize: 12, fontWeight: '700' },
+  detailSkillCategory: { color: theme.colors.textMuted, fontSize: 10, marginTop: 2 },
+  detailSkillStatus: { fontSize: 10, fontWeight: '700' },
+  detailSkillValue: { color: theme.colors.textSecondary, fontSize: 11, marginTop: 8 },
 
   // Section headers
   sectionHeader: {

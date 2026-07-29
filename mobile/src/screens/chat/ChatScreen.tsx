@@ -13,7 +13,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Send, Sparkles, Plus, Menu, X, Bell } from 'lucide-react-native';
+import { Send, Sparkles, Plus, Menu, X, Bell, Trash2, Check, ChevronDown } from 'lucide-react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -21,6 +21,7 @@ import { theme } from '../../theme';
 import { useApp } from '../../contexts/AppContext';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
+import { CustomAlert } from '../../components/ui/CustomAlert';
 import { TAB_BAR_HEIGHT } from '../../contexts/TabBarScrollContext';
 import {
   ChatMessage,
@@ -29,8 +30,19 @@ import {
   fetchChatSessionDetail,
   fetchChatSessions,
   sendChatMessage,
+  deleteChatSession,
+  mergeChatMessages,
   type SendMessageResult,
 } from '../../services/chat';
+import {
+  emitChatRead,
+  emitChatTyping,
+  joinChatSession,
+  leaveChatSession,
+  type ChatMessageCreatedEvent,
+  type ChatSessionUpdatedEvent,
+  type ChatTypingEvent,
+} from '../../services/socket/chatSocket';
 import { fetchMyAnalyses } from '../../services/analysis';
 import { formatRelativeTime } from '../../utils/formatRelativeTime';
 
@@ -62,8 +74,21 @@ export const ChatScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [analysisCount, setAnalysisCount] = useState(0);
+  const [analyzedRepositories, setAnalyzedRepositories] = useState<Array<{
+    id: string;
+    name: string;
+    role: string;
+    score?: number;
+  }>>([]);
+  const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [newSessionTitle, setNewSessionTitle] = useState('');
+  const [selectedRepositoryId, setSelectedRepositoryId] = useState('');
+  const [repositoryPickerExpanded, setRepositoryPickerExpanded] = useState(false);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
+  const [deleteConfirmSession, setDeleteConfirmSession] = useState<ChatSession | null>(null);
   /** True when the current session is in MANUAL (admin) mode */
   const [isManualMode, setIsManualMode] = useState(false);
+  const [isAdminTyping, setIsAdminTyping] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -79,6 +104,7 @@ export const ChatScreen: React.FC = () => {
 
   const selectSession = useCallback(async (session: ChatSession) => {
     setCurrentSession(session);
+    setIsManualMode(session.effectiveMode === 'MANUAL' || session.status === 'waiting_admin');
     setError(null);
     setSidebarVisible(false);
     navigation.setParams({ repoId: undefined, repoName: undefined });
@@ -129,24 +155,178 @@ export const ChatScreen: React.FC = () => {
   useEffect(() => {
     loadSessions(repoName);
     fetchMyAnalyses()
-      .then((items) => setAnalysisCount(items.length))
+      .then((items) => {
+        setAnalysisCount(items.length);
+        setAnalyzedRepositories(items
+          .map((item) => ({
+            id: item.repositoryId,
+            name: item.repositoryName || item.repoName || item.repositoryId,
+            role: item.careerDirection?.primary || 'Role chưa rõ',
+            score: item.scores?.overallScore ?? item.scores?.overall,
+          }))
+          .filter((item) => Boolean(item.id)));
+      })
       .catch(() => setAnalysisCount(0));
   }, [repoName, loadSessions]);
 
-  const handleCreateSession = async (title = 'Tư vấn GitHub của tôi') => {
+  useEffect(() => {
+    const sessionId = currentSession?.id;
+    if (!sessionId) return undefined;
+
+    const socket = joinChatSession(sessionId);
+    const joinAndMarkRead = () => {
+      socket.emit(
+        'chat:join',
+        { sessionId },
+        (ack?: { success?: boolean; error?: { message?: string; code?: string } }) => {
+          if (!ack?.success) {
+            const detail = ack?.error?.message || ack?.error?.code;
+            setError(`Không thể tham gia cuộc trò chuyện realtime${detail ? ` (${detail})` : ''}.`);
+            return;
+          }
+          emitChatRead(sessionId);
+        },
+      );
+    };
+    const handleMessageCreated = (event: ChatMessageCreatedEvent) => {
+      if (event.sessionId && event.sessionId !== sessionId) return;
+      const incoming = event.message;
+      if (!incoming.content) return;
+
+      const incomingMessage: ChatMessage = {
+        id: String(incoming._id ?? incoming.id ?? `socket-${Date.now()}`),
+        text: incoming.content,
+        sender: incoming.senderType === 'ADMIN'
+          ? 'admin'
+          : incoming.senderType === 'USER' || incoming.role === 'user'
+            ? 'user'
+            : 'ai',
+        timestamp: incoming.createdAt ?? incoming.timestamp ?? new Date().toISOString(),
+      };
+
+      setMessages((previous) => mergeChatMessages(previous, [incomingMessage]));
+      if (incomingMessage.sender !== 'user') setIsSending(false);
+      setCurrentSession((previous) => previous
+        ? {
+          ...previous,
+          lastMessage: incomingMessage.text,
+          lastMessageAt: incomingMessage.timestamp,
+        }
+        : previous);
+      setSessions((previous) => previous.map((item) => item.id === sessionId
+        ? { ...item, lastMessage: incomingMessage.text, lastMessageAt: incomingMessage.timestamp }
+        : item));
+      if (incomingMessage.sender !== 'user') scrollToBottom();
+    };
+    const handleSessionUpdated = (event: ChatSessionUpdatedEvent) => {
+      if (event.sessionId && event.sessionId !== sessionId) return;
+      const updated = event.session;
+      setIsManualMode(updated.effectiveMode === 'MANUAL' || updated.status === 'waiting_admin');
+      const patch = {
+        ...(updated.title ? { title: updated.title } : {}),
+        ...(updated.status ? { status: updated.status } : {}),
+        ...(updated.mode !== undefined ? { mode: updated.mode } : {}),
+        ...(updated.modeSource ? { modeSource: updated.modeSource } : {}),
+        ...(updated.effectiveMode ? { effectiveMode: updated.effectiveMode } : {}),
+        ...(updated.lastMessageAt !== undefined ? { lastMessageAt: updated.lastMessageAt } : {}),
+        ...(updated.updatedAt ? { updatedAt: updated.updatedAt } : {}),
+      };
+      setCurrentSession((previous) => previous ? { ...previous, ...patch } : previous);
+      setSessions((previous) => previous.map((item) => item.id === sessionId ? { ...item, ...patch } : item));
+      if (updated.status === 'closed') setIsSending(false);
+    };
+    const handleConnectError = (error: Error & { data?: { code?: string; message?: string } }) => {
+      const detail = error.data?.message || error.data?.code || error.message;
+      setError(`Không thể kết nối realtime${detail ? ` (${detail})` : ''}. Bạn vẫn có thể gửi tin nhắn bình thường.`);
+    };
+    const handleTyping = (event: ChatTypingEvent) => {
+      if (event.sessionId && event.sessionId !== sessionId) return;
+      if (event.actorType === 'ADMIN') setIsAdminTyping(Boolean(event.isTyping));
+    };
+    const handleConnect = () => {
+      setError(null);
+      joinAndMarkRead();
+    };
+
+    socket.on('connect', handleConnect);
+    socket.on('chat:message_created', handleMessageCreated);
+    socket.on('chat:session_updated', handleSessionUpdated);
+    socket.on('chat:read_updated', handleSessionUpdated);
+    socket.on('chat:typing', handleTyping);
+    socket.on('connect_error', handleConnectError);
+    if (socket.connected) handleConnect();
+
+    return () => {
+      leaveChatSession(sessionId);
+      socket.off('connect', handleConnect);
+      socket.off('chat:message_created', handleMessageCreated);
+      socket.off('chat:session_updated', handleSessionUpdated);
+      socket.off('chat:read_updated', handleSessionUpdated);
+      socket.off('chat:typing', handleTyping);
+      socket.off('connect_error', handleConnectError);
+      setIsAdminTyping(false);
+    };
+  }, [currentSession?.id, scrollToBottom]);
+
+  useEffect(() => {
+    setIsManualMode(currentSession?.effectiveMode === 'MANUAL' || currentSession?.status === 'waiting_admin');
+  }, [currentSession?.effectiveMode, currentSession?.status]);
+
+  const openCreateSession = () => {
+    setNewSessionTitle('');
+    setSelectedRepositoryId('');
+    setRepositoryPickerExpanded(false);
+    setCreateModalVisible(true);
+  };
+
+  const handleCreateSession = async () => {
+    const title = newSessionTitle.trim();
+    if (!title) return;
+
     setIsLoading(true);
     setError(null);
     try {
-      const session = await createChatSession(title);
+      const session = await createChatSession(title, selectedRepositoryId || undefined);
       setSessions((prev) => [session, ...prev.filter((s) => s.id !== session.id)]);
       setCurrentSession(session);
       setMessages([]);
       setSidebarVisible(false);
+      setCreateModalVisible(false);
       navigation.setParams({ repoId: undefined, repoName: undefined });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể tạo cuộc trò chuyện.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDeleteSession = (session: ChatSession) => {
+    setDeleteConfirmSession(session);
+  };
+
+  const confirmDeleteSession = async () => {
+    const session = deleteConfirmSession;
+    if (!session) return;
+
+    setDeleteConfirmSession(null);
+    setDeletingSessionId(session.id);
+    try {
+      await deleteChatSession(session.id);
+      const remaining = sessions.filter((item) => item.id !== session.id);
+      setSessions(remaining);
+      if (currentSession?.id === session.id) {
+        const next = remaining[0];
+        if (next) {
+          await selectSession(next);
+        } else {
+          setCurrentSession(null);
+          setMessages([]);
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể xóa cuộc trò chuyện.');
+    } finally {
+      setDeletingSessionId(null);
     }
   };
 
@@ -190,8 +370,15 @@ export const ChatScreen: React.FC = () => {
       // Update mode tracking
       setIsManualMode(result.effectiveMode === 'MANUAL' || result.status === 'waiting_admin');
 
+      // Replace the optimistic local user message with the server message. The
+      // same server message can also arrive through Socket.IO, so merge by id.
+      setMessages((previous) => mergeChatMessages(
+        previous.filter((message) => message.id !== optimistic.id),
+        [result.userMessage],
+      ));
+
       if (result.assistantMessage) {
-        setMessages((prev) => [...prev, result.assistantMessage!]);
+        setMessages((prev) => mergeChatMessages(prev, [result.assistantMessage!]));
         scrollToBottom();
         setSessions((prev) =>
           prev.map((s) =>
@@ -349,12 +536,14 @@ export const ChatScreen: React.FC = () => {
           onContentSizeChange={scrollToBottom}
           ListEmptyComponent={renderEmptyState}
           ListFooterComponent={
-            isSending ? (
+            isSending || isAdminTyping ? (
               <View style={styles.messageRow}>
                 {renderAiAvatar()}
                 <View style={[styles.bubble, styles.aiBubble, styles.typingBubble]}>
                   <ActivityIndicator size="small" color={theme.colors.textMuted} />
-                  <Text style={styles.typingText}>AI Mentor đang trả lời...</Text>
+                  <Text style={styles.typingText}>
+                    {isAdminTyping ? 'Hỗ trợ viên đang nhập...' : 'AI Mentor đang trả lời...'}
+                  </Text>
                 </View>
               </View>
             ) : null
@@ -370,6 +559,9 @@ export const ChatScreen: React.FC = () => {
             placeholderTextColor={theme.colors.textMuted}
             value={inputText}
             onChangeText={setInputText}
+            onChange={(event) => {
+              if (currentSession?.id) emitChatTyping(currentSession.id, Boolean(event.nativeEvent.text.trim()));
+            }}
             multiline
             maxLength={1000}
             editable={!isSending}
@@ -392,8 +584,9 @@ export const ChatScreen: React.FC = () => {
 
       <Modal visible={sidebarVisible} animationType="slide" transparent onRequestClose={() => setSidebarVisible(false)}>
         <View style={styles.modalRoot}>
-          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setSidebarVisible(false)} />
-          <View style={[styles.sidebar, { paddingTop: insets.top + theme.spacing.lg }]}>
+          <View
+            style={[styles.sidebar, { paddingTop: insets.top + theme.spacing.lg }]}
+          >
             <View style={styles.sidebarHeader}>
               <Text style={styles.sidebarTitle}>AI Mentor</Text>
               <TouchableOpacity onPress={() => setSidebarVisible(false)} hitSlop={12}>
@@ -403,7 +596,7 @@ export const ChatScreen: React.FC = () => {
 
             <Button
               title="Tạo cuộc trò chuyện"
-              onPress={() => handleCreateSession()}
+              onPress={openCreateSession}
               loading={isLoading}
               icon={<Plus size={16} color={theme.colors.textPrimary} />}
             />
@@ -432,24 +625,174 @@ export const ChatScreen: React.FC = () => {
                 sessions.map((session) => {
                   const isActive = currentSession?.id === session.id;
                   return (
-                    <TouchableOpacity
+                    <View
                       key={session.id}
                       style={[styles.sessionItem, isActive && styles.sessionItemActive]}
-                      onPress={() => selectSession(session)}
-                      activeOpacity={0.85}
                     >
-                      <Text style={[styles.sessionTitle, isActive && styles.sessionTitleActive]} numberOfLines={1}>
-                        {session.title}
-                      </Text>
-                      <Text style={styles.sessionTime}>{formatRelativeTime(session.createdAt)}</Text>
-                    </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.sessionMain}
+                        onPress={() => selectSession(session)}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={[styles.sessionTitle, isActive && styles.sessionTitleActive]} numberOfLines={1}>
+                          {session.title}
+                        </Text>
+                        <Text style={styles.sessionTime}>{formatRelativeTime(session.createdAt)}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.deleteSessionButton}
+                        onPress={() => handleDeleteSession(session)}
+                        disabled={deletingSessionId === session.id}
+                        hitSlop={8}
+                      >
+                        {deletingSessionId === session.id
+                          ? <ActivityIndicator size="small" color={theme.colors.error} />
+                          : <Trash2 size={15} color={theme.colors.textMuted} />}
+                      </TouchableOpacity>
+                    </View>
                   );
                 })
               )}
             </ScrollView>
           </View>
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setSidebarVisible(false)} />
         </View>
       </Modal>
+
+      <Modal
+        visible={createModalVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setCreateModalVisible(false)}
+      >
+        <View style={styles.createModalRoot}>
+          <TouchableOpacity
+            style={styles.createModalBackdrop}
+            activeOpacity={1}
+            onPress={() => setCreateModalVisible(false)}
+          />
+          <View style={styles.createModalCard}>
+            <View style={styles.createModalHeader}>
+              <Text style={styles.createModalTitle}>Tạo cuộc trò chuyện mới</Text>
+              <TouchableOpacity onPress={() => setCreateModalVisible(false)} hitSlop={10}>
+                <X size={20} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.formLabel}>Tiêu đề</Text>
+            <TextInput
+              style={styles.createTitleInput}
+              value={newSessionTitle}
+              onChangeText={setNewSessionTitle}
+              placeholder="Ví dụ: Tư vấn lộ trình Backend"
+              placeholderTextColor={theme.colors.textMuted}
+              autoFocus
+              editable={!isLoading}
+            />
+
+            <Text style={[styles.formLabel, styles.contextPickerLabel]}>Ngữ cảnh tư vấn</Text>
+            <View style={styles.contextPickerWrapper}>
+            <TouchableOpacity
+              style={styles.contextPickerTrigger}
+              onPress={() => setRepositoryPickerExpanded((expanded) => !expanded)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.contextOptionText}>
+                <Text style={styles.contextOptionTitle}>
+                  {selectedRepositoryId
+                    ? analyzedRepositories.find((item) => item.id === selectedRepositoryId)?.name || 'Repository đã chọn'
+                    : 'Dùng phân tích mới nhất'}
+                </Text>
+                <Text style={styles.contextOptionHint}>
+                  {selectedRepositoryId ? 'Bấm để đổi repository' : 'AI tự chọn dữ liệu phân tích gần nhất'}
+                </Text>
+              </View>
+              <ChevronDown
+                size={18}
+                color={theme.colors.secondary}
+                style={repositoryPickerExpanded ? styles.chevronExpanded : undefined}
+              />
+            </TouchableOpacity>
+            {repositoryPickerExpanded && (
+              <ScrollView
+                style={styles.contextOptionsPanel}
+                contentContainerStyle={styles.contextOptionsContent}
+                nestedScrollEnabled
+                showsVerticalScrollIndicator
+              >
+                {selectedRepositoryId && (
+                  <TouchableOpacity
+                    style={styles.contextOption}
+                    onPress={() => {
+                      setSelectedRepositoryId('');
+                      setRepositoryPickerExpanded(false);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.contextOptionText}>
+                      <Text style={styles.contextOptionTitle}>Dùng phân tích mới nhất</Text>
+                      <Text style={styles.contextOptionHint}>AI tự chọn dữ liệu phân tích gần nhất</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+                {analyzedRepositories.map((repository) => (
+                  <TouchableOpacity
+                    key={repository.id}
+                    style={[styles.contextOption, selectedRepositoryId === repository.id && styles.contextOptionSelected]}
+                    onPress={() => {
+                      setSelectedRepositoryId(repository.id);
+                      setRepositoryPickerExpanded(false);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.contextOptionText}>
+                      <Text style={styles.contextOptionTitle} numberOfLines={1}>{repository.name}</Text>
+                      <Text style={styles.contextOptionHint} numberOfLines={1}>
+                        {repository.role}{typeof repository.score === 'number' ? ` · ${Math.round(repository.score)}%` : ''}
+                      </Text>
+                    </View>
+                    {selectedRepositoryId === repository.id && <Check size={18} color={theme.colors.secondary} />}
+                  </TouchableOpacity>
+                ))}
+                {!analyzedRepositories.length && (
+                  <Text style={styles.noContextText}>Chưa có repository được phân tích.</Text>
+                )}
+              </ScrollView>
+            )}
+            </View>
+
+            <View style={styles.createModalActions}>
+              <Button
+                title="Hủy"
+                variant="outline"
+                fullWidth={false}
+                onPress={() => setCreateModalVisible(false)}
+                disabled={isLoading}
+                style={styles.modalActionButton}
+              />
+              <Button
+                title="Tạo"
+                fullWidth={false}
+                onPress={handleCreateSession}
+                loading={isLoading}
+                disabled={!newSessionTitle.trim()}
+                style={styles.modalActionButton}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <CustomAlert
+        visible={Boolean(deleteConfirmSession)}
+        title="Xóa cuộc trò chuyện"
+        message={`Bạn có chắc muốn xóa "${deleteConfirmSession?.title || 'cuộc trò chuyện này'}"?`}
+        type="warning"
+        showCancel
+        cancelText="Hủy"
+        confirmText="Xóa"
+        onCancel={() => setDeleteConfirmSession(null)}
+        onConfirm={confirmDeleteSession}
+      />
     </KeyboardAvoidingView>
   );
 };
@@ -685,6 +1028,129 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
+  createModalRoot: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: theme.spacing.lg,
+  },
+  createModalBackdrop: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+  },
+  createModalCard: {
+    width: '100%',
+    maxWidth: 420,
+    maxHeight: '90%',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.roundness.md,
+    padding: theme.spacing.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  createModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: theme.spacing.lg,
+  },
+  createModalTitle: {
+    flex: 1,
+    fontSize: theme.typography.sizes.lg,
+    fontWeight: theme.typography.weights.bold,
+    color: theme.colors.textPrimary,
+  },
+  formLabel: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.bold,
+    color: theme.colors.textPrimary,
+    marginBottom: theme.spacing.xs,
+  },
+  createTitleInput: {
+    height: 46,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.roundness.sm,
+    color: theme.colors.textPrimary,
+    backgroundColor: theme.colors.surfaceLight,
+    paddingHorizontal: theme.spacing.md,
+    fontSize: theme.typography.sizes.sm,
+  },
+  contextPickerLabel: {
+    marginTop: theme.spacing.lg,
+  },
+  contextOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.roundness.sm,
+    padding: theme.spacing.sm,
+    marginTop: theme.spacing.sm,
+    backgroundColor: theme.colors.surfaceLight,
+  },
+  contextPickerTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: theme.colors.secondary,
+    borderRadius: theme.roundness.sm,
+    padding: theme.spacing.sm,
+    marginTop: theme.spacing.sm,
+    backgroundColor: theme.colors.surfaceLight,
+  },
+  contextPickerWrapper: {
+    position: 'relative',
+  },
+  contextOptionsPanel: {
+    maxHeight: 190,
+    marginTop: theme.spacing.sm,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.roundness.sm,
+    backgroundColor: theme.colors.surfaceLight,
+  },
+  contextOptionsContent: {
+    paddingBottom: 2,
+  },
+  chevronExpanded: {
+    transform: [{ rotate: '180deg' }],
+  },
+  contextOptionSelected: {
+    borderColor: theme.colors.secondary,
+    backgroundColor: 'rgba(99, 102, 241, 0.12)',
+  },
+  contextOptionText: {
+    flex: 1,
+    marginRight: theme.spacing.sm,
+  },
+  contextOptionTitle: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textPrimary,
+    fontWeight: theme.typography.weights.medium,
+  },
+  contextOptionHint: {
+    fontSize: theme.typography.sizes.xs,
+    color: theme.colors.textMuted,
+    marginTop: 3,
+  },
+  noContextText: {
+    fontSize: theme.typography.sizes.xs,
+    color: theme.colors.textMuted,
+    marginTop: theme.spacing.sm,
+  },
+  createModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.lg,
+  },
+  modalActionButton: {
+    minWidth: 92,
+  },
   sidebar: {
     width: '82%',
     maxWidth: 320,
@@ -747,6 +1213,8 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.md,
   },
   sessionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: theme.spacing.sm + 2,
     paddingHorizontal: theme.spacing.sm,
     borderRadius: theme.roundness.sm,
@@ -759,6 +1227,16 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.sm,
     fontWeight: theme.typography.weights.medium,
     color: theme.colors.textSecondary,
+  },
+  sessionMain: {
+    flex: 1,
+  },
+  deleteSessionButton: {
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: theme.spacing.xs,
   },
   sessionTitleActive: {
     color: theme.colors.secondaryLight,

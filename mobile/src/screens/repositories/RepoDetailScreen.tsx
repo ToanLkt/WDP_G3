@@ -31,6 +31,7 @@ import {
   BookOpen,
   Target,
   Lightbulb,
+  GitCompareArrows,
 } from 'lucide-react-native';
 
 import { theme } from '../../theme';
@@ -224,6 +225,13 @@ export const RepoDetailScreen: React.FC = () => {
     navigation.navigate('ChatTab', { repoId, repoName: repository.name });
   };
 
+  const handleCompareSnapshots = () => {
+    navigation.navigate('RepoProgress', {
+      repoId,
+      repoName: repository?.name || repoName || 'Repository',
+    });
+  };
+
   const handleGenerateFeedback = async () => {
     setIsGeneratingFeedback(true);
     try {
@@ -400,6 +408,14 @@ export const RepoDetailScreen: React.FC = () => {
             style={styles.headerActionBtn}
             textStyle={styles.headerActionBtnTextPrimary}
             icon={<Play size={14} color="white" />}
+          />
+          <Button
+            title="So sánh thay đổi"
+            variant="outline"
+            onPress={handleCompareSnapshots}
+            style={styles.headerActionBtn}
+            textStyle={styles.headerActionBtnText}
+            icon={<GitCompareArrows size={14} color={theme.colors.primaryLight} />}
           />
         </View>
       </View>

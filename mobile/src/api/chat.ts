@@ -1,8 +1,11 @@
 import { apiClient, unwrapResponse } from './client';
 
 export const chatApi = {
-  async createSession(title: string) {
-    const response = await apiClient.post('/chat/sessions', { title });
+  async createSession(title: string, context?: { repositoryId?: string }) {
+    const response = await apiClient.post('/chat/sessions', {
+      title,
+      ...context,
+    });
     return unwrapResponse(response.data);
   },
 

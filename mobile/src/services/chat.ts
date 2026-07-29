@@ -16,7 +16,24 @@ export interface ChatSession {
   lastMessage: string;
   createdAt: string;
   messages?: ChatMessage[];
+  status?: 'active' | 'waiting_admin' | 'answered' | 'closed' | string;
+  mode?: 'AI_AUTO' | 'MANUAL' | string | null;
+  modeSource?: string;
+  effectiveMode?: 'AI_AUTO' | 'MANUAL' | string;
+  lastMessageAt?: string | null;
+  updatedAt?: string;
 }
+
+export const chatMessageKey = (message: ChatMessage) =>
+  message.id || `${message.sender}-${message.timestamp}-${message.text}`;
+
+export const mergeChatMessages = (...groups: Array<ChatMessage[] | undefined>) => {
+  const byKey = new Map<string, ChatMessage>();
+  groups.flatMap((group) => group ?? []).forEach((message) => {
+    if (message.text.trim()) byKey.set(chatMessageKey(message), message);
+  });
+  return Array.from(byKey.values());
+};
 
 export interface SendMessageResult {
   userMessage: ChatMessage;
@@ -44,11 +61,17 @@ const toMobileSession = (session: ReturnType<typeof normalizeChatSession>): Chat
   title: session.title,
   lastMessage: session.messages[session.messages.length - 1]?.content || '',
   createdAt: session.createdAt,
+  status: session.status,
+  mode: session.mode,
+  modeSource: session.modeSource,
+  effectiveMode: session.effectiveMode,
+  lastMessageAt: session.lastMessageAt,
+  updatedAt: session.updatedAt,
   messages: session.messages.map(toMobileMessage),
 });
 
-export const createChatSession = async (title: string): Promise<ChatSession> => {
-  const payload = await chatApi.createSession(title);
+export const createChatSession = async (title: string, repositoryId?: string): Promise<ChatSession> => {
+  const payload = await chatApi.createSession(title, repositoryId ? { repositoryId } : undefined);
   const session = normalizeChatSession(extractApiResource(payload, ['session', 'chatSession']));
   return toMobileSession(session);
 };

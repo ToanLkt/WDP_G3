@@ -119,7 +119,7 @@ export const RoadmapCard: React.FC<RoadmapCardProps> = ({
         {/* Level block */}
         {effectiveLevel && (
           <View style={styles.levelBlock}>
-            <Text style={styles.levelLabel}>Trình độ <Text style={styles.levelValue}>{effectiveLevel}</Text></Text>
+            <Text style={styles.levelLabel}>Trình độ: <Text style={styles.levelValue}>{effectiveLevel}</Text></Text>
           </View>
         )}
 
