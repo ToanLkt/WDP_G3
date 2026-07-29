@@ -269,7 +269,9 @@ export const HomeScreen: React.FC = () => {
                     <Text style={styles.analysisName}>{analysis.repositoryName || analysis.repoName}</Text>
                     <Text style={styles.analysisTime}>{formatRelativeTime(analysis.createdAt)}</Text>
                   </View>
-                  <Text style={[styles.analysisScore, { color: getScoreColor(score) }]}>{score}</Text>
+                  <Text style={[styles.analysisScore, { color: getScoreColor(score) }]}>
+                    {typeof score === 'number' ? Number(score).toFixed(2).replace(/\.00$/, '') : score}%
+                  </Text>
                 </TouchableOpacity>
               );
             })}

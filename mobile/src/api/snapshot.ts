@@ -12,8 +12,15 @@ export const snapshotApi = {
     const response = await apiClient.get<unknown>(
       `/repositories/${encodeRepoId(repositoryId)}/snapshots`,
     );
-    const list = unwrapResponse<AnalysisSnapshot[]>(response.data);
-    return Array.isArray(list) ? list : [];
+    const data = unwrapResponse<any>(response.data);
+    const list = Array.isArray(data?.snapshots)
+      ? data.snapshots
+      : Array.isArray(data?.items)
+      ? data.items
+      : Array.isArray(data)
+      ? data
+      : [];
+    return list;
   },
 
   /** GET /snapshots/:snapshotId — chi tiết 1 snapshot */

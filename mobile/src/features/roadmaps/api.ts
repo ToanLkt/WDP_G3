@@ -531,9 +531,10 @@ export const roadmapService = {
 
     const payload = {
       targetRole: safeRole,
-      roleId: options.selectedRole?.roleId ?? options.roleId ?? roleIds[safeRole] ?? 'backend',
+      roleId: options.selectedRoleId ?? options.selectedRole?.roleId ?? options.roleId ?? roleIds[safeRole] ?? 'backend',
+      selectedRoleId: options.selectedRoleId ?? options.selectedRole?.roleId ?? options.roleId ?? roleIds[safeRole] ?? 'backend',
       selectedRole: {
-        roleId: options.selectedRole?.roleId ?? options.roleId ?? roleIds[safeRole] ?? 'backend',
+        roleId: options.selectedRoleId ?? options.selectedRole?.roleId ?? options.roleId ?? roleIds[safeRole] ?? 'backend',
         roleName: safeRole
       },
       level: options.level ?? 'beginner',
@@ -542,7 +543,11 @@ export const roadmapService = {
       useRoleMatching: options.useRoleMatching ?? true,
       forceRegenerate: options.forceRegenerate ?? false,
       sourceMode,
-      ...(sourceMode === 'single_repo' ? { repoId: options.repoId } : {}),
+      repoId: options.repoId ?? options.currentRepositoryId,
+      currentRepositoryId: options.currentRepositoryId ?? options.repoId,
+      ...(options.sourceRepositoryId ? { sourceRepositoryId: options.sourceRepositoryId } : {}),
+      ...(options.sourceAnalysisId ? { sourceAnalysisId: options.sourceAnalysisId } : {}),
+      ...(options.sourceSnapshotId ? { sourceSnapshotId: options.sourceSnapshotId } : {}),
     };
 
     const response = await apiClient.post('/roadmaps/generate', payload);

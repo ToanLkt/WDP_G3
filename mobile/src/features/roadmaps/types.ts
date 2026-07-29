@@ -25,6 +25,11 @@ export interface GenerateRoadmapOptions {
   language?: string;
   useRoleMatching?: boolean;
   forceRegenerate?: boolean;
+  currentRepositoryId?: string;
+  selectedRoleId?: string;
+  sourceRepositoryId?: string;
+  sourceAnalysisId?: string;
+  sourceSnapshotId?: string;
 }
 
 export interface LearningResource {

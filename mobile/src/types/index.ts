@@ -387,6 +387,15 @@ export interface AnalysisSnapshot {
   testingScore?: number;
   deploymentScore?: number;
   portfolioReadinessScore?: number;
+  pipelineVersion?: string;
+  modelVersion?: string;
+  scoringMethod?: string;
+  matchedSkillNames?: string[];
+  weakSkillNames?: string[];
+  missingSkillNames?: string[];
+  recommendedNextSkills?: string[];
+  isCompatible?: boolean;
+  isCurrentVersion?: boolean;
 }
 
 export interface SnapshotDelta {
@@ -394,8 +403,8 @@ export interface SnapshotDelta {
   levelChanged: boolean;
   fromLevel?: string;
   toLevel?: string;
-  userCommitsDelta: number;
-  activeDaysDelta: number;
+  userCommitsDelta?: number;
+  activeDaysDelta?: number;
 }
 
 export interface SkillComparisonItem {
@@ -437,6 +446,8 @@ export interface SnapshotComparison {
   fullName?: string;
   analysisScopeType?: string;
   enoughData?: boolean;
+  comparisonStatus?: string;
+  message?: string;
   firstSnapshot: AnalysisSnapshot | null;
   latestSnapshot: AnalysisSnapshot | null;
   delta?: SnapshotDelta;

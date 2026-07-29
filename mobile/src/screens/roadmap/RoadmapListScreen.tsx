@@ -175,22 +175,16 @@ export const RoadmapListScreen: React.FC = () => {
         limit: 5,
       });
       if (result?.matches?.length > 0) {
-        setServerRoleMatches(result.matches);
-        const [top, ...rest] = result.matches;
+        // Only keep the highest compatible role (rank-1)
+        setServerRoleMatches(result.matches.slice(0, 1));
+        const top = result.matches[0];
         setServerRecommendedRole({
           role: top.roleName as any,
           title: 'Đề xuất chính theo phân tích',
           reason: `Điểm phù hợp: ${top.matchScore}% – ${top.matchLevelLabel}`,
           focus: top.recommendedNextSkills?.join(', ') || 'Tập trung theo các kỹ năng chính đã phát hiện.',
         });
-        setServerJobRoadmaps(
-          rest.slice(0, 2).map((m) => ({
-            role: m.roleName as any,
-            title: `Đề xuất phụ: ${m.roleName}`,
-            reason: `Điểm phù hợp: ${m.matchScore}% – ${m.matchLevelLabel}`,
-            focus: m.recommendedNextSkills?.join(', ') || 'Phát triển thêm kỹ năng còn thiếu.',
-          }))
-        );
+        setServerJobRoadmaps([]);
       } else {
         setServerRoleMatches([]);
         setServerRecommendedRole(null);
@@ -235,7 +229,40 @@ export const RoadmapListScreen: React.FC = () => {
     setGeneratingKey(actionKey);
     setError(null);
     try {
-      const recommendation = await roadmapService.generateAIRoadmap(role, false);
+      const selectedRepoId = selectedRepoIds[0];
+      const targetAnalysis = analyses.find((a) => a.repositoryId === selectedRepoId);
+      
+      const roleIds: Record<string, string> = {
+        'Backend Developer': 'backend',
+        'Frontend Developer': 'frontend',
+        'Mobile Developer': 'mobile',
+        'DevOps Engineer': 'devops',
+        'Data Scientist': 'data_scientist',
+      };
+
+      const matchedRole = serverRoleMatches.find((m) => m.roleName === role);
+      const targetRoleId = matchedRole?.roleId ?? roleIds[role] ?? 'backend';
+
+      const options: any = {
+        sourceMode: 'single_repo',
+        repoId: selectedRepoId,
+        currentRepositoryId: selectedRepoId,
+        roleId: targetRoleId,
+        selectedRoleId: targetRoleId,
+        selectedRole: {
+          roleId: targetRoleId,
+          roleName: role,
+        },
+        forceRegenerate: false,
+      };
+
+      if (targetAnalysis) {
+        options.sourceRepositoryId = targetAnalysis.repositoryId;
+        options.sourceAnalysisId = targetAnalysis.id;
+        options.sourceSnapshotId = targetAnalysis.snapshotId;
+      }
+
+      const recommendation = await roadmapService.generateAIRoadmap(role, options);
       await loadData();
       openRoadmap(recommendation.roadmap);
     } catch (err) {
@@ -304,66 +331,26 @@ export const RoadmapListScreen: React.FC = () => {
             Chọn dữ liệu học tập đã phân tích, hệ thống sẽ đề xuất các hướng nghề nghiệp phù hợp để bạn tạo lộ trình học.
           </Text>
 
-          <View style={styles.sourceModeTabs}>
-            <TouchableOpacity 
-              style={[styles.sourceModeTab, sourceMode === 'single_repo' && styles.sourceModeTabActive]}
-              onPress={() => setSourceMode('single_repo')}
+          <View style={styles.repoPickerContainer}>
+            <TouchableOpacity
+              style={styles.rolePicker}
+              onPress={() => {
+                setRepoPickerMulti(false);
+                setRepoPickerVisible(true);
+              }}
+              activeOpacity={0.85}
             >
-              <Text style={[styles.sourceModeTabText, sourceMode === 'single_repo' && styles.sourceModeTabTextActive]}>
-                Một dự án
-              </Text>
-              <Text style={styles.sourceModeTabDesc}>
-                Đề xuất vai trò từ một dự án cụ thể.
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.sourceModeTab, sourceMode === 'selected_repos' && styles.sourceModeTabActive]}
-              onPress={() => setSourceMode('selected_repos')}
-            >
-              <Text style={[styles.sourceModeTabText, sourceMode === 'selected_repos' && styles.sourceModeTabTextActive]}>
-                Một vài dự án
-              </Text>
-              <Text style={styles.sourceModeTabDesc}>
-                Đề xuất dựa trên các dự án đã chọn.
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.sourceModeTab, sourceMode === 'all_analyzed_repos' && styles.sourceModeTabActive]}
-              onPress={() => setSourceMode('all_analyzed_repos')}
-            >
-              <Text style={[styles.sourceModeTabText, sourceMode === 'all_analyzed_repos' && styles.sourceModeTabTextActive]}>
-                Portfolio đã phân tích
-              </Text>
-              <Text style={styles.sourceModeTabDesc}>
-                Dựa trên tất cả các repo.
-              </Text>
+              <Text style={styles.rolePickerLabel}>Nguồn dữ liệu (Chọn 1 repository)</Text>
+              <View style={styles.rolePickerValueRow}>
+                <Text style={styles.rolePickerText} numberOfLines={2}>
+                  {selectedRepoIds.length > 0 
+                    ? (analyzedRepos.find(r => r.id === selectedRepoIds[0])?.name || selectedRepoIds[0])
+                    : 'Chọn dự án để phân tích'}
+                </Text>
+                <ChevronDown size={18} color={theme.colors.secondaryLight} />
+              </View>
             </TouchableOpacity>
           </View>
-
-          {(sourceMode === 'single_repo' || sourceMode === 'selected_repos') && (
-            <View style={styles.repoPickerContainer}>
-              <TouchableOpacity
-                style={styles.rolePicker}
-                onPress={() => {
-                  setRepoPickerMulti(sourceMode === 'selected_repos');
-                  setRepoPickerVisible(true);
-                }}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.rolePickerLabel}>Nguồn dữ liệu</Text>
-                <View style={styles.rolePickerValueRow}>
-                  <Text style={styles.rolePickerText} numberOfLines={2}>
-                    {selectedRepoIds.length > 0 
-                      ? `${selectedRepoIds.length} dự án đã chọn` 
-                      : 'Chọn dự án để phân tích'}
-                  </Text>
-                  <ChevronDown size={18} color={theme.colors.secondaryLight} />
-                </View>
-              </TouchableOpacity>
-            </View>
-          )}
 
           <View style={styles.confirmSourceBtnContainer}>
             <Button
@@ -459,28 +446,7 @@ export const RoadmapListScreen: React.FC = () => {
               />
             </View>
 
-            {/* Vai trò phụ */}
-            {serverRoleMatches.length > 1 && (
-              <View style={styles.roleMatchGrid}>
-                {serverRoleMatches.slice(1, 3).map((match, idx) => (
-                  <View key={idx} style={styles.roleMatchCardSmall}>
-                    <View style={styles.roleMatchSmallHeader}>
-                      <Text style={styles.roleMatchNameSmall} numberOfLines={2}>{match.roleName}</Text>
-                      <Text style={styles.scoreSmall}>{Math.round(match.matchScore)}%</Text>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.createSmallBtn}
-                      onPress={() => handleGenerate(match.roleName, `ai_${idx}`)}
-                      disabled={isGenerating}
-                    >
-                      <Text style={styles.createSmallBtnText}>
-                        {generatingKey === `ai_${idx}` ? 'Đang tạo...' : 'Tạo lộ trình'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            )}
+            {/* Vai trò phụ ẩn đi theo yêu cầu của người dùng */}
           </>
         )}
       </Card>
