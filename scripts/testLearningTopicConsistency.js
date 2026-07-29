@@ -58,4 +58,26 @@ assert(calculateYouTubeVideoScore({
   requiredTermGroups: reactProfile.requiredTermGroups,
   excludedTerms: reactProfile.excludedTerms,
 }) >= 40);
+
+const componentProfile = learning.buildLearningTopicProfile({
+  skillName: 'Component Design',
+  targetRole: 'Frontend Developer',
+  level: 'intermediate',
+  taskTitle: 'Củng cố và tái cấu trúc Component Design',
+  taskDescription: 'Phân tách UI thành các Component tái sử dụng và chuẩn hóa dữ liệu qua Props.',
+});
+assert.strictEqual(learning.hasValidLearningVideo(null, componentProfile), false);
+assert.strictEqual(learning.hasValidLearningVideo([], componentProfile), false);
+assert(/React reusable components Props/i.test(componentProfile.primaryQuery));
+assert(componentProfile.tags.includes('props'));
+assert(calculateYouTubeVideoScore({
+  title: 'React Reusable Components and Props Tutorial',
+  description: 'Refactor components using props and component composition.',
+  channelTitle: 'Web Dev Simplified',
+  skillName: 'Component Design',
+  level: 'intermediate',
+  relevanceTerms: componentProfile.relevanceTerms,
+  requiredTermGroups: componentProfile.requiredTermGroups,
+  excludedTerms: componentProfile.excludedTerms,
+}) >= 40);
 console.log('PASS: learning topic profile, grounding validator, and YouTube gate');

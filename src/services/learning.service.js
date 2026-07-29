@@ -141,11 +141,12 @@ const buildLearningTopicProfile = ({ skillName, targetRole, level, language, tas
   const identity = buildLearningIdentity({ skillName, targetRole, level, language });
   const text = `${taskTitle || ''} ${taskDescription || ''} ${identity.canonicalSkillName || ''}`.toLowerCase();
   const terms = [identity.canonicalSkillName, targetRole, level, projectType].filter(Boolean);
-  let querySkill = identity.canonicalSkillName;
+  let querySkill = String(taskTitle || identity.canonicalSkillName || '').trim();
   const rules = [
     { pattern: /swagger|openapi|swagger-jsdoc|swagger-ui|api documentation|tài liệu api|tao tai lieu api/i, primaryTopic: 'Swagger OpenAPI API documentation', query: 'Swagger OpenAPI Node.js Express swagger-jsdoc swagger-ui-express API documentation', terms: ['swagger', 'openapi', 'api documentation', 'swagger-jsdoc', 'swagger-ui-express', 'node.js', 'express'], requiredTermGroups: [['swagger', 'openapi'], ['api documentation', 'api docs', 'swagger-jsdoc', 'swagger-ui']], excludedTerms: ['generic rest api design', '.net', 'asp.net', 'django', 'spring boot'] },
     { pattern: /\bjsx\b|reconciliation|virtual dom|component render cycle|rendering mechanism|co che rendering/i, query: 'React JSX rendering reconciliation virtual DOM', terms: ['react', 'jsx', 'rendering', 'reconciliation', 'virtual dom'], requiredTermGroups: [['react', 'jsx'], ['jsx', 'rendering', 'reconciliation', 'virtual dom']], excludedTerms: ['angular', 'vue'] },
     { pattern: /unit test|unit tests|component test|component testing|react testing library|jest|vitest|test|testing|kiem thu/i, query: 'React component unit testing', terms: ['react', 'component', 'unit testing', 'testing', 'jest', 'react testing library'] },
+    { pattern: /component design|reusable component|component tái sử dụng|component tai su dung|\bprops\b|component composition|header, card, button/i, primaryTopic: 'React reusable component design and Props', query: 'React reusable components Props component composition refactoring', terms: ['react', 'components', 'props', 'reusable components', 'component composition', 'refactoring'], requiredTermGroups: [['react', 'reactjs'], ['component', 'components'], ['props', 'reusable', 'composition']], excludedTerms: ['angular', 'vue', 'web components', 'rest api'] },
     { pattern: /\breact\b.*\brouter\b|\brouter\b.*\breact\b|react ui|static html|html\/css|ứng dụng react|ung dung react/i, primaryTopic: 'React application setup and React Router', query: 'React application setup React Router HTML CSS migration components pages', terms: ['react', 'react router', 'html', 'css', 'components', 'pages'], requiredTermGroups: [['react'], ['react router', 'router', 'routing']], excludedTerms: ['angular', 'vue', 'node.js express', 'rest api design'] },
     { pattern: /docker|dockerfile|compose|container/i, query: 'Docker Dockerfile container tutorial', terms: ['docker', 'dockerfile', 'container'] },
     { pattern: /jwt|auth|authentication|authorization|rbac|login|token/i, query: 'JWT authentication middleware Node.js Express', terms: ['jwt', 'authentication', 'authorization', 'middleware', 'node.js', 'express'], requiredTermGroups: [['jwt', 'authentication'], ['middleware', 'authorization', 'auth']], excludedTerms: ['python', 'django', '.net', 'asp.net', 'spring boot', 'java'] },
@@ -168,8 +169,8 @@ const buildLearningTopicProfile = ({ skillName, targetRole, level, language, tas
     primaryQuery: [querySkill, targetRoleText, levelText, 'tutorial'].filter(Boolean).join(' '),
     fallbackEnglishQuery: [querySkill, targetRoleText, 'practical tutorial'].filter(Boolean).join(' '),
     relevanceTerms: [...new Set(terms.map((term) => normalizeText(term)).filter(Boolean))],
-    requiredKeywordGroups: matched?.requiredTermGroups || [[identity.canonicalSkillName]],
-    requiredTermGroups: matched?.requiredTermGroups || [[identity.canonicalSkillName]],
+    requiredKeywordGroups: matched?.requiredTermGroups || [[identity.canonicalSkillName, taskTitle]],
+    requiredTermGroups: matched?.requiredTermGroups || [[identity.canonicalSkillName, taskTitle]],
     excludedTerms: matched?.excludedTerms || [],
     normalizedTopicKey: normalizeText([matched?.primaryTopic || querySkill, taskTitle, taskDescription].filter(Boolean).join(' ')),
     topicCacheKey: normalizeText([matched?.primaryTopic || querySkill, taskTitle, taskDescription].filter(Boolean).join(' ')),
