@@ -789,15 +789,25 @@ const formatSentences = (source, key, limit) => {
 
 const buildAnalysisScopeSummary = (source) => {
   const commitSummary = source.commitSummary || {};
-  return {
+  const scope = source.analysisScope || {};
+  const summary = {
     type: source.analysisScope?.type || 'user_contribution',
     githubUsername: source.analysisScope?.githubUsername || '',
-    totalRepoCommits: Number(source.analysisScope?.totalRepoCommits || commitSummary.totalCommits || 0),
-    userCommits: Number(source.analysisScope?.userCommits || commitSummary.totalCommits || 0),
-    activeDays: Number(source.analysisScope?.activeDays || commitSummary.activeDays || 0),
-    firstCommitDate: source.analysisScope?.firstCommitDate || commitSummary.firstCommitDate || null,
-    lastCommitDate: source.analysisScope?.lastCommitDate || commitSummary.lastCommitDate || null,
+    totalRepoCommits: Number(scope.totalRepoCommits ?? commitSummary.totalCommits ?? 0),
+    userCommits: Number(scope.userCommits ?? commitSummary.totalCommits ?? 0),
+    activeDays: Number(scope.activeDays ?? commitSummary.activeDays ?? 0),
+    firstCommitDate: scope.firstCommitDate ?? commitSummary.firstCommitDate ?? null,
+    lastCommitDate: scope.lastCommitDate ?? commitSummary.lastCommitDate ?? null,
   };
+  const optionalFields = [
+    'analyzedCommitShas', 'source', 'commitScope', 'branchesDiscovered', 'branchesAnalyzed',
+    'fetchComplete', 'fetchTruncated', 'failedBranches', 'analysisLimit', 'analyzedSampleCommits',
+    'selectionStrategy', 'activeDayDateSource', 'activeDayTimezone',
+  ];
+  optionalFields.forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(scope, field)) summary[field] = scope[field];
+  });
+  return summary;
 };
 
 const buildSummary = (source) => ({
@@ -879,6 +889,7 @@ const sanitizeAnalysisSnapshot = (snapshot, options = {}) => {
 };
 
 module.exports = {
+  buildAnalysisScopeSummary,
   buildAnalysisPayload,
   filterUserContributionCommits,
   getCommitUserMatchInfo,
