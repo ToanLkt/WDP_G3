@@ -42,8 +42,8 @@ const parseBoolean = (value) => value === true || value === 'true';
 const normalizeView = (query = {}) => (query.view === 'detail' ? 'detail' : 'summary');
 const isUserContributionSnapshot = (snapshot) => snapshot?.analysisScope?.type === 'user_contribution';
 const getSnapshotDate = (snapshot) => snapshot.analyzedAt || snapshot.createdAt || null;
-const getSnapshotUserCommits = (snapshot) => Number(snapshot.analysisScope?.userCommits || snapshot.commitSummary?.totalCommits || 0);
-const getSnapshotActiveDays = (snapshot) => Number(snapshot.analysisScope?.activeDays || snapshot.commitSummary?.activeDays || 0);
+const getSnapshotUserCommits = (snapshot) => Number(snapshot.analysisScope?.userCommits ?? snapshot.commitSummary?.totalCommits ?? 0);
+const getSnapshotActiveDays = (snapshot) => Number(snapshot.analysisScope?.activeDays ?? snapshot.commitSummary?.activeDays ?? 0);
 
 const normalizeListMap = (values) => {
   const map = new Map();
@@ -221,6 +221,42 @@ const mapMissingSkills = (snapshot) => {
     }));
 };
 
+const buildSnapshotSummary = (snapshotInput) => {
+  const snapshot = toObject(snapshotInput) || {};
+  const scope = snapshot.analysisScope || {};
+  const summary = snapshot.summary || {};
+  const compatibility = buildCompatibilityMetadata(snapshot);
+  return {
+    snapshotId: snapshot._id,
+    analysisId: snapshot.analysisResultId || null,
+    repositoryId: snapshot.repositoryId,
+    repoName: snapshot.repoName || '',
+    fullName: snapshot.fullName || '',
+    createdAt: snapshot.createdAt || null,
+    analyzedAt: snapshot.analyzedAt || null,
+    overallScore: summary.overallScore ?? snapshot.scores?.overallScore ?? null,
+    userReadinessScore: summary.userReadinessScore ?? null,
+    userLevel: summary.userLevel ?? scope.userLevel ?? null,
+    confidence: summary.confidence ?? snapshot.scoreBreakdown?.confidence ?? null,
+    analysisScope: {
+      type: scope.type ?? 'user_contribution',
+      ...(Object.prototype.hasOwnProperty.call(scope, 'githubUsername') ? { githubUsername: scope.githubUsername } : {}),
+      ...(Object.prototype.hasOwnProperty.call(scope, 'totalRepoCommits') ? { totalRepoCommits: scope.totalRepoCommits } : {}),
+      ...(Object.prototype.hasOwnProperty.call(scope, 'userCommits') ? { userCommits: scope.userCommits } : {}),
+      ...(Object.prototype.hasOwnProperty.call(scope, 'activeDays') ? { activeDays: scope.activeDays } : {}),
+      ...(Object.prototype.hasOwnProperty.call(scope, 'firstCommitDate') ? { firstCommitDate: scope.firstCommitDate } : {}),
+      ...(Object.prototype.hasOwnProperty.call(scope, 'lastCommitDate') ? { lastCommitDate: scope.lastCommitDate } : {}),
+    },
+    topSkills: mapTopSkills(snapshot.skillVector),
+    missingSkills: mapMissingSkills(snapshot),
+    pipelineVersion: compatibility.pipelineVersion,
+    modelVersion: compatibility.modelVersion,
+    isCurrentVersion: compatibility.isCurrentVersion,
+    isCompatible: compatibility.isCompatible,
+    isComparableWithCurrent: compatibility.isComparableWithCurrent,
+  };
+};
+
 const formatSnapshotResponse = (snapshotInput, options = {}) => {
   const snapshot = toObject(snapshotInput);
   const summary = snapshot.summary || {};
@@ -235,13 +271,20 @@ const formatSnapshotResponse = (snapshotInput, options = {}) => {
       fullName: snapshot.fullName || '',
     },
     analysisScope: {
-      type: scope.type || 'user_contribution',
-      githubUsername: scope.githubUsername || '',
-      totalRepoCommits: Number(scope.totalRepoCommits || 0),
-      userCommits: Number(scope.userCommits || snapshot.commitSummary?.totalCommits || 0),
-      activeDays: Number(scope.activeDays || snapshot.commitSummary?.activeDays || 0),
-      firstCommitDate: scope.firstCommitDate || snapshot.commitSummary?.firstCommitDate || null,
-      lastCommitDate: scope.lastCommitDate || snapshot.commitSummary?.lastCommitDate || null,
+      ...buildSnapshotSummary(snapshot).analysisScope,
+      ...(Object.prototype.hasOwnProperty.call(scope, 'analyzedCommitShas') ? { analyzedCommitShas: scope.analyzedCommitShas } : {}),
+      ...(Object.prototype.hasOwnProperty.call(scope, 'source') ? { source: scope.source } : {}),
+      ...(Object.prototype.hasOwnProperty.call(scope, 'commitScope') ? { commitScope: scope.commitScope } : {}),
+      ...(Object.prototype.hasOwnProperty.call(scope, 'branchesDiscovered') ? { branchesDiscovered: scope.branchesDiscovered } : {}),
+      ...(Object.prototype.hasOwnProperty.call(scope, 'branchesAnalyzed') ? { branchesAnalyzed: scope.branchesAnalyzed } : {}),
+      ...(Object.prototype.hasOwnProperty.call(scope, 'fetchComplete') ? { fetchComplete: scope.fetchComplete } : {}),
+      ...(Object.prototype.hasOwnProperty.call(scope, 'fetchTruncated') ? { fetchTruncated: scope.fetchTruncated } : {}),
+      ...(Object.prototype.hasOwnProperty.call(scope, 'failedBranches') ? { failedBranches: scope.failedBranches } : {}),
+      ...(Object.prototype.hasOwnProperty.call(scope, 'analysisLimit') ? { analysisLimit: scope.analysisLimit } : {}),
+      ...(Object.prototype.hasOwnProperty.call(scope, 'analyzedSampleCommits') ? { analyzedSampleCommits: scope.analyzedSampleCommits } : {}),
+      ...(Object.prototype.hasOwnProperty.call(scope, 'selectionStrategy') ? { selectionStrategy: scope.selectionStrategy } : {}),
+      ...(Object.prototype.hasOwnProperty.call(scope, 'activeDayDateSource') ? { activeDayDateSource: scope.activeDayDateSource } : {}),
+      ...(Object.prototype.hasOwnProperty.call(scope, 'activeDayTimezone') ? { activeDayTimezone: scope.activeDayTimezone } : {}),
     },
     summary: {
       userLevel: summary.userLevel || scope.userLevel || '',
@@ -569,20 +612,8 @@ const buildComparisonResult = (fromSnapshotInput, toSnapshotInput) => {
     enoughData: true,
     comparisonMode: skillComparison.comparisonMode,
     comparableSkillScores: skillComparison.comparableSkillScores,
-    fromSnapshot: {
-      snapshotId: fromSnapshot._id,
-      createdAt: getSnapshotDate(fromSnapshot),
-      userReadinessScore: fromScore,
-      userLevel: fromSummary.userLevel || '',
-      scoringMethod: fromScoringMethod,
-    },
-    toSnapshot: {
-      snapshotId: toSnapshot._id,
-      createdAt: getSnapshotDate(toSnapshot),
-      userReadinessScore: toScore,
-      userLevel: toSummary.userLevel || '',
-      scoringMethod: toScoringMethod,
-    },
+    fromSnapshot: { ...buildSnapshotSummary(fromSnapshot), scoringMethod: fromScoringMethod, userReadinessScore: fromScore },
+    toSnapshot: { ...buildSnapshotSummary(toSnapshot), scoringMethod: toScoringMethod, userReadinessScore: toScore },
     delta: {
       userReadinessScore: roundScore(toScore - fromScore),
       levelChanged: (fromSummary.userLevel || '') !== (toSummary.userLevel || ''),
@@ -688,6 +719,7 @@ module.exports = {
   compareSnapshots,
   compareRepositoryProgress,
   buildComparisonResult,
+  buildSnapshotSummary,
   buildSnapshotPayload,
   buildSkillVectorSummary,
   formatSnapshotResponse,
