@@ -73,6 +73,9 @@ const learningContentSchema = new mongoose.Schema(
     roadmapId: { type: mongoose.Schema.Types.ObjectId, ref: 'Roadmap', default: null, index: true },
     roadmapItemId: { type: String, default: '', trim: true, index: true },
     contentCacheKey: { type: String, default: '', trim: true },
+    normalizedTopicKey: { type: String, default: '', trim: true, index: true },
+    topicTags: { type: [String], default: [] },
+    isStale: { type: Boolean, default: false, index: true },
   },
   { timestamps: true }
 );

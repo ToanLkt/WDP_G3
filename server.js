@@ -35,6 +35,18 @@ const startServer = async () => {
 
     server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
+      const apiKey = String(process.env.LLM_API_KEY || '');
+      console.info('[app_runtime]', {
+        appVersion: process.env.APP_VERSION || '1.0.0',
+        commitSha: process.env.RENDER_GIT_COMMIT || process.env.COMMIT_SHA || 'unknown',
+        nodeEnv: process.env.NODE_ENV || 'development',
+        llmProvider: process.env.LLM_PROVIDER || 'gemini',
+        llmModel: process.env.LLM_MODEL || 'gemini-2.0-flash',
+        fallbackModels: [],
+        timeoutMs: Number(process.env.LLM_TIMEOUT_MS || 30000),
+        keyLoaded: Boolean(apiKey),
+        keySuffix: apiKey ? apiKey.slice(-4) : null,
+      });
       console.log(`Swagger UI: ${process.env.API_BASE_URL || `http://localhost:${PORT}`}/api/swagger`);
     });
 

@@ -81,6 +81,7 @@ const learningResourceSchema = new mongoose.Schema(
     safetyReasons: { type: [String], default: [] },
     validatedAt: { type: Date },
     metadataExpiresAt: { type: Date },
+    isStale: { type: Boolean, default: false, index: true },
   },
   { timestamps: true }
 );
