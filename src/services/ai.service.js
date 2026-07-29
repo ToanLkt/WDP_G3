@@ -3,7 +3,9 @@ const axios = require('axios');
 const { apiMessages } = require('../utils/constants');
 const { createStatusError } = require('./github/github.utils');
 
-const FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+// Do not silently spend quota on another model when the configured model fails.
+// Configure one supported model through LLM_MODEL and diagnose that model directly.
+const FALLBACK_MODELS = [];
 
 const getFallbackChatResponse = () =>
   'Dua tren GitHub context hien co, minh co the ho tro ban phan tich dinh huong nghe nghiep, ky nang manh/yeu va lo trinh hoc tiep theo. Tuy nhien hien tai he thong chua goi duoc LLM hoac thieu API key, nen day la phan hoi demo. Hay kiem tra LLM_API_KEY va cau hinh Gemini trong .env.';
