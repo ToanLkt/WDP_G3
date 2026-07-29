@@ -124,7 +124,12 @@ const buildModelCandidates = (primaryModel) => {
 };
 
 const buildGeminiError = ({ lastError, attemptedModels }) => {
-  const error = createStatusError('Failed to generate content from Gemini', 500);
+  const upstreamStatus = Number(lastError?.response?.status || lastError?.statusCode || 0);
+  const statusCode = [400, 401, 403, 408, 429].includes(upstreamStatus)
+    ? upstreamStatus
+    : (lastError?.code === 'ECONNABORTED' || upstreamStatus >= 500 ? 503 : 500);
+  const error = createStatusError('Failed to generate content from Gemini', statusCode);
+  error.errorCode = statusCode === 429 ? 'GEMINI_RATE_LIMITED' : statusCode === 401 || statusCode === 403 ? 'GEMINI_AUTH_FAILED' : 'GEMINI_GENERATION_FAILED';
   error.llmError = {
     status: lastError?.response?.status || lastError?.statusCode || 500,
     upstreamMessage: getGeminiErrorMessage(lastError),
@@ -169,6 +174,7 @@ const callGemini = async (prompt, options = {}) => {
       try {
         response = await axios.post(endpoint, buildGeminiBody(prompt, options), {
           headers: { 'Content-Type': 'application/json' },
+          timeout: Number(process.env.LLM_TIMEOUT_MS || 30000),
         });
       } catch (error) {
         if (!options.responseMimeType || !shouldRetryWithoutResponseMimeType(error)) {
@@ -178,7 +184,7 @@ const callGemini = async (prompt, options = {}) => {
         response = await axios.post(
           endpoint,
           buildGeminiBody(prompt, { ...options, responseMimeType: undefined }),
-          { headers: { 'Content-Type': 'application/json' } }
+          { headers: { 'Content-Type': 'application/json' }, timeout: Number(process.env.LLM_TIMEOUT_MS || 30000) }
         );
       }
 
