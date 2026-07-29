@@ -14,6 +14,32 @@ const getMaxDurationSeconds = () => parsePositiveInteger(process.env.YOUTUBE_VID
 const allowLive = () => process.env.YOUTUBE_ALLOW_LIVE === 'true' || process.env.YOUTUBE_ALLOW_LIVE === '1';
 const allowShorts = () => process.env.YOUTUBE_ALLOW_SHORTS === 'true' || process.env.YOUTUBE_ALLOW_SHORTS === '1';
 
+const parseYouTubeVideoUrl = (value = '') => {
+  let parsed;
+  try {
+    parsed = new URL(String(value || '').trim());
+  } catch (error) {
+    return null;
+  }
+  if (parsed.protocol !== 'https:') return null;
+
+  const hostname = parsed.hostname.toLowerCase().replace(/^www\./, '');
+  let videoId = '';
+  if (hostname === 'youtube.com' || hostname === 'm.youtube.com') {
+    if (parsed.pathname !== '/watch') return null;
+    videoId = parsed.searchParams.get('v') || '';
+  } else if (hostname === 'youtu.be') {
+    videoId = parsed.pathname.split('/').filter(Boolean)[0] || '';
+  } else {
+    return null;
+  }
+  if (!/^[a-zA-Z0-9_-]{11}$/.test(videoId)) return null;
+  return {
+    videoId,
+    canonicalUrl: `https://www.youtube.com/watch?v=${videoId}`,
+  };
+};
+
 const isLikelyShort = (title = '', url = '') => {
   const normalizedTitle = String(title).toLowerCase();
   const normalizedUrl = String(url).toLowerCase();
@@ -228,6 +254,7 @@ module.exports = {
   fetchYouTubeVideoDetails,
   isLikelyShort,
   mapVideoDetail,
+  parseYouTubeVideoUrl,
   parseIso8601DurationSeconds,
   searchYoutubeVideos,
   validateYouTubeVideoMetadata,

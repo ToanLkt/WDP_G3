@@ -2,6 +2,7 @@ const express = require('express');
 
 const learningController = require('../controllers/learning.controller');
 const authMiddleware = require('../middlewares/auth.middleware');
+const adminMiddleware = require('../middlewares/admin.middleware');
 
 const router = express.Router();
 
@@ -187,7 +188,7 @@ router.get('/skills/:skillName', authMiddleware, learningController.getLearningC
  *   post:
  *     tags: [Learning]
  *     summary: Seed or update a learning resource manually
- *     description: Shared learning API. Saves the resource under the canonical path skill; body.skillName cannot override it.
+ *     description: Admin-only endpoint. Saves under the canonical path skill, accepts HTTPS URLs only, and validates YouTube metadata and safety before storage. Client-provided source and score are ignored.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -249,9 +250,16 @@ router.get('/skills/:skillName', authMiddleware, learningController.getLearningC
  *         description: title and url are required
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Admin permission is required
  */
 router.get('/skills/:skillName/resources', authMiddleware, learningController.getLearningResources);
-router.post('/skills/:skillName/resources', authMiddleware, learningController.saveLearningResource);
+router.post(
+  '/skills/:skillName/resources',
+  authMiddleware,
+  adminMiddleware,
+  learningController.saveLearningResource
+);
 
 /**
  * @swagger

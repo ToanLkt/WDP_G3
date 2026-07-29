@@ -9,6 +9,7 @@ const {
   calculateYouTubeVideoScore,
   fetchYouTubeVideoDetails,
   mapVideoDetail,
+  parseYouTubeVideoUrl,
   validateYouTubeVideoMetadata,
 } = require('./youtube.service');
 const { checkYouTubeSafety } = require('./youtubeSafety.service');
@@ -22,7 +23,6 @@ const DEFAULT_RESOURCE_LANGUAGE = DEFAULT_CONTENT_LANGUAGE;
 const DEFAULT_RESOURCE_TYPE = 'video';
 const VALID_LEVELS = ['beginner', 'intermediate', 'advanced'];
 const VALID_RESOURCE_TYPES = ['video', 'article', 'docs'];
-const VALID_RESOURCE_SOURCES = ['curated', 'youtube_api', 'manual'];
 const INTERNAL_RESOURCE_FIELDS = [
   'youtubeVideoId',
   'youtubeChannelId',
@@ -54,11 +54,6 @@ const normalizeLevel = (level) => {
 const normalizeType = (type) => {
   const normalized = normalizeText(type || DEFAULT_RESOURCE_TYPE);
   return VALID_RESOURCE_TYPES.includes(normalized) ? normalized : DEFAULT_RESOURCE_TYPE;
-};
-
-const normalizeSource = (source) => {
-  const normalized = normalizeText(source || 'manual');
-  return VALID_RESOURCE_SOURCES.includes(normalized) ? normalized : 'manual';
 };
 
 const normalizeLanguage = (language, defaultLanguage) =>
@@ -439,12 +434,101 @@ const getLearningResources = async ({ skillName, targetRole, level, language, ty
   };
 };
 
-const saveResourceByUrl = (resourcePayload) =>
-  LearningResource.findOneAndUpdate(
-    { url: resourcePayload.url },
-    { $set: resourcePayload },
-    { upsert: true, new: true, setDefaultsOnInsert: true }
-  ).lean();
+const hasSameResourceIdentity = (resource = {}, payload = {}) => (
+  resource.normalizedSkillName === payload.normalizedSkillName
+  && resource.normalizedTargetRole === payload.normalizedTargetRole
+  && resource.level === payload.level
+  && resource.language === payload.language
+  && resource.type === payload.type
+);
+
+const saveResourceByUrl = async (resourcePayload) => {
+  const existing = await LearningResource.findOne({ url: resourcePayload.url }).lean();
+  if (existing && !hasSameResourceIdentity(existing, resourcePayload)) {
+    return null;
+  }
+  try {
+    return await LearningResource.findOneAndUpdate(
+      {
+        url: resourcePayload.url,
+        normalizedSkillName: resourcePayload.normalizedSkillName,
+        normalizedTargetRole: resourcePayload.normalizedTargetRole,
+        level: resourcePayload.level,
+        language: resourcePayload.language,
+        type: resourcePayload.type,
+      },
+      { $set: resourcePayload },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    ).lean();
+  } catch (error) {
+    // A concurrent request may have inserted the globally unique URL first.
+    if (error?.code === 11000) return null;
+    throw error;
+  }
+};
+
+const validateExternalUrl = (value) => {
+  try {
+    const parsed = new URL(String(value || '').trim());
+    if (parsed.protocol !== 'https:') {
+      throw new Error('Only HTTPS resource URLs are allowed');
+    }
+    return parsed.toString();
+  } catch (error) {
+    throw createStatusError(
+      error.message === 'Only HTTPS resource URLs are allowed'
+        ? error.message
+        : 'A valid HTTPS resource URL is required',
+      400
+    );
+  }
+};
+
+const validateYoutubeResource = async ({ url, skillName, level, relevanceTerms = [] }) => {
+  const parsed = parseYouTubeVideoUrl(url);
+  if (!parsed) {
+    throw createStatusError('A valid HTTPS YouTube watch URL is required', 400);
+  }
+  if (!process.env.YOUTUBE_API_KEY) {
+    throw createStatusError('YOUTUBE_API_KEY is required to validate YouTube resources', 503);
+  }
+
+  const details = await fetchYouTubeVideoDetails([parsed.videoId]);
+  const detail = details.find((item) => item.id === parsed.videoId);
+  if (!detail) {
+    throw createStatusError('YouTube video is unavailable or does not exist', 400);
+  }
+  const video = mapVideoDetail(detail);
+  const metadata = validateYouTubeVideoMetadata(video);
+  if (!metadata.valid) {
+    throw createStatusError(`YouTube video failed metadata validation: ${metadata.reasons.join(', ')}`, 400);
+  }
+  const safety = checkYouTubeSafety(video);
+  if (!safety.allowed) {
+    throw createStatusError('YouTube video failed safety validation', 400);
+  }
+  const score = calculateYouTubeVideoScore({
+    title: video.title,
+    description: video.description,
+    channelTitle: video.channelTitle,
+    skillName,
+    level,
+    relevanceTerms,
+  });
+  if (score < 40) {
+    throw createStatusError('YouTube video is not relevant enough for this skill', 400);
+  }
+  const validatedAt = new Date();
+  return {
+    ...video,
+    url: parsed.canonicalUrl,
+    score,
+    safetyStatus: 'allowed',
+    safetyReasons: [],
+    validatedAt,
+    metadataExpiresAt: getMetadataExpiresAt(validatedAt),
+  };
+};
 
 const saveLearningResource = async ({ skillName, body = {} }) => {
   const { identity } = buildResourceQuery({
@@ -463,22 +547,60 @@ const saveLearningResource = async ({ skillName, body = {} }) => {
     throw createStatusError('title and url are required', 400);
   }
 
+  const type = normalizeType(body.type);
+  let validatedUrl = validateExternalUrl(body.url);
+  let youtubeMetadata = {};
+  if (type === 'video') {
+    youtubeMetadata = await validateYoutubeResource({
+      url: validatedUrl,
+      skillName: identity.skillName,
+      level: identity.level,
+    });
+    validatedUrl = youtubeMetadata.url;
+  }
+
+  const existingByUrl = await LearningResource.findOne(
+    type === 'video'
+      ? { $or: [{ url: validatedUrl }, { youtubeVideoId: youtubeMetadata.videoId }] }
+      : { url: validatedUrl }
+  ).lean();
+  if (existingByUrl) {
+    throw createStatusError('A learning resource with this URL already exists', 409);
+  }
+
   const resourcePayload = {
     ...getPersistedIdentity(identity),
     language: normalizeLanguage(body.language, DEFAULT_RESOURCE_LANGUAGE),
-    type: normalizeType(body.type),
-    title: String(body.title).trim(),
-    url: String(body.url).trim(),
-    provider: String(body.provider || 'YouTube').trim() || 'YouTube',
-    thumbnailUrl: String(body.thumbnailUrl || '').trim(),
-    channelTitle: String(body.channelTitle || '').trim(),
-    publishedAt: body.publishedAt ? new Date(body.publishedAt) : undefined,
+    type,
+    title: type === 'video' ? youtubeMetadata.title : String(body.title).trim(),
+    url: validatedUrl,
+    provider: type === 'video' ? 'YouTube' : String(body.provider || '').trim(),
+    thumbnailUrl: type === 'video' ? youtubeMetadata.thumbnailUrl : String(body.thumbnailUrl || '').trim(),
+    channelTitle: type === 'video' ? youtubeMetadata.channelTitle : String(body.channelTitle || '').trim(),
+    publishedAt: type === 'video'
+      ? youtubeMetadata.publishedAt
+      : (body.publishedAt ? new Date(body.publishedAt) : undefined),
     tags: stringArray(body.tags),
-    source: normalizeSource(body.source),
-    score: Number.isFinite(Number(body.score)) ? Number(body.score) : 0,
+    source: 'manual',
+    score: type === 'video' ? youtubeMetadata.score : 0,
+    cachedAt: new Date(),
+    ...(type === 'video' ? {
+      youtubeVideoId: youtubeMetadata.videoId,
+      youtubeChannelId: youtubeMetadata.channelId,
+      durationSeconds: youtubeMetadata.durationSeconds,
+      privacyStatus: youtubeMetadata.privacyStatus,
+      embeddable: youtubeMetadata.embeddable,
+      safetyStatus: youtubeMetadata.safetyStatus,
+      safetyReasons: youtubeMetadata.safetyReasons,
+      validatedAt: youtubeMetadata.validatedAt,
+      metadataExpiresAt: youtubeMetadata.metadataExpiresAt,
+    } : {}),
   };
 
   const resource = await saveResourceByUrl(resourcePayload);
+  if (!resource) {
+    throw createStatusError('A learning resource with this URL already exists', 409);
+  }
 
   return {
     message: 'Learning resource saved successfully',
@@ -553,20 +675,45 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
   if (catalogResources.length) {
     const savedCatalogResources = [];
     for (const catalogResource of catalogResources) {
+      let validated;
+      try {
+        validated = await validateYoutubeResource({
+          url: catalogResource.url,
+          skillName: identity.skillName,
+          level: identity.level,
+        });
+      } catch (error) {
+        console.warn('[learning-resource]', {
+          reasonCode: 'curated_resource_rejected',
+          skillName: identity.canonicalSkillName,
+          url: catalogResource.url,
+          validationStatus: error.statusCode || 500,
+        });
+        continue;
+      }
       const resource = await saveResourceByUrl({
         ...getPersistedIdentity(identity),
         language: String(catalogResource.language || query.language).trim() || query.language,
         type: normalizeType(catalogResource.type),
-        title: String(catalogResource.title || '').trim(),
-        url: String(catalogResource.url || '').trim(),
-        provider: String(catalogResource.provider || 'YouTube').trim() || 'YouTube',
-        thumbnailUrl: String(catalogResource.thumbnailUrl || '').trim(),
-        channelTitle: String(catalogResource.channelTitle || '').trim(),
-        publishedAt: catalogResource.publishedAt ? new Date(catalogResource.publishedAt) : undefined,
+        title: validated.title,
+        url: validated.url,
+        provider: validated.provider,
+        thumbnailUrl: validated.thumbnailUrl,
+        channelTitle: validated.channelTitle,
+        publishedAt: validated.publishedAt,
         tags: stringArray(catalogResource.tags),
         source: 'curated',
-        score: Number.isFinite(Number(catalogResource.score)) ? Number(catalogResource.score) : 0,
+        score: validated.score,
         cachedAt: new Date(),
+        youtubeVideoId: validated.videoId,
+        youtubeChannelId: validated.channelId,
+        durationSeconds: validated.durationSeconds,
+        privacyStatus: validated.privacyStatus,
+        embeddable: validated.embeddable,
+        safetyStatus: validated.safetyStatus,
+        safetyReasons: validated.safetyReasons,
+        validatedAt: validated.validatedAt,
+        metadataExpiresAt: validated.metadataExpiresAt,
       });
 
       if (resource) {
@@ -574,19 +721,21 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
       }
     }
 
-    console.info('[learning-resource]', { reasonCode: 'learning_resources_attached', source: 'curated', skillName: identity.canonicalSkillName, level: identity.level, language: query.language, acceptedCount: savedCatalogResources.length });
-    return {
-      message: 'Learning resources loaded from catalog and cached successfully',
-      data: {
-        ...getLearningMetadata({ ...identity, language: query.language }),
-        resources: savedCatalogResources
-          .sort((a, b) => (b.score || 0) - (a.score || 0))
-          .map((resource) =>
-            canonicalizeStoredDocument(resource, { ...identity, language: query.language })
-          ),
-      },
-      statusCode: 201,
-    };
+    if (savedCatalogResources.length) {
+      console.info('[learning-resource]', { reasonCode: 'learning_resources_attached', source: 'curated', skillName: identity.canonicalSkillName, level: identity.level, language: query.language, acceptedCount: savedCatalogResources.length });
+      return {
+        message: 'Learning resources loaded from catalog and cached successfully',
+        data: {
+          ...getLearningMetadata({ ...identity, language: query.language }),
+          resources: savedCatalogResources
+            .sort((a, b) => (b.score || 0) - (a.score || 0))
+            .map((resource) =>
+              canonicalizeStoredDocument(resource, { ...identity, language: query.language })
+            ),
+        },
+        statusCode: 201,
+      };
+    }
   }
 
   if (!process.env.YOUTUBE_API_KEY) {
@@ -655,8 +804,7 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
     throw error;
   }
 
-  const bestVideo = videos[0];
-  if (!bestVideo) {
+  if (!videos[0]) {
     console.info('[learning-resource]', { reasonCode: 'youtube_no_candidates', skillName: identity.canonicalSkillName, level: identity.level, language: query.language, query: searchContext.primaryQuery });
     return {
       message: 'No relevant YouTube resources found',
@@ -668,30 +816,44 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
     };
   }
 
-  const savedResource = await saveResourceByUrl({
-    ...getPersistedIdentity(identity),
-    language: query.language,
-    type: DEFAULT_RESOURCE_TYPE,
-    title: bestVideo.title,
-    url: bestVideo.url,
-    provider: bestVideo.provider,
-    thumbnailUrl: bestVideo.thumbnailUrl,
-    channelTitle: bestVideo.channelTitle,
-    publishedAt: bestVideo.publishedAt,
-    tags: [identity.normalizedSkillName, identity.normalizedTargetRole, identity.level],
-    source: 'youtube_api',
-    score: bestVideo.score,
-    cachedAt: new Date(),
-    youtubeVideoId: bestVideo.videoId,
-    youtubeChannelId: bestVideo.channelId,
-    durationSeconds: bestVideo.durationSeconds,
-    privacyStatus: bestVideo.privacyStatus,
-    embeddable: bestVideo.embeddable,
-    safetyStatus: bestVideo.safetyStatus,
-    safetyReasons: bestVideo.safetyReasons,
-    validatedAt: bestVideo.validatedAt,
-    metadataExpiresAt: getMetadataExpiresAt(bestVideo.validatedAt),
-  });
+  let savedResource = null;
+  for (const video of videos) {
+    savedResource = await saveResourceByUrl({
+      ...getPersistedIdentity(identity),
+      language: query.language,
+      type: DEFAULT_RESOURCE_TYPE,
+      title: video.title,
+      url: video.url,
+      provider: video.provider,
+      thumbnailUrl: video.thumbnailUrl,
+      channelTitle: video.channelTitle,
+      publishedAt: video.publishedAt,
+      tags: [identity.normalizedSkillName, identity.normalizedTargetRole, identity.level],
+      source: 'youtube_api',
+      score: video.score,
+      cachedAt: new Date(),
+      youtubeVideoId: video.videoId,
+      youtubeChannelId: video.channelId,
+      durationSeconds: video.durationSeconds,
+      privacyStatus: video.privacyStatus,
+      embeddable: video.embeddable,
+      safetyStatus: video.safetyStatus,
+      safetyReasons: video.safetyReasons,
+      validatedAt: video.validatedAt,
+      metadataExpiresAt: getMetadataExpiresAt(video.validatedAt),
+    });
+    if (savedResource) break;
+  }
+  if (!savedResource) {
+    return {
+      message: 'No relevant YouTube resources available for this learning context',
+      data: {
+        ...getLearningMetadata({ ...identity, language: query.language }),
+        resources: [],
+      },
+      statusCode: 200,
+    };
+  }
   console.info('[learning-resource]', { reasonCode: 'youtube_hit', skillName: identity.canonicalSkillName, level: identity.level, language: query.language, count: 1 });
   console.info('[learning-resource]', { reasonCode: 'learning_resources_attached', source: 'youtube_api', skillName: identity.canonicalSkillName, level: identity.level, language: query.language, acceptedCount: 1 });
 

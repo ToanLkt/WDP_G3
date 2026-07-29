@@ -1,7 +1,7 @@
 const { getCommitUserMatchInfo } = require('../analysis/analysis.engine');
 
 const CONTRIBUTION_THRESHOLD = 5;
-const MAX_EVIDENCE_COMMITS = 15;
+const MAX_EVIDENCE_COMMITS = 400;
 const MAX_CHANGED_PATHS_PER_CONTRIBUTION = 20;
 
 const ATTRIBUTION_METHODS = {
@@ -32,7 +32,7 @@ const verifiedStats = (item = {}) => {
   return { additions, deletions, changedLines: additions + deletions };
 };
 
-const selectCommitEvidence = (commits = [], githubAccount = {}) => {
+const selectCommitEvidence = (commits = [], githubAccount = {}, limit = null) => {
   const seen = new Set();
   return (Array.isArray(commits) ? commits : [])
     .filter((commit) => getCommitUserMatchInfo(commit, githubAccount).matched)
@@ -42,7 +42,7 @@ const selectCommitEvidence = (commits = [], githubAccount = {}) => {
       seen.add(sha);
       return true;
     })
-    .slice(0, MAX_EVIDENCE_COMMITS)
+    .slice(0, Number.isFinite(Number(limit)) && Number(limit) > 0 ? Number(limit) : undefined)
     .map((commit) => ({
       ...commit,
       files: (Array.isArray(commit.files) ? commit.files : []).slice(0, MAX_CHANGED_PATHS_PER_CONTRIBUTION),

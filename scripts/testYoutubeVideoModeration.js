@@ -3,6 +3,7 @@ const axios = require('axios');
 
 const {
   calculateYouTubeVideoScore,
+  parseYouTubeVideoUrl,
   parseIso8601DurationSeconds,
   searchYoutubeVideos,
   validateYouTubeVideoMetadata,
@@ -72,6 +73,17 @@ const runSearch = async (details, searchIds = null) => {
 
     assert.strictEqual(parseIso8601DurationSeconds('PT1H2M3S'), 3723);
     assert.strictEqual(parseIso8601DurationSeconds('PT20M'), 1200);
+    assert.deepStrictEqual(
+      parseYouTubeVideoUrl('https://youtu.be/UB1O30fR-EE?feature=shared'),
+      {
+        videoId: 'UB1O30fR-EE',
+        canonicalUrl: 'https://www.youtube.com/watch?v=UB1O30fR-EE',
+      }
+    );
+    assert.strictEqual(parseYouTubeVideoUrl('http://www.youtube.com/watch?v=UB1O30fR-EE'), null);
+    assert.strictEqual(parseYouTubeVideoUrl('https://evil.example/watch?v=UB1O30fR-EE'), null);
+    assert.strictEqual(parseYouTubeVideoUrl('https://www.youtube.com.evil.example/watch?v=UB1O30fR-EE'), null);
+    assert.strictEqual(parseYouTubeVideoUrl('javascript:alert(1)'), null);
 
     assert.strictEqual((await runSearch([makeDetail()])).length, 1, 'public valid video should pass');
     assert.strictEqual((await runSearch([], ['deleted1'])).length, 0, 'deleted video missing from videos.list should be absent');
