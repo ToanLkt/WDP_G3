@@ -121,8 +121,8 @@ const getPersistedIdentity = (identity) => ({
   language: identity.language,
 });
 
-const buildResourceQuery = ({ skillName, targetRole, level, language, type, topicCacheKey }) => {
-  const identity = buildLearningIdentity({ skillName, targetRole, level, language });
+const buildResourceQuery = ({ skillName, targetRole, level, language, type, topicCacheKey, roadmapId, roadmapItemId, contentCacheKey }) => {
+  const identity = buildLearningIdentity({ skillName, targetRole, level, language, roadmapId, roadmapItemId, contentCacheKey });
   return {
     identity,
     query: {
@@ -132,22 +132,24 @@ const buildResourceQuery = ({ skillName, targetRole, level, language, type, topi
       language: normalizeLanguage(language, DEFAULT_RESOURCE_LANGUAGE),
       type: normalizeType(type),
       normalizedTopicKey: normalizeText(topicCacheKey || ''),
+      isStale: { $ne: true },
     },
   };
 };
 
-const buildResourceSearchContext = ({ skillName, targetRole, level, language, taskTitle, taskDescription, projectType }) => {
+const buildLearningTopicProfile = ({ skillName, targetRole, level, language, taskTitle = '', taskDescription = '', projectType = '' }) => {
   const identity = buildLearningIdentity({ skillName, targetRole, level, language });
   const text = `${taskTitle || ''} ${taskDescription || ''} ${identity.canonicalSkillName || ''}`.toLowerCase();
   const terms = [identity.canonicalSkillName, targetRole, level, projectType].filter(Boolean);
   let querySkill = identity.canonicalSkillName;
   const rules = [
+    { pattern: /swagger|openapi|swagger-jsdoc|swagger-ui|api documentation|tài liệu api|tao tai lieu api/i, primaryTopic: 'Swagger OpenAPI API documentation', query: 'Swagger OpenAPI Node.js Express swagger-jsdoc swagger-ui-express API documentation', terms: ['swagger', 'openapi', 'api documentation', 'swagger-jsdoc', 'swagger-ui-express', 'node.js', 'express'], requiredTermGroups: [['swagger', 'openapi'], ['api documentation', 'api docs', 'swagger-jsdoc', 'swagger-ui']], excludedTerms: ['generic rest api design', '.net', 'asp.net', 'django', 'spring boot'] },
     { pattern: /\bjsx\b|reconciliation|virtual dom|component render cycle|rendering mechanism|co che rendering/i, query: 'React JSX rendering reconciliation virtual DOM', terms: ['react', 'jsx', 'rendering', 'reconciliation', 'virtual dom'], requiredTermGroups: [['react', 'jsx'], ['jsx', 'rendering', 'reconciliation', 'virtual dom']], excludedTerms: ['angular', 'vue'] },
     { pattern: /unit test|unit tests|component test|component testing|react testing library|jest|vitest|test|testing|kiem thu/i, query: 'React component unit testing', terms: ['react', 'component', 'unit testing', 'testing', 'jest', 'react testing library'] },
     { pattern: /docker|dockerfile|compose|container/i, query: 'Docker Dockerfile container tutorial', terms: ['docker', 'dockerfile', 'container'] },
     { pattern: /jwt|auth|authentication|authorization|rbac|login|token/i, query: 'JWT authentication middleware Node.js Express', terms: ['jwt', 'authentication', 'authorization', 'middleware', 'node.js', 'express'], requiredTermGroups: [['jwt', 'authentication'], ['middleware', 'authorization', 'auth']], excludedTerms: ['python', 'django', '.net', 'asp.net', 'spring boot', 'java'] },
     { pattern: /mongodb|mongoose|schema|data model|index/i, query: 'MongoDB advanced schema design data modeling indexes', terms: ['mongodb', 'mongoose', 'schema', 'data modeling', 'indexes'], requiredTermGroups: [['mongodb', 'mongoose'], ['schema', 'data modeling', 'index']], excludedTerms: ['.net', 'asp.net', 'sql server', 'entity framework'] },
-    { pattern: /api|crud|endpoint|route|controller|swagger|openapi/i, query: 'REST API CRUD endpoint tutorial', terms: ['rest api', 'crud', 'endpoint', 'controller', 'swagger'] },
+    { pattern: /api|crud|endpoint|route|controller/i, primaryTopic: 'REST API endpoint implementation', query: 'REST API CRUD endpoint Node.js Express tutorial', terms: ['rest api', 'crud', 'endpoint', 'controller', 'node.js', 'express'] },
     { pattern: /accessibility|a11y|aria|keyboard/i, query: 'React accessibility ARIA tutorial', terms: ['accessibility', 'aria', 'react'] },
     { pattern: /performance|lazy load|bundle|web vitals|render performance|memo|code split/i, query: 'React performance optimization tutorial', terms: ['react', 'performance', 'optimization'], requiredTermGroups: [['react'], ['performance', 'optimization']] },
   ];
@@ -159,14 +161,22 @@ const buildResourceSearchContext = ({ skillName, targetRole, level, language, ta
   const targetRoleText = targetRole ? `for ${targetRole}` : '';
   const levelText = level ? `${level}` : '';
   return {
+    primaryTopic: matched?.primaryTopic || querySkill,
+    specificKeywords: matched?.terms || [],
+    technologyKeywords: (matched?.terms || []).filter((term) => /node|express|react|mongodb|mongoose|docker|swagger|openapi/i.test(term)),
     primaryQuery: [querySkill, targetRoleText, levelText, 'tutorial'].filter(Boolean).join(' '),
     fallbackEnglishQuery: [querySkill, targetRoleText, 'practical tutorial'].filter(Boolean).join(' '),
     relevanceTerms: [...new Set(terms.map((term) => normalizeText(term)).filter(Boolean))],
+    requiredKeywordGroups: matched?.requiredTermGroups || [[identity.canonicalSkillName]],
     requiredTermGroups: matched?.requiredTermGroups || [[identity.canonicalSkillName]],
     excludedTerms: matched?.excludedTerms || [],
-    topicCacheKey: normalizeText([matched?.query || querySkill, taskTitle].filter(Boolean).join(' ')),
+    normalizedTopicKey: normalizeText([matched?.primaryTopic || querySkill, taskTitle, taskDescription].filter(Boolean).join(' ')),
+    topicCacheKey: normalizeText([matched?.primaryTopic || querySkill, taskTitle, taskDescription].filter(Boolean).join(' ')),
+    tags: [...new Set((matched?.terms || []).concat([identity.normalizedSkillName, normalizeText(targetRole), normalizeText(level)]).filter(Boolean))],
   };
 };
+
+const buildResourceSearchContext = (input = {}) => buildLearningTopicProfile(input);
 
 function extractJsonFromText(text) {
   const cleaned = String(text || '')
@@ -210,6 +220,37 @@ const sanitizeLearningContent = (payload) => ({
     .map(canonicalizeSkillName)
     .filter((value, index, values) => values.indexOf(value) === index),
 });
+
+const validateGroundedLearningContent = (content, topicProfile = {}) => {
+  const haystack = normalizeText([
+    content?.title,
+    content?.overview,
+    ...(content?.useCases || []),
+    ...(content?.checklist || []),
+    ...(content?.exercises || []).flatMap((item) => [item?.title, item?.description]),
+  ].join(' '));
+  const keywords = (topicProfile.specificKeywords || []).map(normalizeText).filter((value) => value.length > 2);
+  const strong = keywords.filter((keyword) => haystack.includes(keyword));
+  return {
+    valid: !keywords.length || strong.length >= Math.min(2, keywords.length),
+    matchedKeywords: strong,
+    missingKeywords: keywords.filter((keyword) => !strong.includes(keyword)),
+  };
+};
+
+const hasValidLearningVideo = (resources = [], topicProfile = {}) => {
+  const profileTerms = (topicProfile.specificKeywords || []).map(normalizeText).filter(Boolean);
+  return (Array.isArray(resources) ? resources : []).some((resource) => {
+    if (resource?.type !== 'video' || !resource?.title) return false;
+    const parsed = parseYouTubeVideoUrl(resource.url);
+    if (!parsed || resource.isStale === true) return false;
+    if (resource.privacyStatus && resource.privacyStatus !== 'public') return false;
+    if (resource.embeddable === false) return false;
+    if (!profileTerms.length) return true;
+    const text = normalizeText(`${resource.title} ${resource.description || ''} ${resource.normalizedTopicKey || ''}`);
+    return profileTerms.filter((term) => text.includes(term)).length >= Math.min(2, profileTerms.length);
+  });
+};
 
 const getLearningContent = async ({ skillName, targetRole, level, language, contentCacheKey, roadmapId, roadmapItemId }) => {
   const identity = buildLearningIdentity({ skillName, targetRole, level, language, contentCacheKey, roadmapId, roadmapItemId });
@@ -283,20 +324,53 @@ const generateLearningContent = async ({ skillName, targetRole, level, language,
     };
   }
 
-  const prompt = buildLearningPrompt({ ...identity, context });
-  const aiResult = await generateJsonWithGemini(prompt, { temperature: 0.4 });
-  const parsed = extractJsonFromText(aiResult.text);
-  const content = await LearningContent.findOneAndUpdate(
-    contentQuery,
-    {
-      $set: {
-        ...getPersistedIdentity(identity),
-        ...sanitizeLearningContent(parsed),
-        generatedBy: 'ai',
-      },
-    },
-    { upsert: true, new: true, setDefaultsOnInsert: true }
-  );
+  const topicProfile = buildLearningTopicProfile({
+    skillName: identity.skillName,
+    targetRole: identity.targetRole,
+    level: identity.level,
+    language: identity.language,
+    taskTitle: context?.taskTitle,
+    taskDescription: context?.taskDescription,
+    projectType: context?.projectType,
+  });
+  const prompt = buildLearningPrompt({ ...identity, context, topicProfile });
+  let aiResult = await generateJsonWithGemini(prompt, { temperature: 0.4 });
+  let parsed;
+  try {
+    parsed = sanitizeLearningContent(extractJsonFromText(aiResult.text));
+    if (!parsed || typeof parsed !== 'object' || !String(parsed.title || '').trim()) throw new Error('Gemini content title is missing');
+    const grounding = validateGroundedLearningContent(parsed, topicProfile);
+    if (!grounding.valid) {
+      const repairPrompt = `${prompt}\n\nREPAIR REQUIRED: The previous content missed these topic keywords: ${grounding.missingKeywords.join(', ')}. Regenerate the JSON with a title and overview explicitly about the specific roadmap task.`;
+      aiResult = await generateJsonWithGemini(repairPrompt, { temperature: 0.2 });
+      parsed = sanitizeLearningContent(extractJsonFromText(aiResult.text));
+      const repaired = validateGroundedLearningContent(parsed, topicProfile);
+      if (!repaired.valid) {
+        parsed.title = context?.taskTitle || parsed.title;
+        parsed.overview = `${context?.taskDescription || ''} ${parsed.overview || ''}`.trim();
+      }
+    }
+  } catch (error) {
+    const parseError = createStatusError('Gemini returned invalid learning content', 502);
+    parseError.errorCode = 'GEMINI_RESPONSE_INVALID';
+    parseError.cause = error;
+    console.error('[learning_stage_failed]', { stage: 'gemini_response_parse_failed', errorMessage: error.message });
+    throw parseError;
+  }
+  let content;
+  try {
+    content = await LearningContent.findOneAndUpdate(
+      contentQuery,
+      { $set: { ...getPersistedIdentity(identity), ...sanitizeLearningContent(parsed), normalizedTopicKey: topicProfile.normalizedTopicKey, topicTags: topicProfile.tags, isStale: false, generatedBy: 'ai' } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+  } catch (error) {
+    const saveError = createStatusError('Learning content could not be saved', 500);
+    saveError.errorCode = 'LEARNING_CONTENT_SAVE_FAILED';
+    saveError.cause = error;
+    console.error('[learning_stage_failed]', { stage: 'learning_content_save_failed', errorName: error.name, errorCode: error.code, errorMessage: error.message });
+    throw saveError;
+  }
 
   return {
     message: 'Learning content generated successfully',
@@ -412,9 +486,9 @@ const filterFreshOrRevalidatedResources = async (resources = [], identity = {}) 
   return output;
 };
 
-const getLearningResources = async ({ skillName, targetRole, level, language, type, taskTitle, taskDescription, projectType }) => {
+const getLearningResources = async ({ skillName, targetRole, level, language, type, taskTitle, taskDescription, projectType, roadmapId, roadmapItemId, contentCacheKey }) => {
   const searchContext = buildResourceSearchContext({ skillName, targetRole, level, language, taskTitle, taskDescription, projectType });
-  const { identity, query } = buildResourceQuery({ skillName, targetRole, level, language, type, topicCacheKey: searchContext.topicCacheKey });
+  const { identity, query } = buildResourceQuery({ skillName, targetRole, level, language, type, topicCacheKey: searchContext.topicCacheKey, roadmapId, roadmapItemId, contentCacheKey });
 
   if (!identity.skillName) {
     throw createStatusError('skillName is required', 400);
@@ -642,7 +716,7 @@ const saveLearningResource = async ({ skillName, body = {} }) => {
   };
 };
 
-const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, language, taskTitle, taskDescription, projectType }) => {
+const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, language, taskTitle, taskDescription, projectType, roadmapId, roadmapItemId, contentCacheKey }) => {
   const searchContext = buildResourceSearchContext({ skillName, targetRole, level, language, taskTitle, taskDescription, projectType });
   const { identity, query } = buildResourceQuery({
     skillName,
@@ -651,6 +725,9 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
     language,
     type: DEFAULT_RESOURCE_TYPE,
     topicCacheKey: searchContext.topicCacheKey,
+    roadmapId,
+    roadmapItemId,
+    contentCacheKey,
   });
 
   if (!identity.skillName) {
@@ -854,7 +931,7 @@ const searchAndCacheYoutubeResources = async ({ skillName, targetRole, level, la
       thumbnailUrl: video.thumbnailUrl,
       channelTitle: video.channelTitle,
       publishedAt: video.publishedAt,
-      tags: [identity.normalizedSkillName, identity.normalizedTargetRole, identity.level],
+      tags: searchContext.tags,
       source: 'youtube_api',
       score: video.score,
       cachedAt: new Date(),
@@ -902,6 +979,9 @@ module.exports = {
   saveLearningResource,
   searchAndCacheYoutubeResources,
   buildResourceSearchContext,
+  buildLearningTopicProfile,
+  validateGroundedLearningContent,
+  hasValidLearningVideo,
   isResourceMetadataFresh,
   revalidateYoutubeResource,
   extractJsonFromText,

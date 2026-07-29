@@ -29,6 +29,14 @@ const { getDev2VecServiceHealth } = require('./services/dev2vec/dev2vec.service'
 const mongoose = require('mongoose');
 
 const app = express();
+const crypto = require('crypto');
+app.use((req, res, next) => {
+  req.requestId = String(req.headers['x-request-id'] || crypto.randomUUID()).slice(0, 120);
+  res.setHeader('X-Request-Id', req.requestId);
+  res.setHeader('X-App-Version', process.env.APP_VERSION || '1.0.0');
+  res.setHeader('X-App-Commit', process.env.RENDER_GIT_COMMIT || process.env.COMMIT_SHA || 'unknown');
+  next();
+});
 
 const allowedOrigins = [
   ...getAllowedFrontendOrigins(),

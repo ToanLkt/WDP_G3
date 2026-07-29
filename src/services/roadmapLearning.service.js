@@ -6,6 +6,10 @@ const learningService = require('./learning.service');
 const normalizeText = require('../utils/normalizeText');
 const { canonicalizeSkillName, getCanonicalSkillCategory } = require('../utils/skillCanonicalizer');
 
+const generationInFlight = new Map();
+const resourceSearchInFlight = new Map();
+const resourceSearchCooldown = new Map();
+
 const getUserId = (authUserOrId) => {
   const userId =
     typeof authUserOrId === 'string'
@@ -128,20 +132,23 @@ const findRoadmapTaskByItemId = (roadmap, itemId) => {
 };
 
 const buildLearningQueryFromTask = (roadmap, task) => ({
+  taskTitle: task.title || '',
+  taskDescription: task.description || '',
   skillName: task.canonicalSkillName,
   canonicalSkillName: task.canonicalSkillName,
+  category: task.category || '',
   targetRole: task.targetRole || roadmap.targetRole,
   level: task.level || roadmap.effectiveLevel || 'beginner',
   language: roadmap.language || 'vi',
   roadmapId: String(roadmap._id || ''),
   roadmapItemId: task.itemId,
   contentCacheKey: task.itemId || task.title,
+  topicKey: task.title || task.description || task.itemId,
 });
 
 const buildResourceQueryFromLearningQuery = (query = {}, task = {}, personalizedContext = {}) => {
-  const { contentCacheKey, ...resourceQuery } = query;
   return {
-    ...resourceQuery,
+    ...query,
     taskTitle: task.title || '',
     taskDescription: task.description || '',
     projectType: personalizedContext.projectType || '',
@@ -156,6 +163,9 @@ const getLearningContentDocument = async (query) => {
     normalizedTargetRole: identity.normalizedTargetRole,
     level: identity.level,
     language: identity.language,
+    roadmapId: identity.roadmapId,
+    roadmapItemId: identity.roadmapItemId,
+    isStale: { $ne: true },
   }).lean();
   return content ? { ...content, ...identity } : null;
 };
@@ -207,6 +217,7 @@ const getProgressForItem = async (userId, roadmapId, itemId) => {
 
 const getResourcesForLearning = async (query, includeResources, searchIfMissing = false, diagnostics = {}) => {
   if (!includeResources) return [];
+  const topicProfile = learningService.buildLearningTopicProfile(query);
   console.info('[roadmap-learning-resource]', {
     reasonCode: 'learning_resources_requested',
     roadmapId: diagnostics.roadmapId,
@@ -219,7 +230,7 @@ const getResourcesForLearning = async (query, includeResources, searchIfMissing 
   });
   try {
     const resourcesResult = await learningService.getLearningResources(query);
-    if (resourcesResult.data.resources.length || !searchIfMissing) {
+    if (learningService.hasValidLearningVideo(resourcesResult.data.resources, topicProfile) || !searchIfMissing) {
       console.info('[roadmap-learning-resource]', {
         reasonCode: resourcesResult.data.resources.length ? 'learning_resources_cache_hit' : 'learning_resources_cache_empty',
         roadmapId: diagnostics.roadmapId,
@@ -243,15 +254,35 @@ const getResourcesForLearning = async (query, includeResources, searchIfMissing 
   }
 
   try {
-    const searched = await learningService.searchAndCacheYoutubeResources(query);
+    const searchKey = `${diagnostics.roadmapId || query.roadmapId}:${diagnostics.itemId || query.roadmapItemId}:${topicProfile.normalizedTopicKey}`;
+    const cooldownUntil = resourceSearchCooldown.get(searchKey) || 0;
+    if (cooldownUntil > Date.now()) return [];
+    const existingSearch = resourceSearchInFlight.get(searchKey);
+    if (existingSearch) return existingSearch;
+    const searchPromise = (async () => {
+      const searched = await learningService.searchAndCacheYoutubeResources(query);
+      if (!learningService.hasValidLearningVideo(searched.data.resources, topicProfile)) {
+        resourceSearchCooldown.set(searchKey, Date.now() + 20 * 60 * 1000);
+        console.warn('[learning-resource]', { reasonCode: 'learning_resource_not_found', roadmapId: diagnostics.roadmapId, itemId: diagnostics.itemId });
+        return [];
+      }
+      resourceSearchCooldown.delete(searchKey);
+      return searched.data.resources || [];
+    })();
+    resourceSearchInFlight.set(searchKey, searchPromise);
+    try {
+      const resources = await searchPromise;
     console.info('[roadmap-learning-resource]', {
       reasonCode: 'learning_resources_attached',
       roadmapId: diagnostics.roadmapId,
       itemId: diagnostics.itemId,
       canonicalSkillName: query.canonicalSkillName || query.skillName,
-      acceptedCount: searched.data.resources?.length || 0,
+      acceptedCount: resources.length,
     });
-    return searched.data.resources || [];
+      return resources;
+    } finally {
+      resourceSearchInFlight.delete(searchKey);
+    }
   } catch (error) {
     const providerStatus = Number(error?.response?.status || error?.statusCode || 0);
     const reasonCode = /YOUTUBE_API_KEY/i.test(error.message || '')
@@ -349,7 +380,7 @@ const getRoadmapItemLearning = async (authUserOrId, roadmapId, itemId, options =
   const resources = await getResourcesForLearning(
     buildResourceQueryFromLearningQuery(query, task, personalizedContext),
     includeResources,
-    false,
+    true,
     { roadmapId, itemId: task.itemId }
   );
 
@@ -367,6 +398,13 @@ const generateRoadmapItemLearning = async (authUserOrId, roadmapId, itemId, body
   if (!task) {
     throw createStatusError('Roadmap task not found.', 404);
   }
+
+  const generationKey = `${userId}:${String(roadmapId)}:${task.itemId}`;
+  const existingGeneration = generationInFlight.get(generationKey);
+  if (existingGeneration) return existingGeneration;
+
+  const generationPromise = (async () => {
+    try {
 
   const query = buildLearningQueryFromTask(roadmap, task);
   const personalizedContext = buildPersonalizedContext(roadmap, task);
@@ -404,11 +442,17 @@ const generateRoadmapItemLearning = async (authUserOrId, roadmapId, itemId, body
     { roadmapId, itemId: task.itemId }
   );
 
-  return {
+      return {
     message: 'Roadmap item learning generated successfully',
     data: await formatRoadmapItemLearningResponse(userId, roadmap, task, learningResult.data, resources),
     statusCode: learningResult.statusCode === 201 ? 201 : 200,
-  };
+      };
+    } finally {
+      generationInFlight.delete(generationKey);
+    }
+  })();
+  generationInFlight.set(generationKey, generationPromise);
+  return generationPromise;
 };
 
 module.exports = {

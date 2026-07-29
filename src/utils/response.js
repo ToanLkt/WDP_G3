@@ -7,12 +7,15 @@ const successResponse = (res, message = 'Request successful', data = null, statu
   });
 };
 
-const errorResponse = (res, message = 'Request failed', statusCode = 500, errors = [], errorCode = null) => {
+const errorResponse = (res, message = 'Request failed', statusCode = 500, errors = [], errorCode = null, metadata = {}) => {
   return res.status(statusCode).json({
     success: false,
     message,
     data: null,
     errorCode,
+    ...(metadata.retryable !== undefined ? { retryable: metadata.retryable } : {}),
+    ...(metadata.requestId ? { requestId: metadata.requestId } : {}),
+    ...(metadata.upstreamMessage ? { upstreamMessage: metadata.upstreamMessage } : {}),
     errors,
   });
 };

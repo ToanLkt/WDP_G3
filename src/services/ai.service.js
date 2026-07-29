@@ -131,7 +131,13 @@ const buildGeminiError = ({ lastError, attemptedModels }) => {
     ? upstreamStatus
     : (lastError?.code === 'ECONNABORTED' || upstreamStatus >= 500 ? 503 : 500);
   const error = createStatusError('Failed to generate content from Gemini', statusCode);
-  error.errorCode = statusCode === 429 ? 'GEMINI_RATE_LIMITED' : statusCode === 401 || statusCode === 403 ? 'GEMINI_AUTH_FAILED' : 'GEMINI_GENERATION_FAILED';
+  error.errorCode = upstreamStatus === 404
+    ? 'GEMINI_MODEL_UNAVAILABLE'
+    : statusCode === 400 ? 'GEMINI_REQUEST_INVALID'
+      : statusCode === 429 ? 'GEMINI_RATE_LIMITED'
+        : statusCode === 401 || statusCode === 403 ? 'GEMINI_AUTH_FAILED'
+          : statusCode === 503 ? 'GEMINI_UNAVAILABLE' : 'GEMINI_GENERATION_FAILED';
+  error.retryable = [408, 429, 503].includes(statusCode);
   error.llmError = {
     status: lastError?.response?.status || lastError?.statusCode || 500,
     upstreamMessage: getGeminiErrorMessage(lastError),
@@ -193,7 +199,9 @@ const callGemini = async (prompt, options = {}) => {
       const text = extractGeminiText(response.data);
 
       if (!text) {
-        throw createStatusError('Gemini returned empty response', 500);
+        const emptyError = createStatusError('Gemini returned empty response', 502);
+        emptyError.errorCode = 'GEMINI_RESPONSE_INVALID';
+        throw emptyError;
       }
 
       return {
