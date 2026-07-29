@@ -40,6 +40,7 @@ const roadmapTaskSchema = new mongoose.Schema(
     canonicalSkillName: { type: String, default: '', trim: true },
     category: { type: String, default: 'General', trim: true },
     itemId: { type: String, default: '', trim: true },
+    prerequisites: { type: [String], default: [] },
     level: { type: String, default: '', trim: true },
     week: { type: Number, default: 1 },
     priority: { type: mongoose.Schema.Types.Mixed, default: 'medium' },

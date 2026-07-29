@@ -30,7 +30,7 @@ const learningContentSchema = new mongoose.Schema(
       trim: true,
       index: true,
     },
-    normalizedSkillName: {
+  normalizedSkillName: {
       type: String,
       required: true,
       trim: true,
@@ -70,6 +70,9 @@ const learningContentSchema = new mongoose.Schema(
       enum: ['ai', 'manual'],
       default: 'ai',
     },
+    roadmapId: { type: mongoose.Schema.Types.ObjectId, ref: 'Roadmap', default: null, index: true },
+    roadmapItemId: { type: String, default: '', trim: true, index: true },
+    contentCacheKey: { type: String, default: '', trim: true },
   },
   { timestamps: true }
 );

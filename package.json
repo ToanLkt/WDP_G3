@@ -21,6 +21,7 @@
     "test:skill-vector-compare": "node scripts/testSkillVectorComparison.js",
     "test:role-matching": "node scripts/testRoleMatching.js",
     "test:roadmap-skill-gap": "node scripts/testRoadmapSkillGap.js",
+    "test:roadmap-resource-grounding": "node scripts/testRoadmapResourceGrounding.js",
     "test:learning-canonicalization": "node scripts/testLearningCanonicalization.js",
     "test:end-to-end-flow": "node scripts/testEndToEndFlowConsistency.js",
     "test:current-context": "node scripts/testCurrentContextServiceHarness.js",

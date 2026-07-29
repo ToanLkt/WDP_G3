@@ -66,6 +66,7 @@ const learningResourceSchema = new mongoose.Schema(
       enum: ['curated', 'youtube_api', 'manual'],
       default: 'manual',
     },
+    normalizedTopicKey: { type: String, default: '', trim: true, index: true },
     score: {
       type: Number,
       default: 0,
@@ -90,6 +91,7 @@ learningResourceSchema.index({
   level: 1,
   language: 1,
   type: 1,
+  normalizedTopicKey: 1,
 });
 learningResourceSchema.index({ url: 1 }, { unique: true });
 
