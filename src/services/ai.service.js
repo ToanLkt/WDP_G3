@@ -3,9 +3,8 @@ const axios = require('axios');
 const { apiMessages } = require('../utils/constants');
 const { createStatusError } = require('./github/github.utils');
 
-// Do not silently spend quota on another model when the configured model fails.
-// Configure one supported model through LLM_MODEL and diagnose that model directly.
-const FALLBACK_MODELS = [];
+const DEFAULT_GEMINI_MODEL = 'gemini-3.6-flash';
+const DEFAULT_FALLBACK_MODELS = ['gemini-flash-latest'];
 
 const getFallbackChatResponse = () =>
   'Dua tren GitHub context hien co, minh co the ho tro ban phan tich dinh huong nghe nghiep, ky nang manh/yeu va lo trinh hoc tiep theo. Tuy nhien hien tai he thong chua goi duoc LLM hoac thieu API key, nen day la phan hoi demo. Hay kiem tra LLM_API_KEY va cau hinh Gemini trong .env.';
@@ -19,10 +18,18 @@ const analyzeWithAi = async () => buildReadyPayload();
 
 const normalizeGeminiModel = (model) => String(model || '').trim().replace(/^models\//, '');
 
+const getFallbackModels = () => {
+  const configured = String(process.env.LLM_FALLBACK_MODELS || '')
+    .split(',')
+    .map(normalizeGeminiModel)
+    .filter(Boolean);
+  return configured.length ? configured : DEFAULT_FALLBACK_MODELS;
+};
+
 const getGeminiConfig = () => ({
   provider: process.env.LLM_PROVIDER || 'gemini',
   apiKey: process.env.LLM_API_KEY,
-  model: normalizeGeminiModel(process.env.LLM_MODEL || 'gemini-2.0-flash'),
+  model: normalizeGeminiModel(process.env.LLM_MODEL || DEFAULT_GEMINI_MODEL),
   baseUrl: process.env.LLM_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta',
 });
 
@@ -121,7 +128,7 @@ const shouldTryNextModel = (error) => {
 };
 
 const buildModelCandidates = (primaryModel) => {
-  const models = [normalizeGeminiModel(primaryModel), ...FALLBACK_MODELS].filter(Boolean);
+  const models = [normalizeGeminiModel(primaryModel), ...getFallbackModels()].filter(Boolean);
   return [...new Set(models)];
 };
 
@@ -210,7 +217,7 @@ const callGemini = async (prompt, options = {}) => {
         provider: config.provider,
         model: currentModel,
         attemptedModels,
-        usedFallback: false,
+        usedFallback: currentModel !== config.model,
       };
     } catch (error) {
       lastError = error;
