@@ -9,6 +9,7 @@ const { canonicalizeSkillName, getCanonicalSkillCategory } = require('../utils/s
 const generationInFlight = new Map();
 const resourceSearchInFlight = new Map();
 const resourceSearchCooldown = new Map();
+const resourceRegenerationCooldown = new Map();
 
 const getUserId = (authUserOrId) => {
   const userId =
@@ -256,13 +257,14 @@ const getResourcesForLearning = async (query, includeResources, searchIfMissing 
   try {
     const searchKey = `${diagnostics.roadmapId || query.roadmapId}:${diagnostics.itemId || query.roadmapItemId}:${topicProfile.normalizedTopicKey}`;
     const cooldownUntil = resourceSearchCooldown.get(searchKey) || 0;
-    if (cooldownUntil > Date.now()) return [];
+    if (cooldownUntil > Date.now() && !diagnostics.forceResourceRefresh) return [];
     const existingSearch = resourceSearchInFlight.get(searchKey);
     if (existingSearch) return existingSearch;
     const searchPromise = (async () => {
       const searched = await learningService.searchAndCacheYoutubeResources(query);
       if (!learningService.hasValidLearningVideo(searched.data.resources, topicProfile)) {
         resourceSearchCooldown.set(searchKey, Date.now() + 20 * 60 * 1000);
+        diagnostics.searchFailed = true;
         console.warn('[learning-resource]', { reasonCode: 'learning_resource_not_found', roadmapId: diagnostics.roadmapId, itemId: diagnostics.itemId });
         return [];
       }
@@ -300,6 +302,8 @@ const getResourcesForLearning = async (query, includeResources, searchIfMissing 
       language: query.language,
       statusCode: error.statusCode || error.response?.status || 500,
     });
+    diagnostics.searchFailed = true;
+    diagnostics.providerFailure = reasonCode === 'youtube_api_key_missing' || reasonCode === 'youtube_quota_exceeded' || reasonCode === 'youtube_api_error';
     try {
       const resourcesResult = await learningService.getLearningResources(query);
       return resourcesResult.data.resources || [];
@@ -377,12 +381,39 @@ const getRoadmapItemLearning = async (authUserOrId, roadmapId, itemId, options =
   const learningResult = await learningService.getLearningContent(query);
   const includeResources = parseBoolean(options.includeResources, true);
   const personalizedContext = buildPersonalizedContext(roadmap, task);
-  const resources = await getResourcesForLearning(
+  const resourceDiagnostics = { roadmapId, itemId: task.itemId };
+  let resources = await getResourcesForLearning(
     buildResourceQueryFromLearningQuery(query, task, personalizedContext),
     includeResources,
     true,
-    { roadmapId, itemId: task.itemId }
+    resourceDiagnostics
   );
+
+  const regenerationKey = `${userId}:${String(roadmapId)}:${task.itemId}`;
+  const canRegenerate = includeResources
+    && !resources.length
+    && resourceDiagnostics.searchFailed
+    && !resourceDiagnostics.providerFailure
+    && (resourceRegenerationCooldown.get(regenerationKey) || 0) <= Date.now()
+    && options.forceResourceRefresh !== false;
+  if (canRegenerate) {
+    resourceRegenerationCooldown.set(regenerationKey, Date.now() + 45 * 60 * 1000);
+    try {
+      const regenerated = await generateRoadmapItemLearning(authUserOrId, roadmapId, itemId, {
+        forceRegenerate: true,
+        includeResources: true,
+        _skipResourceRegeneration: true,
+      });
+      return regenerated;
+    } catch (error) {
+      console.warn('[roadmap-learning-resource]', {
+        reasonCode: 'learning_regeneration_failed_keep_existing_content',
+        roadmapId,
+        itemId: task.itemId,
+        errorCode: error.errorCode || error.code,
+      });
+    }
+  }
 
   return {
     message: 'Roadmap item learning found',
@@ -439,7 +470,7 @@ const generateRoadmapItemLearning = async (authUserOrId, roadmapId, itemId, body
     buildResourceQueryFromLearningQuery(query, task, personalizedContext),
     includeResources,
     true,
-    { roadmapId, itemId: task.itemId }
+    { roadmapId, itemId: task.itemId, forceResourceRefresh: body.forceResourceRefresh === true }
   );
 
       return {
